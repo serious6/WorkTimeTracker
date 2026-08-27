@@ -120,7 +120,9 @@ export function TimeEntryList({
               <Menu
                 items={[
                   { label: 'Edit', onSelect: () => setEditing(entry) },
-                  { label: 'Duplicate', onSelect: () => void duplicate(entry) },
+                  ...(running
+                    ? []
+                    : [{ label: 'Duplicate', onSelect: () => void duplicate(entry) }]),
                   { label: entry.note ? 'Edit note' : 'Add note', onSelect: () => setNoting(entry) },
                   { label: 'Delete', destructive: true, onSelect: () => setDeleting(entry) },
                 ]}
