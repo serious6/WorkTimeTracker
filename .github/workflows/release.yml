@@ -133,7 +133,6 @@ jobs:
             src-tauri/target/release/bundle/**/*.deb
             src-tauri/target/release/bundle/**/*.rpm
             src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.app.tar.gz
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
           if-no-files-found: error
@@ -154,6 +153,16 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           tag="${INPUT_TAG:-v$version}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Verify release tag matches commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          existing_sha=$(gh api "repos/${{ github.repository }}/commits/$TAG" --jq '.sha' 2>/dev/null || true)
+          if [ -n "$existing_sha" ] && [ "$existing_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $TAG already points to $existing_sha, not the current commit $GITHUB_SHA. Refusing to publish and overwrite an unrelated release."
+            exit 1
+          fi
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: bundle-*
