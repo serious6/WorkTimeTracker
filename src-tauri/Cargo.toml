@@ -15,9 +15,9 @@ name = "work_time_tracker_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6.3" }
+tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
-tauri = { version = "2.11.5" }
+tauri = { version = "2.11.5", features = [] }

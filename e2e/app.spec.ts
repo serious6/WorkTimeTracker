@@ -12,4 +12,5 @@ test('shows the local-first work entry dashboard', async ({ page }) => {
   await page.getByRole('button', { name: 'Save entry' }).click()
 
   await expect(page.getByText('Add an entry to see your weekly chart.')).toBeHidden()
+  await expect(page.getByLabel('Project')).toBeEmpty()
 })

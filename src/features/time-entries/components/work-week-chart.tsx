@@ -1,15 +1,10 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { TimeEntry } from '../time-entry-schema'
+import { buildWorkWeekData } from '../work-week-data'
 
 export function WorkWeekChart({ entries }: { entries: TimeEntry[] }) {
-  const data = entries.reduce<Array<{ day: string; hours: number }>>((days, entry) => {
-    const day = new Date(entry.startedAt).toLocaleDateString(undefined, { weekday: 'short' })
-    const current = days.find((item) => item.day === day)
-    if (current) current.hours += entry.durationMinutes / 60
-    else days.push({ day, hours: entry.durationMinutes / 60 })
-    return days
-  }, [])
+  const data = buildWorkWeekData(entries)
 
   return (
     <Card>

@@ -14,23 +14,24 @@ export function TimeEntryForm() {
     onSuccess: (entry) => {
       queryClient.setQueryData<TimeEntry[]>(timeEntryKeys.all, (current = []) => [entry, ...current])
     },
+    onError: () => setError('The entry could not be saved.'),
   })
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const form = new FormData(event.currentTarget)
+    const formData = new FormData(event.currentTarget)
     const result = newTimeEntrySchema.safeParse({
-      project: form.get('project'),
-      durationMinutes: form.get('durationMinutes'),
-      notes: form.get('notes') || undefined,
+      project: formData.get('project'),
+      durationMinutes: formData.get('durationMinutes'),
+      notes: formData.get('notes') || undefined,
     })
     if (!result.success) {
       setError(result.error.issues[0]?.message)
       return
     }
     setError(undefined)
-    mutation.mutate(result.data)
-    event.currentTarget.reset()
+    const formElement = event.currentTarget
+    mutation.mutate(result.data, { onSuccess: () => formElement.reset() })
   }
 
   return (
