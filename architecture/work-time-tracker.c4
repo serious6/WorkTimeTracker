@@ -1,0 +1,33 @@
+specification {
+  element person
+  element system
+  element container
+  relationship uses
+}
+
+model {
+  user = person 'User'
+  application = system 'WorkTimeTracker' {
+    frontend = container 'React UI' {
+      technology 'React, TypeScript, Tailwind, shadcn/ui'
+    }
+    backend = container 'Desktop backend' {
+      technology 'Tauri 2, Rust commands'
+    }
+    database = container 'Local database' {
+      technology 'SQLite, Drizzle schema'
+    }
+
+    frontend -> backend 'Invokes commands'
+    backend -> database 'Reads and writes'
+  }
+
+  user -> application 'Tracks work time'
+}
+
+views {
+  view overview {
+    title 'WorkTimeTracker overview'
+    include *
+  }
+}

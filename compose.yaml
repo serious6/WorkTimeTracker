@@ -1,0 +1,17 @@
+services:
+  development:
+    build:
+      context: .
+      dockerfile: Containerfile
+    ports:
+      - "1420:1420"
+    volumes:
+      - .:/workspace
+      - node_modules:/workspace/node_modules
+      - cargo_registry:/root/.cargo/registry
+      - cargo_target:/workspace/src-tauri/target
+
+volumes:
+  node_modules:
+  cargo_registry:
+  cargo_target:
