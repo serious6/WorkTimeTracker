@@ -50,6 +50,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 Build the web frontend or desktop application with `npm run build` and `npm run tauri build`.
 
+## Release
+
+The `Release` workflow runs on manual dispatch (Actions → Release → Run workflow). It runs the web, Rust, and end-to-end checks in parallel, then bundles the desktop application on Linux, Windows, and macOS and publishes the bundles as a GitHub release. The tag defaults to `v<version from src-tauri/tauri.conf.json>` and can be overridden per run. Downloadable installers are attached to the release on the repository's Releases page.
+
 ## Containers
 
 The development container supports both Docker Compose and Podman Compose:
