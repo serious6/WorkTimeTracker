@@ -9,6 +9,7 @@ A local-first, open-source desktop work-time tracker built with Tauri 2.
 - Zustand for local UI state and TanStack Query for asynchronous state
 - Zod validation
 - Drizzle SQLite schema with a bundled SQLite database managed by Rust
+- Native versioned migrations with `rusqlite_migration`
 - Recharts
 - Vitest and Playwright
 - LikeC4 architecture documentation
@@ -17,7 +18,7 @@ AI support is intentionally deferred.
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 26+
 - Rust stable
 - [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/)
 

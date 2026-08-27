@@ -1,21 +1,28 @@
 use std::{path::Path, sync::Mutex};
 
 use rusqlite::{params, Connection, Result};
+use rusqlite_migration::{Migrations, M};
 
 use crate::models::{CreateTimeEntry, TimeEntry};
 
 pub struct Database(pub Mutex<Connection>);
 
+fn migrations() -> Migrations<'static> {
+    Migrations::new(vec![M::up(include_str!(
+        "../../drizzle/0000_create_time_entries.sql"
+    ))])
+}
+
 impl Database {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let connection = Connection::open(path)?;
-        migrate(&connection)?;
+    pub fn open(path: impl AsRef<Path>) -> std::result::Result<Self, Box<dyn std::error::Error>> {
+        let mut connection = Connection::open(path)?;
+        migrate(&mut connection)?;
         Ok(Self(Mutex::new(connection)))
     }
 }
 
-pub fn migrate(connection: &Connection) -> Result<()> {
-    connection.execute_batch(include_str!("../../drizzle/0000_create_time_entries.sql"))
+pub fn migrate(connection: &mut Connection) -> rusqlite_migration::Result<()> {
+    migrations().to_latest(connection)
 }
 
 pub fn list(connection: &Connection) -> Result<Vec<TimeEntry>> {
@@ -71,9 +78,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn validates_all_migrations() {
+        migrations().validate().unwrap();
+    }
+
+    #[test]
+    fn adopts_an_existing_unversioned_database() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(include_str!("../../drizzle/0000_create_time_entries.sql"))
+            .unwrap();
+
+        migrate(&mut connection).unwrap();
+
+        assert_eq!(
+            connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
+            Ok(1)
+        );
+    }
+
+    #[test]
     fn migrates_and_round_trips_an_entry() {
-        let connection = Connection::open_in_memory().unwrap();
-        migrate(&connection).unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        migrate(&mut connection).unwrap();
+        migrate(&mut connection).unwrap();
+        assert_eq!(
+            connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
+            Ok(1)
+        );
         let created = insert(
             &connection,
             &CreateTimeEntry {

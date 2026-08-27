@@ -11,8 +11,7 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            let database = Database::open(data_dir.join("work-time-tracker.sqlite"))
-                .map_err(|error| error.to_string())?;
+            let database = Database::open(data_dir.join("work-time-tracker.sqlite"))?;
             app.manage(database);
             Ok(())
         })

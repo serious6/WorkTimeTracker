@@ -6,7 +6,7 @@ authors = ["serious6"]
 license = "MIT"
 repository = "https://github.com/serious6/WorkTimeTracker"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.95"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -20,4 +20,5 @@ tauri-build = { version = "2.6.3", features = [] }
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite_migration = "2.6.0"
 tauri = { version = "2.11.5", features = [] }
