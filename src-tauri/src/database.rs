@@ -10,9 +10,10 @@ const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
 pub struct Database(pub Mutex<Connection>);
 
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!(
-        "../../drizzle/0000_create_schema.sql"
-    ))])
+    Migrations::new(vec![
+        M::up(include_str!("../../drizzle/0000_create_time_entries.sql")),
+        M::up(include_str!("../../drizzle/0000_create_schema.sql")),
+    ])
 }
 
 impl Database {
@@ -170,6 +171,54 @@ pub fn update_time_entry(
     read_entry(connection, id)
 }
 
+pub fn update_time_entry_note(
+    connection: &Connection,
+    id: i64,
+    note: Option<&str>,
+) -> Result<TimeEntry> {
+    connection.execute(
+        "UPDATE time_entries
+     SET note = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE id = ?1",
+        params![id, note],
+    )?;
+    read_entry(connection, id)
+}
+
+pub fn switch_running_time_entry(
+    connection: &Connection,
+    id: i64,
+    input: &SaveTimeEntry,
+) -> Result<TimeEntry> {
+    let transaction = connection.unchecked_transaction()?;
+    let current = read_entry(&transaction, id)?;
+    if current.end_time.is_some()
+        || input.project_id.is_none()
+        || input.end_time.is_some()
+        || input.start_time <= current.start_time
+    {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+
+    transaction.execute(
+        "UPDATE time_entries
+     SET end_time = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE id = ?1",
+        params![id, input.start_time],
+    )?;
+    if overlaps(
+        &transaction,
+        &input.start_time,
+        input.end_time.as_deref(),
+        None,
+    )? {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let created = insert_time_entry(&transaction, input)?;
+    transaction.commit()?;
+    Ok(created)
+}
+
 pub fn delete_time_entry(connection: &Connection, id: i64) -> Result<()> {
     connection.execute("DELETE FROM time_entries WHERE id = ?1", [id])?;
     Ok(())
@@ -240,7 +289,7 @@ mod tests {
 
     fn entry(project_id: i64, start_time: &str, end_time: Option<&str>) -> SaveTimeEntry {
         SaveTimeEntry {
-            project_id,
+            project_id: Some(project_id),
             start_time: start_time.into(),
             end_time: end_time.map(str::to_owned),
             note: None,
@@ -258,7 +307,29 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(1)
+            Ok(2)
+        );
+    }
+
+    #[test]
+    fn upgrades_from_the_previous_sample_schema() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(include_str!("../../drizzle/0000_create_time_entries.sql"))
+            .unwrap();
+        connection.pragma_update(None, "user_version", 1).unwrap();
+
+        migrate(&mut connection).unwrap();
+
+        assert_eq!(
+            connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
+            Ok(2)
+        );
+        assert!(list_projects(&connection).unwrap().is_empty());
+        assert!(list_time_entries(&connection).unwrap().is_empty());
+        assert_eq!(
+            read_settings(&connection).unwrap().daily_target_minutes,
+            480
         );
     }
 
@@ -390,6 +461,60 @@ mod tests {
 
         delete_time_entry(&connection, created.id).unwrap();
         assert!(list_time_entries(&connection).unwrap().is_empty());
+    }
+
+    #[test]
+    fn updates_only_the_entry_note() {
+        let connection = connect();
+        let project = project(&connection);
+        let created = insert_time_entry(
+            &connection,
+            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
+        )
+        .unwrap();
+
+        let updated = update_time_entry_note(&connection, created.id, Some("Updated")).unwrap();
+
+        assert_eq!(updated.note.as_deref(), Some("Updated"));
+        assert_eq!(updated.end_time, None);
+    }
+
+    #[test]
+    fn switches_running_entries_in_one_transaction() {
+        let connection = connect();
+        let first = project(&connection);
+        let second = insert_project(
+            &connection,
+            &SaveProject {
+                name: "Mobile App".into(),
+                description: None,
+                color: "#22c55e".into(),
+                active: true,
+            },
+        )
+        .unwrap();
+        let running = insert_time_entry(
+            &connection,
+            &entry(first.id, "2026-08-27T08:00:00.000Z", None),
+        )
+        .unwrap();
+
+        let created = switch_running_time_entry(
+            &connection,
+            running.id,
+            &entry(second.id, "2026-08-27T09:00:00.000Z", None),
+        )
+        .unwrap();
+
+        assert_eq!(created.project_id, Some(second.id));
+        let entries = list_time_entries(&connection).unwrap();
+        assert_eq!(
+            entries
+                .iter()
+                .find(|entry| entry.id == running.id)
+                .and_then(|entry| entry.end_time.as_deref()),
+            Some("2026-08-27T09:00:00.000Z")
+        );
     }
 
     #[test]

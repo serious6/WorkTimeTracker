@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type TimerSession = {
-  projectId: number
+  projectId: number | null
   /** Tracked time of the already closed segments of the session, in milliseconds. */
   carriedMs: number
   paused: boolean

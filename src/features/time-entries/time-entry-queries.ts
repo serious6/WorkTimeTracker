@@ -25,6 +25,24 @@ export function useUpdateTimeEntry() {
   })
 }
 
+export function useUpdateTimeEntryNote() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, note }: { id: number; note: string | null }) =>
+      repository.updateTimeEntryNote(id, note),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: timeEntryKeys.all }),
+  })
+}
+
+export function useSwitchRunningTimeEntry() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: number; input: SaveTimeEntry }) =>
+      repository.switchRunningTimeEntry(id, input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: timeEntryKeys.all }),
+  })
+}
+
 export function useDeleteTimeEntry() {
   const queryClient = useQueryClient()
   return useMutation({

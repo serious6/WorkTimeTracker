@@ -4,6 +4,7 @@ import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboa
 import { dayRange, entriesInRange, monthRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
+import { useTicker } from '@/features/timer/use-ticker'
 import { addDays, formatDuration, startOfWeek, toDateKey } from '@/lib/date'
 import { cn } from '@/lib/utils'
 
@@ -11,6 +12,7 @@ export function CalendarPage() {
   const selectedDate = useSelectedDate()
   const settings = useWorkSettings()
   const { data: entries = [] } = useTimeEntries()
+  const now = useTicker(true)
   const setSelectedDate = useDashboardStore((state) => state.setSelectedDate)
   const navigate = useNavigationStore((state) => state.navigate)
 
@@ -42,7 +44,8 @@ export function CalendarPage() {
           </div>
           <div className="grid grid-cols-7 gap-2 pt-2">
             {days.map((day) => {
-              const minutes = totalMinutes(entriesInRange(entries, dayRange(day)))
+              const range = dayRange(day)
+              const minutes = totalMinutes(entriesInRange(entries, range, now), now, range)
               const inMonth = day.getMonth() === selectedDate.getMonth()
               return (
                 <button

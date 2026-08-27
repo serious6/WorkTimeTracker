@@ -24,6 +24,16 @@ export function entryMinutes(entry: TimeEntry, now = Date.now()): number {
   return entryDurationMs(entry, now) / MINUTE_MS
 }
 
+export function entryDurationMsInRange(entry: TimeEntry, range: DateRange, now = Date.now()): number {
+  const start = Date.parse(entry.startTime)
+  const end = entry.endTime ? Date.parse(entry.endTime) : now
+  return Math.max(0, Math.min(end, range.end.getTime()) - Math.max(start, range.start.getTime()))
+}
+
+export function entryMinutesInRange(entry: TimeEntry, range: DateRange, now = Date.now()): number {
+  return entryDurationMsInRange(entry, range, now) / MINUTE_MS
+}
+
 export function isRunning(entry: TimeEntry): boolean {
   return entry.endTime === null
 }
@@ -47,17 +57,24 @@ export function monthRange(date: Date): DateRange {
   return { start, end: new Date(date.getFullYear(), date.getMonth() + 1, 1) }
 }
 
-export function entriesInRange(entries: TimeEntry[], range: DateRange): TimeEntry[] {
+export function entriesInRange(entries: TimeEntry[], range: DateRange, now = Date.now()): TimeEntry[] {
+  const rangeStart = range.start.getTime()
+  const rangeEnd = range.end.getTime()
   return entries
     .filter((entry) => {
       const start = Date.parse(entry.startTime)
-      return start >= range.start.getTime() && start < range.end.getTime()
+      const end = entry.endTime ? Date.parse(entry.endTime) : now
+      return start < rangeEnd && end > rangeStart
     })
     .sort((left, right) => left.startTime.localeCompare(right.startTime))
 }
 
-export function totalMinutes(entries: TimeEntry[], now = Date.now()): number {
-  return entries.reduce((total, entry) => total + entryMinutes(entry, now), 0)
+export function totalMinutes(entries: TimeEntry[], now = Date.now(), range?: DateRange): number {
+  return entries.reduce(
+    (total, entry) =>
+      total + (range ? entryMinutesInRange(entry, range, now) : entryMinutes(entry, now)),
+    0,
+  )
 }
 
 /** Overtime is never negative. */
@@ -75,11 +92,15 @@ export function projectTotals(
   entries: TimeEntry[],
   projects: Project[],
   now = Date.now(),
+  range?: DateRange,
 ): ProjectTotal[] {
   const minutesByProject = new Map<number | null, number>()
   for (const entry of entries) {
     const current = minutesByProject.get(entry.projectId) ?? 0
-    minutesByProject.set(entry.projectId, current + entryMinutes(entry, now))
+    minutesByProject.set(
+      entry.projectId,
+      current + (range ? entryMinutesInRange(entry, range, now) : entryMinutes(entry, now)),
+    )
   }
 
   const total = [...minutesByProject.values()].reduce((sum, minutes) => sum + minutes, 0)

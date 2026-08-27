@@ -12,6 +12,7 @@ import { useSelectedDate } from '@/features/dashboard/dashboard-store'
 import { useProjects } from '@/features/projects/project-queries'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
+import { useTicker } from '@/features/timer/use-ticker'
 import { addDays, formatDuration, formatWeekRange, startOfWeek } from '@/lib/date'
 
 export function ReportsPage() {
@@ -19,16 +20,19 @@ export function ReportsPage() {
   const settings = useWorkSettings()
   const { data: entries = [] } = useTimeEntries()
   const { data: projects = [] } = useProjects()
+  const now = useTicker(true)
 
   const weekStart = startOfWeek(selectedDate, settings.weekStartsOn)
-  const weekEntries = entriesInRange(entries, weekRange(selectedDate, settings.weekStartsOn))
-  const weekMinutes = totalMinutes(weekEntries)
+  const selectedWeekRange = weekRange(selectedDate, settings.weekStartsOn)
+  const weekEntries = entriesInRange(entries, selectedWeekRange, now)
+  const weekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
 
   const data = Array.from({ length: 7 }, (_, index) => {
     const day = addDays(weekStart, index)
+    const range = dayRange(day)
     return {
       day: day.toLocaleDateString('en-US', { weekday: 'short' }),
-      hours: totalMinutes(entriesInRange(entries, dayRange(day))) / 60,
+      hours: totalMinutes(entriesInRange(entries, range, now), now, range) / 60,
     }
   })
 
@@ -74,7 +78,7 @@ export function ReportsPage() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-2 text-sm">
-              {projectTotals(weekEntries, projects).map((item) => (
+              {projectTotals(weekEntries, projects, now, selectedWeekRange).map((item) => (
                 <li className="flex items-center gap-2" key={`${item.projectId}`}>
                   <span
                     aria-hidden

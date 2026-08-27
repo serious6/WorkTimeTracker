@@ -27,6 +27,9 @@ export const tauriRepository: Repository = {
   listTimeEntries: () => call('list_time_entries', {}, timeEntrySchema.array()),
   createTimeEntry: (input) => call('create_time_entry', { input }, timeEntrySchema),
   updateTimeEntry: (id, input) => call('update_time_entry', { id, input }, timeEntrySchema),
+  updateTimeEntryNote: (id, note) => call('update_time_entry_note', { id, note }, timeEntrySchema),
+  switchRunningTimeEntry: (id, input) =>
+    call('switch_running_time_entry', { id, input }, timeEntrySchema),
   deleteTimeEntry: async (id) => {
     await invoke('delete_time_entry', { id })
   },

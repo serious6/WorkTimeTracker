@@ -62,6 +62,9 @@ pub fn create_time_entry(
     mut input: SaveTimeEntry,
 ) -> Result<TimeEntry, String> {
     input.validate().map_err(str::to_owned)?;
+    if input.project_id.is_none() {
+        return Err("Project is required".to_owned());
+    }
     let connection = database.0.lock().map_err(|error| error.to_string())?;
     if database::overlaps(
         &connection,
@@ -95,6 +98,37 @@ pub fn update_time_entry(
         return Err(OVERLAP.to_owned());
     }
     database::update_time_entry(&connection, id, &input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn update_time_entry_note(
+    database: State<'_, Database>,
+    id: i64,
+    note: Option<String>,
+) -> Result<TimeEntry, String> {
+    let note = note
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
+    if note.as_ref().is_some_and(|note| note.chars().count() > 500) {
+        return Err("invalid note".to_owned());
+    }
+    with_connection(&database, |connection| {
+        database::update_time_entry_note(connection, id, note.as_deref())
+    })
+}
+
+#[tauri::command]
+pub fn switch_running_time_entry(
+    database: State<'_, Database>,
+    id: i64,
+    mut input: SaveTimeEntry,
+) -> Result<TimeEntry, String> {
+    input.validate().map_err(str::to_owned)?;
+    if input.project_id.is_none() || input.end_time.is_some() {
+        return Err("invalid timer switch".to_owned());
+    }
+    let connection = database.0.lock().map_err(|error| error.to_string())?;
+    database::switch_running_time_entry(&connection, id, &input).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

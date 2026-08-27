@@ -4,7 +4,9 @@ import { entryDurationMs, findRunningEntry } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
 import {
   useCreateTimeEntry,
+  useSwitchRunningTimeEntry,
   useTimeEntries,
+  useUpdateTimeEntryNote,
   useUpdateTimeEntry,
 } from '@/features/time-entries/time-entry-queries'
 import {
@@ -31,6 +33,8 @@ export function useTimer(now: number) {
   const setSession = useTimerStore((state) => state.setSession)
   const createEntry = useCreateTimeEntry()
   const updateEntry = useUpdateTimeEntry()
+  const updateNote = useUpdateTimeEntryNote()
+  const switchEntry = useSwitchRunningTimeEntry()
 
   const running = findRunningEntry(entries)
   const paused = Boolean(session?.paused) && !running
@@ -53,7 +57,7 @@ export function useTimer(now: number) {
       await updateEntry.mutateAsync({
         id: entry.id,
         input: {
-          projectId: entry.projectId ?? 0,
+          projectId: entry.projectId,
           startTime: entry.startTime,
           endTime,
           note: entry.note,
@@ -103,7 +107,7 @@ export function useTimer(now: number) {
     try {
       const segment = await closeRunning(running, new Date().toISOString())
       setSession({
-        projectId: running.projectId ?? 0,
+        projectId: running.projectId,
         carriedMs: carriedMs + segment,
         paused: true,
       })
@@ -115,6 +119,10 @@ export function useTimer(now: number) {
 
   const resume = useCallback(async () => {
     if (!session) return
+    if (session.projectId === null) {
+      errorToast(TIMER_ERROR_MESSAGE, 'The original project no longer exists')
+      return
+    }
     try {
       await createEntry.mutateAsync({
         projectId: session.projectId,
@@ -134,31 +142,29 @@ export function useTimer(now: number) {
     async (projectId: number) => {
       const timestamp = new Date().toISOString()
       try {
-        if (running) await closeRunning(running, timestamp)
-        await createEntry.mutateAsync({ projectId, startTime: timestamp, endTime: null, note: null })
+        if (running) {
+          await switchEntry.mutateAsync({
+            id: running.id,
+            input: { projectId, startTime: timestamp, endTime: null, note: null },
+          })
+        } else {
+          await createEntry.mutateAsync({ projectId, startTime: timestamp, endTime: null, note: null })
+        }
         setSession({ projectId, carriedMs: 0, paused: false })
         toast(`Switched to ${projectName(projectId)}`)
       } catch (error) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
-    [closeRunning, createEntry, projectName, running, setSession],
+    [createEntry, projectName, running, setSession, switchEntry],
   )
 
   const setNote = useCallback(
     async (note: string) => {
       if (!running) return
-      await updateEntry.mutateAsync({
-        id: running.id,
-        input: {
-          projectId: running.projectId ?? 0,
-          startTime: running.startTime,
-          endTime: null,
-          note: note.trim() || null,
-        },
-      })
+      await updateNote.mutateAsync({ id: running.id, note: note.trim() || null })
     },
-    [running, updateEntry],
+    [running, updateNote],
   )
 
   return { status, start, stop, pause, resume, switchTo, setNote }

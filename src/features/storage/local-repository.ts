@@ -93,6 +93,7 @@ export const localRepository: Repository = {
     readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = saveTimeEntrySchema.parse(input)
+    if (parsed.projectId === null) throw new Error('Project is required')
     const entries = readEntries()
     if (findOverlap(entries, parsed)) throw new Error(OVERLAP_MESSAGE)
     const now = new Date().toISOString()
@@ -117,6 +118,46 @@ export const localRepository: Repository = {
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
     return updated
+  },
+  updateTimeEntryNote: async (id, note) => {
+    const entries = readEntries()
+    const current = entries.find((entry) => entry.id === id)
+    if (!current) throw new Error('Time entry not found')
+    const updated = timeEntrySchema.parse({
+      ...current,
+      note: note?.trim() || null,
+      updatedAt: new Date().toISOString(),
+    })
+    write(
+      ENTRIES_KEY,
+      entries.map((entry) => (entry.id === id ? updated : entry)),
+    )
+    return updated
+  },
+  switchRunningTimeEntry: async (id, input) => {
+    const parsed: SaveTimeEntry = saveTimeEntrySchema.parse(input)
+    if (parsed.projectId === null || parsed.endTime !== null) throw new Error('Invalid timer switch')
+    const entries = readEntries()
+    const current = entries.find((entry) => entry.id === id)
+    if (!current) throw new Error('Time entry not found')
+    if (current.endTime !== null) throw new Error('Timer is not running')
+    if (parsed.startTime <= current.startTime) throw new Error('End time must be later than start time')
+    const closed = timeEntrySchema.parse({
+      ...current,
+      endTime: parsed.startTime,
+      updatedAt: new Date().toISOString(),
+    })
+    const nextEntries = entries.map((entry) => (entry.id === id ? closed : entry))
+    if (findOverlap(nextEntries, parsed)) throw new Error(OVERLAP_MESSAGE)
+    const now = new Date().toISOString()
+    const created = timeEntrySchema.parse({
+      ...parsed,
+      id: nextId(entries),
+      createdAt: now,
+      updatedAt: now,
+    })
+    write(ENTRIES_KEY, [...nextEntries, created])
+    return created
   },
   deleteTimeEntry: async (id) => {
     write(

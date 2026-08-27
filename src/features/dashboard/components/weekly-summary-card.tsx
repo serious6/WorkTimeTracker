@@ -37,8 +37,8 @@ export function WeeklySummaryCard({
       ? monthRange(new Date(referenceDate.getFullYear(), referenceDate.getMonth() - 1, 1))
       : weekRange(addDays(current.start, -7), weekStartsOn)
 
-  const currentMinutes = totalMinutes(entriesInRange(entries, current), now)
-  const previousMinutes = totalMinutes(entriesInRange(entries, previous), now)
+  const currentMinutes = totalMinutes(entriesInRange(entries, current, now), now, current)
+  const previousMinutes = totalMinutes(entriesInRange(entries, previous, now), now, previous)
 
   return (
     <Card>

@@ -60,6 +60,21 @@ describe('metrics', () => {
     expect(totalMinutes(entriesInRange(entries, weekRange(at(27, 0))))).toBe(180)
   })
 
+  it('clips entries to the requested range', () => {
+    const spanning = entry(1, 1, at(26, 23), at(27, 1))
+    const running = entry(2, 1, at(26, 23), null)
+    const range = dayRange(at(27, 0))
+
+    expect(totalMinutes(entriesInRange([spanning], range), Date.now(), range)).toBe(60)
+    expect(
+      totalMinutes(
+        entriesInRange([running], range, at(27, 0, 30).getTime()),
+        at(27, 0, 30).getTime(),
+        range,
+      ),
+    ).toBe(30)
+  })
+
   it('never reports negative overtime', () => {
     expect(overtimeMinutes(600, 480)).toBe(120)
     expect(overtimeMinutes(300, 480)).toBe(0)

@@ -29,6 +29,15 @@ export function ProjectDialog({
   const updateProject = useUpdateProject()
   const [color, setColor] = useState(project?.color ?? nextProjectColor(projects))
   const [error, setError] = useState<string>()
+  const [openedFor, setOpenedFor] = useState<number | null>(null)
+
+  const openedKey = project?.id ?? 0
+  if (open && openedFor !== openedKey) {
+    setOpenedFor(openedKey)
+    setColor(project?.color ?? nextProjectColor(projects))
+    setError(undefined)
+  }
+  if (!open && openedFor !== null) setOpenedFor(null)
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

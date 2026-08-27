@@ -28,11 +28,13 @@ function emptyForm(dateKey: string) {
 export function TimeEntryDialog({
   open,
   entry,
+  initialEntry,
   date,
   onClose,
 }: {
   open: boolean
   entry?: TimeEntry
+  initialEntry?: TimeEntry
   date?: Date
   onClose: () => void
 }) {
@@ -43,12 +45,18 @@ export function TimeEntryDialog({
   const [error, setError] = useState<string>()
 
   const [openedFor, setOpenedFor] = useState<number | null>(null)
-  if (open && openedFor !== (entry?.id ?? 0)) {
-    setOpenedFor(entry?.id ?? 0)
+  const sourceEntry = entry ?? initialEntry
+  const openedKey = entry?.id ?? (initialEntry ? -initialEntry.id : 0)
+  if (open && openedFor !== openedKey) {
+    setOpenedFor(openedKey)
     setError(undefined)
     setValues(
-      entry
-        ? { ...entryToForm(entry), projectId: `${entry.projectId ?? ''}`, note: entry.note ?? '' }
+      sourceEntry
+        ? {
+            ...entryToForm(sourceEntry),
+            projectId: `${sourceEntry.projectId ?? ''}`,
+            note: sourceEntry.note ?? '',
+          }
         : emptyForm(toDateKey(date ?? new Date())),
     )
   }
@@ -93,7 +101,11 @@ export function TimeEntryDialog({
   }
 
   return (
-    <Dialog onClose={onClose} open={open} title={entry ? 'Edit time entry' : 'Add time entry'}>
+    <Dialog
+      onClose={onClose}
+      open={open}
+      title={entry ? 'Edit time entry' : initialEntry ? 'Duplicate time entry' : 'Add time entry'}
+    >
       <form className="space-y-4" onSubmit={submit}>
         <label className="block space-y-1 text-sm font-medium">
           Project

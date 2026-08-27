@@ -1,3 +1,4 @@
+use chrono::{DateTime, SecondsFormat};
 use serde::{Deserialize, Serialize};
 
 const MAX_NAME: usize = 100;
@@ -16,7 +17,8 @@ fn normalize_optional(value: &mut Option<String>) {
 }
 
 fn is_timestamp(value: &str) -> bool {
-    value.len() == 24 && value.ends_with('Z') && value.contains('T')
+    DateTime::parse_from_rfc3339(value)
+        .is_ok_and(|date| date.to_utc().to_rfc3339_opts(SecondsFormat::Millis, true) == value)
 }
 
 fn is_color(value: &str) -> bool {
@@ -71,7 +73,7 @@ pub struct Project {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveTimeEntry {
-    pub project_id: i64,
+    pub project_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
     pub note: Option<String>,
@@ -82,6 +84,9 @@ impl SaveTimeEntry {
         normalize(&mut self.start_time);
         normalize_optional(&mut self.end_time);
         normalize_optional(&mut self.note);
+        if self.project_id.is_some_and(|project_id| project_id <= 0) {
+            return Err("invalid project");
+        }
         if !is_timestamp(&self.start_time) {
             return Err("invalid start time");
         }
@@ -168,7 +173,7 @@ mod tests {
     #[test]
     fn rejects_entries_that_end_before_they_start() {
         let mut input = SaveTimeEntry {
-            project_id: 1,
+            project_id: Some(1),
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: Some("2026-08-27T09:00:00.000Z".into()),
             note: None,
@@ -182,13 +187,25 @@ mod tests {
     #[test]
     fn accepts_a_running_entry_without_an_end_time() {
         let mut input = SaveTimeEntry {
-            project_id: 1,
+            project_id: Some(1),
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: None,
             note: Some(" Design ".into()),
         };
         input.validate().unwrap();
         assert_eq!(input.note.as_deref(), Some("Design"));
+    }
+
+    #[test]
+    fn rejects_malformed_timestamp_strings() {
+        let mut input = SaveTimeEntry {
+            project_id: Some(1),
+            start_time: "xxxxxxxxxxxxTxxxxxxxxxxZ".into(),
+            end_time: None,
+            note: None,
+        };
+
+        assert_eq!(input.validate(), Err("invalid start time"));
     }
 
     #[test]

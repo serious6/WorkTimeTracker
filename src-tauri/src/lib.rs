@@ -32,6 +32,8 @@ pub fn run() {
             commands::list_time_entries,
             commands::create_time_entry,
             commands::update_time_entry,
+            commands::update_time_entry_note,
+            commands::switch_running_time_entry,
             commands::delete_time_entry,
             commands::get_work_settings,
             commands::update_work_settings

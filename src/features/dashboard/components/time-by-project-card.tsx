@@ -27,10 +27,12 @@ export function TimeByProjectCard({
   const [range, setRange] = useState<RangeKey>('today')
   const [custom, setCustom] = useState({ from: toDateKey(referenceDate), to: toDateKey(referenceDate) })
 
+  const selectedRange = resolveRange(range, referenceDate, weekStartsOn, custom)
   const totals = projectTotals(
-    entriesInRange(entries, resolveRange(range, referenceDate, weekStartsOn, custom)),
+    entriesInRange(entries, selectedRange, now),
     projects,
     now,
+    selectedRange,
   )
   const total = totals.reduce((sum, item) => sum + item.minutes, 0)
 

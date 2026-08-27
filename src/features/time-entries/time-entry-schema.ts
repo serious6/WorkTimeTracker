@@ -6,6 +6,11 @@ export const ORDER_MESSAGE = 'End time must be later than start time'
 export const TIMER_ERROR_MESSAGE = 'Unable to start the timer. Please try again'
 export const DELETED_PROJECT_NAME = 'Deleted project'
 
+function isCanonicalTimestamp(value: string): boolean {
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) && date.toISOString() === value
+}
+
 export const timeEntrySchema = z.object({
   id: z.number().int().positive(),
   projectId: z
@@ -28,10 +33,13 @@ export const timeEntrySchema = z.object({
 })
 
 export const saveTimeEntrySchema = z.object({
-  projectId: z.number().int().positive(),
-  startTime: z.string(),
-  endTime: z.string().nullable(),
+  projectId: z.number().int().positive().nullable(),
+  startTime: z.string().refine(isCanonicalTimestamp, 'Invalid start time'),
+  endTime: z.string().refine(isCanonicalTimestamp, 'Invalid end time').nullable(),
   note: z.string().trim().max(500).nullable(),
+}).refine((entry) => !entry.endTime || entry.endTime > entry.startTime, {
+  message: ORDER_MESSAGE,
+  path: ['endTime'],
 })
 
 export type TimeEntry = z.infer<typeof timeEntrySchema>

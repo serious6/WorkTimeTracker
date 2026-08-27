@@ -34,10 +34,12 @@ export function DashboardPage() {
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  const dayEntries = entriesInRange(entries, dayRange(selectedDate))
-  const weekEntries = entriesInRange(entries, weekRange(selectedDate, settings.weekStartsOn))
-  const trackedTodayMinutes = totalMinutes(dayEntries, now)
-  const trackedWeekMinutes = totalMinutes(weekEntries, now)
+  const todayRange = dayRange(selectedDate)
+  const selectedWeekRange = weekRange(selectedDate, settings.weekStartsOn)
+  const dayEntries = entriesInRange(entries, todayRange, now)
+  const weekEntries = entriesInRange(entries, selectedWeekRange, now)
+  const trackedTodayMinutes = totalMinutes(dayEntries, now, todayRange)
+  const trackedWeekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
 
   function toggleTimer() {
     if (timer.status.running) void timer.stop()
@@ -108,7 +110,7 @@ export function DashboardPage() {
           />
           <OvertimeOverviewCard
             dailyTargetMinutes={settings.dailyTargetMinutes}
-            onOpenDay={() => navigate('time-entries')}
+            onOpenDay={() => navigate('time-entries', { dateFilter: selectedDate })}
             onOpenWeek={() => navigate('reports')}
             selectedDate={selectedDate}
             trackedTodayMinutes={trackedTodayMinutes}

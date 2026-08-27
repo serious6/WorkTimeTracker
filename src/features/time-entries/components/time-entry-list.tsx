@@ -10,8 +10,7 @@ import { entryMinutes, isRunning } from '@/features/dashboard/metrics'
 import type { Project } from '@/features/projects/project-schema'
 import { formatStopwatch, formatTimeOfDay } from '@/lib/date'
 import { cn } from '@/lib/utils'
-import { errorMessage } from '@/lib/errors'
-import { useCreateTimeEntry, useDeleteTimeEntry, useUpdateTimeEntry } from '../time-entry-queries'
+import { useDeleteTimeEntry, useUpdateTimeEntry } from '../time-entry-queries'
 import { DELETED_PROJECT_NAME, type TimeEntry } from '../time-entry-schema'
 import { TimeEntryDialog } from './time-entry-dialog'
 
@@ -30,10 +29,10 @@ export function TimeEntryList({
   onPause: () => void
   emptyState?: React.ReactNode
 }) {
-  const createEntry = useCreateTimeEntry()
   const updateEntry = useUpdateTimeEntry()
   const deleteEntry = useDeleteTimeEntry()
   const [editing, setEditing] = useState<TimeEntry>()
+  const [duplicating, setDuplicating] = useState<TimeEntry>()
   const [noting, setNoting] = useState<TimeEntry>()
   const [deleting, setDeleting] = useState<TimeEntry>()
 
@@ -41,25 +40,11 @@ export function TimeEntryList({
     return projects.find((project) => project.id === entry.projectId)
   }
 
-  async function duplicate(entry: TimeEntry) {
-    try {
-      await createEntry.mutateAsync({
-        projectId: entry.projectId ?? 0,
-        startTime: entry.startTime,
-        endTime: entry.endTime,
-        note: entry.note,
-      })
-      toast('Entry duplicated', 'A copy of the time entry was created')
-    } catch (error) {
-      toast('Entry not duplicated', errorMessage(error, 'Please try again'))
-    }
-  }
-
   async function saveNote(entry: TimeEntry, note: string) {
     await updateEntry.mutateAsync({
       id: entry.id,
       input: {
-        projectId: entry.projectId ?? 0,
+        projectId: entry.projectId,
         startTime: entry.startTime,
         endTime: entry.endTime,
         note: note.trim() || null,
@@ -122,7 +107,7 @@ export function TimeEntryList({
                   { label: 'Edit', onSelect: () => setEditing(entry) },
                   ...(running
                     ? []
-                    : [{ label: 'Duplicate', onSelect: () => void duplicate(entry) }]),
+                    : [{ label: 'Duplicate', onSelect: () => setDuplicating(entry) }]),
                   { label: entry.note ? 'Edit note' : 'Add note', onSelect: () => setNoting(entry) },
                   { label: 'Delete', destructive: true, onSelect: () => setDeleting(entry) },
                 ]}
@@ -135,6 +120,11 @@ export function TimeEntryList({
       </ul>
 
       <TimeEntryDialog entry={editing} onClose={() => setEditing(undefined)} open={Boolean(editing)} />
+      <TimeEntryDialog
+        initialEntry={duplicating}
+        onClose={() => setDuplicating(undefined)}
+        open={Boolean(duplicating)}
+      />
 
       <Dialog onClose={() => setNoting(undefined)} open={Boolean(noting)} title="Entry note">
         <form
