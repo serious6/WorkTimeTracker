@@ -9,6 +9,7 @@ import { toast } from '@/components/ui/toast-store'
 import { entryMinutes, isRunning } from '@/features/dashboard/metrics'
 import type { Project } from '@/features/projects/project-schema'
 import { formatStopwatch, formatTimeOfDay } from '@/lib/date'
+import { errorMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import { useDeleteTimeEntry, useUpdateTimeEntryNote } from '../time-entry-queries'
 import { DELETED_PROJECT_NAME, type TimeEntry } from '../time-entry-schema'
@@ -34,6 +35,7 @@ export function TimeEntryList({
   const [editing, setEditing] = useState<TimeEntry>()
   const [duplicating, setDuplicating] = useState<TimeEntry>()
   const [noting, setNoting] = useState<TimeEntry>()
+  const [noteError, setNoteError] = useState<string>()
   const [deleting, setDeleting] = useState<TimeEntry>()
 
   function projectOf(entry: TimeEntry) {
@@ -124,16 +126,31 @@ export function TimeEntryList({
           onSubmit={(event) => {
             event.preventDefault()
             const note = new FormData(event.currentTarget).get('note')
-            if (noting) void saveNote(noting, typeof note === 'string' ? note : '')
-            setNoting(undefined)
+            if (!noting) return
+            void saveNote(noting, typeof note === 'string' ? note : '')
+              .then(() => {
+                setNoteError(undefined)
+                setNoting(undefined)
+              })
+              .catch((error) =>
+                setNoteError(errorMessage(error, 'The note could not be saved.')),
+              )
           }}
         >
           <label className="block space-y-1 text-sm font-medium">
             Note
             <Input defaultValue={noting?.note ?? ''} name="note" placeholder="What did you work on?" />
           </label>
+          {noteError && <p className="text-sm text-destructive">{noteError}</p>}
           <div className="flex justify-end gap-2">
-            <Button onClick={() => setNoting(undefined)} variant="outline">
+            <Button
+              onClick={() => {
+                setNoteError(undefined)
+                setNoting(undefined)
+              }}
+              type="button"
+              variant="outline"
+            >
               Cancel
             </Button>
             <Button type="submit">Save note</Button>
