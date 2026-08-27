@@ -62,6 +62,9 @@ export const timeEntryFormSchema = z
   )
 
 export type TimeEntryForm = z.infer<typeof timeEntryFormSchema>
+export type TimeEntryFormValues = Omit<TimeEntryForm, 'projectId'> & {
+  projectId: number | undefined
+}
 
 export function formToSaveTimeEntry(form: TimeEntryForm): SaveTimeEntry {
   return {
@@ -72,11 +75,11 @@ export function formToSaveTimeEntry(form: TimeEntryForm): SaveTimeEntry {
   }
 }
 
-export function entryToForm(entry: TimeEntry): TimeEntryForm {
+export function entryToForm(entry: TimeEntry): TimeEntryFormValues {
   const start = new Date(entry.startTime)
   const end = entry.endTime ? new Date(entry.endTime) : new Date()
   return {
-    projectId: entry.projectId ?? 0,
+    projectId: entry.projectId ?? undefined,
     date: toDateKey(start),
     startTime: toTimeKey(start),
     endTime: toTimeKey(end),

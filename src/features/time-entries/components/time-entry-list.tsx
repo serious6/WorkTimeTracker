@@ -10,7 +10,7 @@ import { entryMinutes, isRunning } from '@/features/dashboard/metrics'
 import type { Project } from '@/features/projects/project-schema'
 import { formatStopwatch, formatTimeOfDay } from '@/lib/date'
 import { cn } from '@/lib/utils'
-import { useDeleteTimeEntry, useUpdateTimeEntry } from '../time-entry-queries'
+import { useDeleteTimeEntry, useUpdateTimeEntryNote } from '../time-entry-queries'
 import { DELETED_PROJECT_NAME, type TimeEntry } from '../time-entry-schema'
 import { TimeEntryDialog } from './time-entry-dialog'
 
@@ -29,7 +29,7 @@ export function TimeEntryList({
   onPause: () => void
   emptyState?: React.ReactNode
 }) {
-  const updateEntry = useUpdateTimeEntry()
+  const updateNote = useUpdateTimeEntryNote()
   const deleteEntry = useDeleteTimeEntry()
   const [editing, setEditing] = useState<TimeEntry>()
   const [duplicating, setDuplicating] = useState<TimeEntry>()
@@ -41,15 +41,7 @@ export function TimeEntryList({
   }
 
   async function saveNote(entry: TimeEntry, note: string) {
-    await updateEntry.mutateAsync({
-      id: entry.id,
-      input: {
-        projectId: entry.projectId,
-        startTime: entry.startTime,
-        endTime: entry.endTime,
-        note: note.trim() || null,
-      },
-    })
+    await updateNote.mutateAsync({ id: entry.id, note: note.trim() || null })
     toast('Entry updated', 'Time entry successfully updated')
   }
 
