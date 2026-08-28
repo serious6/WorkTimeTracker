@@ -15,7 +15,7 @@ function OvertimeSection({
   overtime: number
   caption: string
   period: string
-  progress: number
+  progress?: number
   onOpen: () => void
 }) {
   return (
@@ -37,16 +37,22 @@ function OvertimeSection({
           <p className="text-xs text-muted-foreground">{period}</p>
         </div>
         <div className="w-full sm:w-1/2">
-          <Progress
-            indicatorClassName={overtime > 0 ? 'bg-success' : 'bg-muted-foreground'}
-            label={`${label} progress`}
-            value={progress}
-          />
+          {progress !== undefined && (
+            <Progress
+              indicatorClassName={overtime > 0 ? 'bg-success' : 'bg-muted-foreground'}
+              label={`${label} progress`}
+              value={progress}
+            />
+          )}
           <p className="pt-1 text-xs text-muted-foreground">{caption}</p>
         </div>
       </div>
     </button>
   )
+}
+
+function targetCaption(targetMinutes: number): string {
+  return targetMinutes > 0 ? `vs ${formatDuration(targetMinutes)} target` : 'No target scheduled'
 }
 
 export function OvertimeOverviewCard({
@@ -76,20 +82,28 @@ export function OvertimeOverviewCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <OvertimeSection
-          caption={`vs ${formatDuration(dailyTargetMinutes)} standard`}
+          caption={targetCaption(dailyTargetMinutes)}
           label="One Day"
           onOpen={onOpenDay}
           overtime={overtimeMinutes(trackedTodayMinutes, dailyTargetMinutes)}
           period={formatDay(selectedDate)}
-          progress={progressPercentage(trackedTodayMinutes, dailyTargetMinutes)}
+          progress={
+            dailyTargetMinutes > 0
+              ? progressPercentage(trackedTodayMinutes, dailyTargetMinutes)
+              : undefined
+          }
         />
         <OvertimeSection
-          caption={`vs ${formatDuration(weeklyTargetMinutes)} standard`}
+          caption={targetCaption(weeklyTargetMinutes)}
           label="One Week"
           onOpen={onOpenWeek}
           overtime={overtimeMinutes(trackedWeekMinutes, weeklyTargetMinutes)}
           period={`${formatDay(weekStart)} – ${formatDay(addDays(weekStart, 6))}`}
-          progress={progressPercentage(trackedWeekMinutes, weeklyTargetMinutes)}
+          progress={
+            weeklyTargetMinutes > 0
+              ? progressPercentage(trackedWeekMinutes, weeklyTargetMinutes)
+              : undefined
+          }
         />
       </CardContent>
     </Card>

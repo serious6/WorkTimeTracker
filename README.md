@@ -108,3 +108,11 @@ The `Budgets` view manages one hour budget with a due date per project. Consumpt
 are shown in `Reports` after selecting a project: budgeted hours, hours tracked until the due date,
 remaining hours, consumption in percent, and a forecast that extrapolates the pace so far over the
 remaining days. Budgets are never shown on the dashboard.
+
+## Settings
+
+`Settings` holds the general settings, stored in the database and loaded at start. The work
+schedule defines the weekly working time (40 hours by default) and the working days (Monday to
+Friday by default, at least one day required). The daily target is the weekly working time
+divided by the selected working days, days outside the schedule have no target, and dashboard
+and reports recalculate immediately after a change.

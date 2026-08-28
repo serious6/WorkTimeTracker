@@ -5,6 +5,7 @@ use rusqlite_migration::{Migrations, M};
 
 use crate::models::{
     Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, WorkSettings,
+    DEFAULT_WORKING_DAYS,
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -23,6 +24,9 @@ fn migrations() -> Migrations<'static> {
             "../../drizzle/0001_create_project_budgets.sql"
         )),
         M::up(include_str!("../../drizzle/0002_create_app_metadata.sql")),
+        M::up(include_str!(
+            "../../drizzle/0002_work_settings_working_days.sql"
+        )),
     ])
 }
 
@@ -296,37 +300,58 @@ pub fn delete_project_budget(connection: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+fn default_working_days() -> Vec<String> {
+    DEFAULT_WORKING_DAYS
+        .iter()
+        .map(|day| (*day).to_owned())
+        .collect()
+}
+
+fn working_days_from_text(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|day| !day.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 pub fn read_settings(connection: &Connection) -> Result<WorkSettings> {
     let settings = connection
         .query_row(
-            "SELECT daily_target_minutes, weekly_target_minutes, week_starts_on
+            "SELECT weekly_target_minutes, working_days, week_starts_on
        FROM work_settings WHERE id = 1",
             [],
             |row| {
+                let working_days = working_days_from_text(&row.get::<_, String>(1)?);
                 Ok(WorkSettings {
-                    daily_target_minutes: row.get(0)?,
-                    weekly_target_minutes: row.get(1)?,
+                    weekly_target_minutes: row.get(0)?,
+                    working_days: if working_days.is_empty() {
+                        default_working_days()
+                    } else {
+                        working_days
+                    },
                     week_starts_on: row.get(2)?,
                 })
             },
         )
         .optional()?;
-    Ok(settings.unwrap_or(WorkSettings {
-        daily_target_minutes: 480,
+    Ok(settings.unwrap_or_else(|| WorkSettings {
         weekly_target_minutes: 2_400,
+        working_days: default_working_days(),
         week_starts_on: "monday".into(),
     }))
 }
 
 pub fn write_settings(connection: &Connection, settings: &WorkSettings) -> Result<WorkSettings> {
     connection.execute(
-        "INSERT INTO work_settings (id, daily_target_minutes, weekly_target_minutes, week_starts_on)
+        "INSERT INTO work_settings (id, weekly_target_minutes, working_days, week_starts_on)
      VALUES (1, ?1, ?2, ?3)
      ON CONFLICT (id) DO UPDATE
-     SET daily_target_minutes = ?1, weekly_target_minutes = ?2, week_starts_on = ?3",
+     SET weekly_target_minutes = ?1, working_days = ?2, week_starts_on = ?3",
         params![
-            settings.daily_target_minutes,
             settings.weekly_target_minutes,
+            settings.working_days.join(","),
             settings.week_starts_on
         ],
     )?;
@@ -402,7 +427,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(4)
+            Ok(5)
         );
     }
 
@@ -418,14 +443,42 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(4)
+            Ok(5)
         );
         assert!(list_projects(&connection).unwrap().is_empty());
         assert!(list_time_entries(&connection).unwrap().is_empty());
         assert_eq!(
-            read_settings(&connection).unwrap().daily_target_minutes,
-            480
+            read_settings(&connection).unwrap().weekly_target_minutes,
+            2_400
         );
+    }
+
+    #[test]
+    fn keeps_existing_settings_and_data_when_adding_working_days() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(include_str!("../../drizzle/0000_create_time_entries.sql"))
+            .unwrap();
+        connection
+            .execute_batch(include_str!("../../drizzle/0000_create_schema.sql"))
+            .unwrap();
+        connection
+            .execute_batch(include_str!(
+                "../../drizzle/0001_create_project_budgets.sql"
+            ))
+            .unwrap();
+        connection.pragma_update(None, "user_version", 3).unwrap();
+        connection
+            .execute("UPDATE work_settings SET weekly_target_minutes = 1800", [])
+            .unwrap();
+        let project = project(&connection);
+
+        migrate(&mut connection).unwrap();
+
+        let settings = read_settings(&connection).unwrap();
+        assert_eq!(settings.weekly_target_minutes, 1_800);
+        assert_eq!(settings.working_days, DEFAULT_WORKING_DAYS.to_vec());
+        assert_eq!(list_projects(&connection).unwrap(), vec![project]);
     }
 
     #[test]
@@ -433,8 +486,11 @@ mod tests {
         assert_eq!(
             read_settings(&connect()).unwrap(),
             WorkSettings {
-                daily_target_minutes: 480,
                 weekly_target_minutes: 2_400,
+                working_days: DEFAULT_WORKING_DAYS
+                    .iter()
+                    .map(|day| (*day).to_owned())
+                    .collect(),
                 week_starts_on: "monday".into(),
             }
         );
@@ -670,14 +726,14 @@ mod tests {
         let settings = write_settings(
             &connection,
             &WorkSettings {
-                daily_target_minutes: 420,
                 weekly_target_minutes: 2_100,
+                working_days: vec!["monday".into(), "saturday".into()],
                 week_starts_on: "sunday".into(),
             },
         )
         .unwrap();
 
-        assert_eq!(settings.daily_target_minutes, 420);
+        assert_eq!(settings.working_days, vec!["monday", "saturday"]);
         assert_eq!(read_settings(&connection).unwrap(), settings);
     }
 
