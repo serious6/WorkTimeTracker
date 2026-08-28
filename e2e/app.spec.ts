@@ -29,8 +29,107 @@ async function addEntry(page: Page, project: string, start: string, end: string)
   await dialog(page).getByRole('button', { name: 'Add entry' }).click()
 }
 
+const PASSWORD = 'Str0ng-Passphrase!!x'
+
+async function register(page: Page, email: string, password = PASSWORD) {
+  await page.getByRole('button', { name: 'Register' }).click()
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(password)
+  await page.getByRole('button', { name: 'Register' }).click()
+}
+
+async function login(page: Page, email: string, password = PASSWORD) {
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(password)
+  await page.getByRole('button', { name: 'Login' }).click()
+}
+
+async function openAccountMenu(page: Page) {
+  await page.getByRole('button', { name: 'Account menu' }).click()
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
+  await register(page, 'first@example.com')
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+})
+
+test('registers a new account and signs it in directly', async ({ page }) => {
+  await expect(page.getByText('first@example.com')).toBeVisible()
+})
+
+test('shows the login page when no user is signed in', async ({ page }) => {
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Logout' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Login' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Register' })).toBeVisible()
+
+  await login(page, 'first@example.com', 'wrong-password')
+  await expect(page.getByRole('alert')).toContainText('Email or password is incorrect')
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+
+  await login(page, 'first@example.com')
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+})
+
+test('validates the password policy while typing and blocks weak passwords', async ({ page }) => {
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Logout' }).click()
+  await page.getByRole('button', { name: 'Register' }).click()
+
+  const policy = page.getByRole('list', { name: 'Password policy' })
+  await expect(policy.getByText('At least 20 characters')).toBeVisible()
+  await page.getByLabel('Password', { exact: true }).fill('short')
+  await expect(policy.getByRole('listitem').filter({ hasText: 'not met' })).toHaveCount(3)
+
+  await page.getByLabel('Email').fill('second@example.com')
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('alert')).toContainText('does not meet the policy')
+
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await expect(policy.getByRole('listitem').filter({ hasText: 'not met' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+})
+
+test('discards the input when the registration is cancelled', async ({ page }) => {
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Logout' }).click()
+  await page.getByRole('button', { name: 'Register' }).click()
+  await page.getByLabel('Email').fill('second@example.com')
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+  await expect(page.getByLabel('Email')).toHaveValue('')
+})
+
+test('rejects an email that is already registered', async ({ page }) => {
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Switch User' }).click()
+  await register(page, 'first@example.com')
+
+  await expect(page.getByRole('alert')).toContainText('An account with this email already exists')
+})
+
+test('keeps the data of every user separate', async ({ page }) => {
+  await createProject(page, 'Website Redesign')
+
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Switch User' }).click()
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+  await register(page, 'second@example.com')
+
+  await expect(page.getByText('Create your first project to start tracking.')).toBeVisible()
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await expect(page.getByText('Website Redesign')).toBeHidden()
+
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Switch User' }).click()
+  await login(page, 'first@example.com')
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await expect(page.getByText('Website Redesign')).toBeVisible()
 })
 
 test('shows the dashboard with empty states', async ({ page }) => {

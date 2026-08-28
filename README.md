@@ -76,14 +76,28 @@ src/
   app/               Application providers and navigation
   components/        Layout and shadcn/ui-compatible primitives
   db/                Drizzle schema
-  features/          App info, dashboard, projects, time entries, time management, budgets, timer, settings, storage
+  features/          App info, auth, dashboard, projects, time entries, time management, budgets, timer, settings, storage
   lib/               Date, error, and class-name helpers
   pages/             Projects, time entries, time management, budgets, reports, calendar, and settings views
 src-tauri/
+  src/auth.rs        Password hashing and the in-memory session
   src/commands.rs    Tauri command boundary
   src/database.rs    SQLite persistence
   src/window_state.rs Window size and position persistence
 ```
+
+## Accounts
+
+The application starts on the login page. `Register` opens the user creation page, which validates
+the password policy while typing: at least 20 characters, one upper and one lower case letter, and
+two special characters. A new account is signed in directly and lands on the dashboard, `Cancel`
+discards the input and returns to the login page. Emails are unique and stored in lower case,
+passwords only as an Argon2id hash (PBKDF2 in the browser fallback).
+
+The burger menu in the header offers `Switch User` and `Logout`; both end the session and return to
+the login page. Sessions are never persisted, so a restart always asks for a login again. Projects,
+time entries, budgets, and settings belong to one account and are never visible to another. The data
+of an existing single-user database is handed to the first account that registers.
 
 ## Dashboard
 
