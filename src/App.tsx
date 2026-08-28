@@ -1,30 +1,49 @@
-import { useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { AppFooter } from '@/components/layout/app-footer'
 import { AppHeader } from '@/components/layout/app-header'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { Toaster } from '@/components/ui/toast'
-import { LoginPage } from '@/features/auth/login-page'
 import { useSession } from '@/features/auth/session-queries'
-import { UserCreationPage } from '@/features/auth/user-creation-page'
-import { DashboardPage } from '@/features/dashboard/dashboard-page'
-import { BudgetsPage } from '@/pages/budgets-page'
-import { CalendarPage } from '@/pages/calendar-page'
-import { ProjectsPage } from '@/pages/projects-page'
-import { ReportsPage } from '@/pages/reports-page'
-import { SettingsPage } from '@/pages/settings-page'
-import { TimeEntriesPage } from '@/pages/time-entries-page'
-import { TimeManagementPage } from '@/pages/time-management-page'
+
+const LoginPage = lazy(() =>
+  import('@/features/auth/login-page').then((module) => ({ default: module.LoginPage })),
+)
+const UserCreationPage = lazy(() =>
+  import('@/features/auth/user-creation-page').then((module) => ({
+    default: module.UserCreationPage,
+  })),
+)
 
 const pages = {
-  dashboard: DashboardPage,
-  projects: ProjectsPage,
-  'time-entries': TimeEntriesPage,
-  'time-management': TimeManagementPage,
-  budgets: BudgetsPage,
-  reports: ReportsPage,
-  calendar: CalendarPage,
-  settings: SettingsPage,
+  dashboard: lazy(() =>
+    import('@/features/dashboard/dashboard-page').then((module) => ({
+      default: module.DashboardPage,
+    })),
+  ),
+  projects: lazy(() =>
+    import('@/pages/projects-page').then((module) => ({ default: module.ProjectsPage })),
+  ),
+  'time-entries': lazy(() =>
+    import('@/pages/time-entries-page').then((module) => ({ default: module.TimeEntriesPage })),
+  ),
+  'time-management': lazy(() =>
+    import('@/pages/time-management-page').then((module) => ({
+      default: module.TimeManagementPage,
+    })),
+  ),
+  budgets: lazy(() =>
+    import('@/pages/budgets-page').then((module) => ({ default: module.BudgetsPage })),
+  ),
+  reports: lazy(() =>
+    import('@/pages/reports-page').then((module) => ({ default: module.ReportsPage })),
+  ),
+  calendar: lazy(() =>
+    import('@/pages/calendar-page').then((module) => ({ default: module.CalendarPage })),
+  ),
+  settings: lazy(() =>
+    import('@/pages/settings-page').then((module) => ({ default: module.SettingsPage })),
+  ),
 }
 
 function App() {
@@ -38,14 +57,16 @@ function App() {
   if (!user) {
     return (
       <>
-        {registering ? (
-          <UserCreationPage
-            onCancel={() => setRegistering(false)}
-            onSuccess={() => setRegistering(false)}
-          />
-        ) : (
-          <LoginPage onRegister={() => setRegistering(true)} />
-        )}
+        <Suspense fallback={null}>
+          {registering ? (
+            <UserCreationPage
+              onCancel={() => setRegistering(false)}
+              onSuccess={() => setRegistering(false)}
+            />
+          ) : (
+            <LoginPage onRegister={() => setRegistering(true)} />
+          )}
+        </Suspense>
         <Toaster />
       </>
     )
@@ -57,7 +78,9 @@ function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <AppHeader user={user} />
         <main className="min-w-0 flex-1 p-5 lg:p-6">
-          <Page />
+          <Suspense fallback={null}>
+            <Page />
+          </Suspense>
         </main>
         <AppFooter />
       </div>
