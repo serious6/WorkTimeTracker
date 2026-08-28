@@ -73,11 +73,24 @@ architecture/        LikeC4 model
 drizzle/             Versioned SQLite migrations
 e2e/                 Playwright tests
 src/
-  app/               Application providers
-  components/ui/     shadcn/ui-compatible primitives
+  app/               Application providers and navigation
+  components/        Layout and shadcn/ui-compatible primitives
   db/                Drizzle schema
-  features/          Feature modules, state, validation, and queries
+  features/          Dashboard, projects, time entries, timer, settings, storage
+  lib/               Date, error, and class-name helpers
+  pages/             Projects, time entries, reports, calendar, and settings views
 src-tauri/
   src/commands.rs    Tauri command boundary
   src/database.rs    SQLite persistence
+  src/window_state.rs Window size and position persistence
 ```
+
+## Dashboard
+
+The dashboard is the landing page and covers the daily workflow: start, pause, resume, stop,
+and switch timers, manual time entries, day navigation, daily and weekly targets with overtime,
+time distribution per project, and recent projects.
+
+A running timer is a time entry without an end time, so durations are derived from timestamps
+and survive restarts, sleep, and backgrounding. In the browser the same UI runs against a
+`localStorage` repository, which keeps end-to-end tests independent from the native build.

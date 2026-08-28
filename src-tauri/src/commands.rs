@@ -1,22 +1,155 @@
+use rusqlite::Connection;
 use tauri::State;
 
 use crate::{
     database::{self, Database},
-    models::{CreateTimeEntry, TimeEntry},
+    models::{Project, SaveProject, SaveTimeEntry, TimeEntry, WorkSettings},
 };
+
+const OVERLAP: &str = "This time overlaps with another time entry";
+
+fn with_connection<T>(
+    database: &State<'_, Database>,
+    action: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+) -> Result<T, String> {
+    let connection = database.0.lock().map_err(|error| error.to_string())?;
+    action(&connection).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn list_projects(database: State<'_, Database>) -> Result<Vec<Project>, String> {
+    with_connection(&database, database::list_projects)
+}
+
+#[tauri::command]
+pub fn create_project(
+    database: State<'_, Database>,
+    mut input: SaveProject,
+) -> Result<Project, String> {
+    input.validate().map_err(str::to_owned)?;
+    with_connection(&database, |connection| {
+        database::insert_project(connection, &input)
+    })
+}
+
+#[tauri::command]
+pub fn update_project(
+    database: State<'_, Database>,
+    id: i64,
+    mut input: SaveProject,
+) -> Result<Project, String> {
+    input.validate().map_err(str::to_owned)?;
+    with_connection(&database, |connection| {
+        database::update_project(connection, id, &input)
+    })
+}
+
+#[tauri::command]
+pub fn delete_project(database: State<'_, Database>, id: i64) -> Result<(), String> {
+    with_connection(&database, |connection| {
+        database::delete_project(connection, id)
+    })
+}
 
 #[tauri::command]
 pub fn list_time_entries(database: State<'_, Database>) -> Result<Vec<TimeEntry>, String> {
-    let connection = database.0.lock().map_err(|error| error.to_string())?;
-    database::list(&connection).map_err(|error| error.to_string())
+    with_connection(&database, database::list_time_entries)
 }
 
 #[tauri::command]
 pub fn create_time_entry(
     database: State<'_, Database>,
-    mut input: CreateTimeEntry,
+    mut input: SaveTimeEntry,
+) -> Result<TimeEntry, String> {
+    input.validate().map_err(str::to_owned)?;
+    if input.project_id.is_none() {
+        return Err("Project is required".to_owned());
+    }
+    let connection = database.0.lock().map_err(|error| error.to_string())?;
+    if database::overlaps(
+        &connection,
+        &input.start_time,
+        input.end_time.as_deref(),
+        None,
+    )
+    .map_err(|error| error.to_string())?
+    {
+        return Err(OVERLAP.to_owned());
+    }
+    database::insert_time_entry(&connection, &input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn update_time_entry(
+    database: State<'_, Database>,
+    id: i64,
+    mut input: SaveTimeEntry,
 ) -> Result<TimeEntry, String> {
     input.validate().map_err(str::to_owned)?;
     let connection = database.0.lock().map_err(|error| error.to_string())?;
-    database::insert(&connection, &input).map_err(|error| error.to_string())
+    if database::overlaps(
+        &connection,
+        &input.start_time,
+        input.end_time.as_deref(),
+        Some(id),
+    )
+    .map_err(|error| error.to_string())?
+    {
+        return Err(OVERLAP.to_owned());
+    }
+    database::update_time_entry(&connection, id, &input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn update_time_entry_note(
+    database: State<'_, Database>,
+    id: i64,
+    note: Option<String>,
+) -> Result<TimeEntry, String> {
+    let note = note
+        .map(|text| text.trim().to_owned())
+        .filter(|text| !text.is_empty());
+    if note.as_ref().is_some_and(|note| note.chars().count() > 500) {
+        return Err("invalid note".to_owned());
+    }
+    with_connection(&database, |connection| {
+        database::update_time_entry_note(connection, id, note.as_deref())
+    })
+}
+
+#[tauri::command]
+pub fn switch_running_time_entry(
+    database: State<'_, Database>,
+    id: i64,
+    mut input: SaveTimeEntry,
+) -> Result<TimeEntry, String> {
+    input.validate().map_err(str::to_owned)?;
+    if input.project_id.is_none() || input.end_time.is_some() {
+        return Err("invalid timer switch".to_owned());
+    }
+    let connection = database.0.lock().map_err(|error| error.to_string())?;
+    database::switch_running_time_entry(&connection, id, &input).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn delete_time_entry(database: State<'_, Database>, id: i64) -> Result<(), String> {
+    with_connection(&database, |connection| {
+        database::delete_time_entry(connection, id)
+    })
+}
+
+#[tauri::command]
+pub fn get_work_settings(database: State<'_, Database>) -> Result<WorkSettings, String> {
+    with_connection(&database, database::read_settings)
+}
+
+#[tauri::command]
+pub fn update_work_settings(
+    database: State<'_, Database>,
+    mut settings: WorkSettings,
+) -> Result<WorkSettings, String> {
+    settings.validate().map_err(str::to_owned)?;
+    with_connection(&database, |connection| {
+        database::write_settings(connection, &settings)
+    })
 }

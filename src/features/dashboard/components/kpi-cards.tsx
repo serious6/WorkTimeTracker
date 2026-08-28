@@ -1,0 +1,94 @@
+import { CalendarCheck, Clock, TrendingUp } from 'lucide-react'
+import { Card } from '@/components/ui/card'
+import { Progress } from '@/components/ui/progress'
+import { formatDuration } from '@/lib/date'
+import { overtimeMinutes, progressPercentage } from '../metrics'
+
+type KpiCardProps = {
+  label: string
+  value: string
+  caption: string
+  icon: typeof Clock
+  accent?: 'default' | 'success'
+  progress?: number
+}
+
+function KpiCard({ label, value, caption, icon: Icon, accent = 'default', progress }: KpiCardProps) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p
+            className={`pt-1 text-3xl font-semibold tabular-nums ${
+              accent === 'success' ? 'text-success' : ''
+            }`}
+          >
+            {value}
+          </p>
+          <p className="pt-1 text-xs text-muted-foreground">{caption}</p>
+        </div>
+        <span
+          className={`grid size-10 shrink-0 place-items-center rounded-lg ${
+            accent === 'success' ? 'bg-success/15 text-success' : 'bg-primary/15 text-primary'
+          }`}
+        >
+          <Icon className="size-5" />
+        </span>
+      </div>
+      {progress !== undefined && (
+        <div className="flex items-center gap-3 pt-4">
+          <Progress label={`${label} progress`} value={progress} />
+          <span className="text-xs tabular-nums text-muted-foreground">{progress}%</span>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+export function KpiCards({
+  trackedTodayMinutes,
+  trackedWeekMinutes,
+  dailyTargetMinutes,
+  weeklyTargetMinutes,
+}: {
+  trackedTodayMinutes: number
+  trackedWeekMinutes: number
+  dailyTargetMinutes: number
+  weeklyTargetMinutes: number
+}) {
+  const dailyOvertime = overtimeMinutes(trackedTodayMinutes, dailyTargetMinutes)
+  const weeklyOvertime = overtimeMinutes(trackedWeekMinutes, weeklyTargetMinutes)
+
+  return (
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <KpiCard
+        caption={`of ${formatDuration(dailyTargetMinutes)} goal`}
+        icon={Clock}
+        label="Tracked Today"
+        progress={progressPercentage(trackedTodayMinutes, dailyTargetMinutes)}
+        value={formatDuration(trackedTodayMinutes)}
+      />
+      <KpiCard
+        accent={dailyOvertime > 0 ? 'success' : 'default'}
+        caption={`vs ${formatDuration(dailyTargetMinutes)} standard`}
+        icon={TrendingUp}
+        label="Overtime Today"
+        value={formatDuration(dailyOvertime)}
+      />
+      <KpiCard
+        accent={weeklyOvertime > 0 ? 'success' : 'default'}
+        caption={`vs ${formatDuration(weeklyTargetMinutes)} standard`}
+        icon={TrendingUp}
+        label="Overtime This Week"
+        value={formatDuration(weeklyOvertime)}
+      />
+      <KpiCard
+        caption={`of ${formatDuration(weeklyTargetMinutes)} standard`}
+        icon={CalendarCheck}
+        label="Weekly Total"
+        value={formatDuration(trackedWeekMinutes)}
+      />
+    </section>
+  )
+}

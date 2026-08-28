@@ -1,23 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { newTimeEntrySchema } from './time-entry-schema'
+import { saveTimeEntrySchema } from './time-entry-schema'
 
-describe('newTimeEntrySchema', () => {
-  it('normalizes a valid form submission', () => {
-    expect(
-      newTimeEntrySchema.parse({
-        project: '  WorkTimeTracker ',
-        durationMinutes: '30',
-        notes: ' Setup ',
+describe('saveTimeEntrySchema', () => {
+  it('rejects malformed timestamps and reversed intervals', () => {
+    expect(() =>
+      saveTimeEntrySchema.parse({
+        projectId: 1,
+        startTime: 'xxxxxxxxxxxxTxxxxxxxxxxZ',
+        endTime: null,
+        note: null,
       }),
-    ).toEqual({
-      project: 'WorkTimeTracker',
-      durationMinutes: 30,
-      notes: 'Setup',
-    })
-  })
+    ).toThrow()
 
-  it('rejects empty projects and invalid durations', () => {
-    expect(newTimeEntrySchema.safeParse({ project: ' ', durationMinutes: 0 }).success).toBe(false)
-    expect(newTimeEntrySchema.safeParse({ project: 'Project', durationMinutes: 1441 }).success).toBe(false)
+    expect(() =>
+      saveTimeEntrySchema.parse({
+        projectId: 1,
+        startTime: '2026-08-27T10:00:00.000Z',
+        endTime: '2026-08-27T09:00:00.000Z',
+        note: null,
+      }),
+    ).toThrow()
   })
 })
