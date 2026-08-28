@@ -51,7 +51,7 @@ describe('tauriRepository – auth', () => {
   test('logout invokes logout', async () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.logout()
-    expect(mockInvoke).toHaveBeenCalledWith('logout', undefined)
+    expect(mockInvoke).toHaveBeenCalledWith('logout', {})
   })
 })
 
