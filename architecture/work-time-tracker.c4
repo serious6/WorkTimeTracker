@@ -24,8 +24,7 @@ model {
 
     frontend -> backend 'Invokes commands'
     backend -> session 'Resolves the signed in user'
-    backend -> database 'Reads and writes data of that user'
-    session -> database 'Verifies credentials'
+    backend -> database 'Reads and writes data of that user, verifies credentials'
   }
 
   user -> application 'Signs in and tracks work time'

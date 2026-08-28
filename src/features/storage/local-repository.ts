@@ -141,10 +141,10 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 function equals(left: string, right: string): boolean {
-  if (left.length !== right.length) return false
-  let difference = 0
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  const maxLength = Math.max(left.length, right.length)
+  let difference = left.length ^ right.length
+  for (let index = 0; index < maxLength; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0)
   }
   return difference === 0
 }
