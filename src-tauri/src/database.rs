@@ -9,6 +9,10 @@ use crate::models::{
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
+const APP_VERSION_KEY: &str = "app_version";
+
+/// Version of the released application, taken from `Cargo.toml` at build time.
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct Database(pub Mutex<Connection>);
 
@@ -19,6 +23,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../drizzle/0001_create_project_budgets.sql"
         )),
+        M::up(include_str!("../../drizzle/0002_create_app_metadata.sql")),
         M::up(include_str!(
             "../../drizzle/0002_work_settings_working_days.sql"
         )),
@@ -30,6 +35,7 @@ impl Database {
         let mut connection = Connection::open(path)?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
         migrate(&mut connection)?;
+        write_app_version(&connection, APP_VERSION)?;
         Ok(Self(Mutex::new(connection)))
     }
 }
@@ -352,9 +358,32 @@ pub fn write_settings(connection: &Connection, settings: &WorkSettings) -> Resul
     read_settings(connection)
 }
 
+/// Stores the released version so the UI can report it without hardcoding.
+pub fn write_app_version(connection: &Connection, version: &str) -> Result<String> {
+    connection.execute(
+        "INSERT INTO app_metadata (key, value) VALUES (?1, ?2)
+     ON CONFLICT (key) DO UPDATE SET value = ?2 WHERE value <> ?2",
+        params![APP_VERSION_KEY, version],
+    )?;
+    Ok(version.to_owned())
+}
+
+pub fn read_app_version(connection: &Connection) -> Result<Option<String>> {
+    connection
+        .query_row(
+            "SELECT value FROM app_metadata WHERE key = ?1",
+            [APP_VERSION_KEY],
+            |row| row.get(0),
+        )
+        .optional()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static NEXT_DATABASE_TEST_ID: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
 
     fn connect() -> Connection {
         let mut connection = Connection::open_in_memory().unwrap();
@@ -398,7 +427,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(4)
+            Ok(5)
         );
     }
 
@@ -414,7 +443,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(4)
+            Ok(5)
         );
         assert!(list_projects(&connection).unwrap().is_empty());
         assert!(list_time_entries(&connection).unwrap().is_empty());
@@ -706,5 +735,52 @@ mod tests {
 
         assert_eq!(settings.working_days, vec!["monday", "saturday"]);
         assert_eq!(read_settings(&connection).unwrap(), settings);
+    }
+
+    #[test]
+    fn stores_and_reads_the_app_version() {
+        let connection = connect();
+        assert_eq!(read_app_version(&connection).unwrap(), None);
+
+        write_app_version(&connection, "1.4.2").unwrap();
+        assert_eq!(
+            read_app_version(&connection).unwrap(),
+            Some("1.4.2".to_owned())
+        );
+
+        write_app_version(&connection, "1.5.0").unwrap();
+        assert_eq!(
+            read_app_version(&connection).unwrap(),
+            Some("1.5.0".to_owned())
+        );
+    }
+
+    #[test]
+    fn synchronizes_the_app_version_when_opening_a_database() {
+        let path = std::env::temp_dir().join(format!(
+            "work-time-tracker-database-{}-{}.sqlite",
+            std::process::id(),
+            NEXT_DATABASE_TEST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let database = Database::open(&path).unwrap();
+        {
+            let connection = database.0.lock().unwrap();
+            assert_eq!(
+                read_app_version(&connection).unwrap(),
+                Some(APP_VERSION.into())
+            );
+            write_app_version(&connection, "stale").unwrap();
+        }
+        drop(database);
+
+        let database = Database::open(&path).unwrap();
+        assert_eq!(
+            read_app_version(&database.0.lock().unwrap()).unwrap(),
+            Some(APP_VERSION.into())
+        );
+        drop(database);
+        std::fs::remove_file(path).unwrap();
     }
 }

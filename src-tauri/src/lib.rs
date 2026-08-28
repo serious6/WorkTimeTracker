@@ -40,7 +40,8 @@ pub fn run() {
             commands::update_project_budget,
             commands::delete_project_budget,
             commands::get_work_settings,
-            commands::update_work_settings
+            commands::update_work_settings,
+            commands::get_app_version
         ])
         .run(tauri::generate_context!())
         .expect("error while running WorkTimeTracker");
