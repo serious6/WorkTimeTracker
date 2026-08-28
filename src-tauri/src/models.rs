@@ -43,10 +43,10 @@ fn is_email(value: &str) -> bool {
     let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
     };
+    let mut labels = domain.split('.');
     !local.is_empty()
         && domain.contains('.')
-        && !domain.starts_with('.')
-        && !domain.ends_with('.')
+        && labels.all(|label| !label.is_empty())
         && !value.chars().any(char::is_whitespace)
         && value.len() <= MAX_EMAIL
 }
@@ -441,7 +441,14 @@ mod tests {
 
     #[test]
     fn rejects_malformed_emails() {
-        for email in ["user", "user@example", "user@@example.com", "@example.com"] {
+        for email in [
+            "user",
+            "user@example",
+            "user@@example.com",
+            "@example.com",
+            "user@example..com",
+            "user@.example.com",
+        ] {
             assert_eq!(
                 credentials(email, "secret").validate(),
                 Err("invalid email"),
