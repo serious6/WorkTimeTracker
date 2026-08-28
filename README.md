@@ -76,9 +76,9 @@ src/
   app/               Application providers and navigation
   components/        Layout and shadcn/ui-compatible primitives
   db/                Drizzle schema
-  features/          Dashboard, projects, time entries, timer, settings, storage
+  features/          Dashboard, projects, time entries, time management, timer, settings, storage
   lib/               Date, error, and class-name helpers
-  pages/             Projects, time entries, reports, calendar, and settings views
+  pages/             Projects, time entries, time management, reports, calendar, and settings views
 src-tauri/
   src/commands.rs    Tauri command boundary
   src/database.rs    SQLite persistence
@@ -94,3 +94,10 @@ time distribution per project, and recent projects.
 A running timer is a time entry without an end time, so durations are derived from timestamps
 and survive restarts, sleep, and backgrounding. In the browser the same UI runs against a
 `localStorage` repository, which keeps end-to-end tests independent from the native build.
+
+## Time Management
+
+Time Management adds already worked time retroactively. Pick a project and a date, then use the
+quick-add buttons (15 min, 30 min, 1 hour, 1 day from the daily target) or `Custom` for free
+durations such as `2h 45m`, `90m`, or `1.5h`. Entries are placed in the first free slot of that
+day, so they never overlap existing entries, and can be edited or deleted in the list below.

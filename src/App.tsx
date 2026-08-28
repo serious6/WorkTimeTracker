@@ -7,11 +7,13 @@ import { ProjectsPage } from '@/pages/projects-page'
 import { ReportsPage } from '@/pages/reports-page'
 import { SettingsPage } from '@/pages/settings-page'
 import { TimeEntriesPage } from '@/pages/time-entries-page'
+import { TimeManagementPage } from '@/pages/time-management-page'
 
 const pages = {
   dashboard: DashboardPage,
   projects: ProjectsPage,
   'time-entries': TimeEntriesPage,
+  'time-management': TimeManagementPage,
   reports: ReportsPage,
   calendar: CalendarPage,
   settings: SettingsPage,

@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 
-export type View = 'dashboard' | 'projects' | 'time-entries' | 'reports' | 'calendar' | 'settings'
+export type View =
+  | 'dashboard'
+  | 'projects'
+  | 'time-entries'
+  | 'time-management'
+  | 'reports'
+  | 'calendar'
+  | 'settings'
 
 type NavigationState = {
   view: View

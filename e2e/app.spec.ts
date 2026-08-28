@@ -103,3 +103,38 @@ test('navigates between days and views', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'Work targets' })).toBeVisible()
 })
+
+test('quick-adds time on the time management page', async ({ page }) => {
+  await createProject(page, 'Support')
+
+  await page.getByRole('button', { name: 'Time Management' }).click()
+  await expect(page.getByRole('heading', { name: 'Time Management' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '15 min' })).toBeDisabled()
+
+  await page.getByLabel('Project').selectOption({ label: 'Support' })
+  await page.getByRole('button', { name: '15 min' }).click()
+  await expect(page.getByText('0h 15m added to Support')).toBeVisible()
+  await page.getByRole('button', { name: '1 hour' }).click()
+  await expect(page.getByText('1h 00m added to Support')).toBeVisible()
+  await expect(page.getByText('Total: 1h 15m')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Custom' }).click()
+  await dialog(page).getByLabel('Duration').fill('nonsense')
+  await dialog(page).getByRole('button', { name: 'Add time' }).click()
+  await expect(dialog(page).getByText('Enter a duration such as 2h 45m, 90m or 1.5h')).toBeVisible()
+
+  await dialog(page).getByLabel('Duration').fill('2h 45m')
+  await dialog(page).getByLabel('Note').fill('Offline work')
+  await dialog(page).getByRole('button', { name: 'Add time' }).click()
+  await expect(dialog(page)).toBeHidden()
+  await expect(page.getByText('2h 45m added to Support')).toBeVisible()
+  await expect(page.getByText('Total: 4h 00m')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Actions for Support' }).first().click()
+  await page.getByRole('menuitem', { name: 'Delete' }).click()
+  await dialog(page).getByRole('button', { name: 'Delete entry' }).click()
+  await expect(page.getByText('Total: 3h 45m')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await expect(page.getByText('3h 45m').first()).toBeVisible()
+})
