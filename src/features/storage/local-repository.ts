@@ -4,10 +4,10 @@ import {
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
   authUserSchema,
+  registrationSchema,
   type AuthUser,
   type Credentials,
 } from '@/features/auth/auth-schema'
-import { isPasswordCompliant } from '@/features/auth/password-policy'
 import {
   DUPLICATE_BUDGET_MESSAGE,
   projectBudgetSchema,
@@ -175,15 +175,20 @@ export const localRepository: Repository = {
     return user ? toAuthUser(user) : null
   },
   register: async (credentials: Credentials) => {
-    const email = credentials.email.trim().toLowerCase()
-    if (!isPasswordCompliant(credentials.password)) throw new Error(PASSWORD_POLICY_MESSAGE)
+    const parsed = registrationSchema.safeParse(credentials)
+    if (!parsed.success) {
+      const emailError = parsed.error.issues.find((issue) => issue.path[0] === 'email')
+      if (emailError) throw new Error(emailError.message)
+      throw new Error(PASSWORD_POLICY_MESSAGE)
+    }
+    const { email, password } = parsed.data
     const users = readUsers()
     if (users.some((user) => user.email === email)) throw new Error(DUPLICATE_EMAIL_MESSAGE)
     const user: StoredUser = {
       id: nextId(users),
       email,
       createdAt: new Date().toISOString(),
-      passwordHash: await hashPassword(credentials.password),
+      passwordHash: await hashPassword(password),
     }
     write(USERS_KEY, [...users, user])
     setSessionUserId(user.id)

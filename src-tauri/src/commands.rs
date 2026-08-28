@@ -57,10 +57,9 @@ pub fn register(
 ) -> Result<User, String> {
     credentials.validate_registration().map_err(str::to_owned)?;
     let password_hash = auth::hash_password(&credentials.password)?;
-    let connection = database.0.lock().map_err(|error| error.to_string())?;
-    let first_user = database::count_users(&connection).map_err(|error| error.to_string())? == 0;
-    let user = database::insert_user(&connection, &credentials.email, &password_hash).map_err(
-        |error| {
+    let mut connection = database.0.lock().map_err(|error| error.to_string())?;
+    let user = database::register_user(&mut connection, &credentials.email, &password_hash)
+        .map_err(|error| {
             if matches!(
                 &error,
                 rusqlite::Error::SqliteFailure(error, _)
@@ -70,11 +69,7 @@ pub fn register(
             } else {
                 error.to_string()
             }
-        },
-    )?;
-    if first_user {
-        database::claim_unowned_data(&connection, user.id).map_err(|error| error.to_string())?;
-    }
+        })?;
     session.set(Some(user.id))?;
     Ok(user)
 }

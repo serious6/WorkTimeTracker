@@ -502,7 +502,7 @@ pub fn count_users(connection: &Connection) -> Result<i64> {
 }
 
 /// Creates a user. Fails with a unique constraint violation for a known email.
-pub fn insert_user(connection: &Connection, email: &str, password_hash: &str) -> Result<User> {
+fn insert_user_internal(connection: &Connection, email: &str, password_hash: &str) -> Result<User> {
     connection.execute(
         "INSERT INTO users (email, password_hash, created_at)
      VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
@@ -513,7 +513,7 @@ pub fn insert_user(connection: &Connection, email: &str, password_hash: &str) ->
 }
 
 /// Hands the data of the former single-user database to the first user.
-pub fn claim_unowned_data(connection: &Connection, user_id: i64) -> Result<()> {
+fn claim_unowned_data_internal(connection: &Connection, user_id: i64) -> Result<()> {
     for table in [
         "projects",
         "time_entries",
@@ -526,6 +526,30 @@ pub fn claim_unowned_data(connection: &Connection, user_id: i64) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+/// Registers a new user, claiming unowned data for the first user, all in one transaction.
+pub fn register_user(connection: &mut Connection, email: &str, password_hash: &str) -> Result<User> {
+    let transaction = connection.transaction()?;
+    let first_user = count_users(&transaction)? == 0;
+    let user = insert_user_internal(&transaction, email, password_hash)?;
+    if first_user {
+        claim_unowned_data_internal(&transaction, user.id)?;
+    }
+    transaction.commit()?;
+    Ok(user)
+}
+
+/// Creates a user without a transaction. Only for use in tests.
+#[cfg(test)]
+pub fn insert_user(connection: &Connection, email: &str, password_hash: &str) -> Result<User> {
+    insert_user_internal(connection, email, password_hash)
+}
+
+/// Claims unowned data without a transaction. Only for use in tests.
+#[cfg(test)]
+pub fn claim_unowned_data(connection: &Connection, user_id: i64) -> Result<()> {
+    claim_unowned_data_internal(connection, user_id)
 }
 
 #[cfg(test)]

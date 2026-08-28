@@ -8,8 +8,13 @@ import { registrationSchema } from './auth-schema'
 import { PasswordPolicyChecklist } from './components/password-policy-checklist'
 import { useRegister } from './session-queries'
 
+interface UserCreationPageProps {
+  onCancel: () => void
+  onSuccess?: () => void
+}
+
 /** Registration page; the new account is signed in right away. */
-export function UserCreationPage({ onCancel }: { onCancel: () => void }) {
+export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps) {
   const register = useRegister()
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string>()
@@ -25,6 +30,7 @@ export function UserCreationPage({ onCancel }: { onCancel: () => void }) {
 
     try {
       await register.mutateAsync(result.data)
+      onSuccess?.()
     } catch (failure) {
       setError(errorMessage(failure, 'The account could not be created.'))
     }

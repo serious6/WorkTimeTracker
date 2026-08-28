@@ -19,8 +19,8 @@ async function createProject(name: string) {
 
 beforeEach(async () => {
   await localRepository.logout()
-  localStorage.clear()
-  sessionStorage.clear()
+  globalThis.localStorage?.clear()
+  globalThis.sessionStorage?.clear()
 })
 
 describe('local repository authentication', () => {
@@ -35,6 +35,13 @@ describe('local repository authentication', () => {
     await expect(register('first@example.com', 'secret')).rejects.toThrow(PASSWORD_POLICY_MESSAGE)
   })
 
+  it('rejects a malformed email', async () => {
+    await expect(register('', PASSWORD)).rejects.toThrow('Email is required')
+    await expect(register('invalid', PASSWORD)).rejects.toThrow('Enter a valid email address')
+    await expect(register('@example.com', PASSWORD)).rejects.toThrow('Enter a valid email address')
+    await expect(register('a'.repeat(255) + '@example.com', PASSWORD)).rejects.toThrow()
+  })
+
   it('rejects a known email', async () => {
     await register('first@example.com')
 
@@ -44,7 +51,7 @@ describe('local repository authentication', () => {
   it('never stores the password in plaintext', async () => {
     await register('first@example.com')
 
-    expect(localStorage.getItem('work-time-tracker.users')).not.toContain(PASSWORD)
+    expect(globalThis.localStorage?.getItem('work-time-tracker.users')).not.toContain(PASSWORD)
   })
 
   it('rejects unknown accounts and wrong passwords', async () => {
@@ -104,7 +111,7 @@ describe('local repository authentication', () => {
   })
 
   it('hands data of the former single-user storage to the first user', async () => {
-    localStorage.setItem(
+    globalThis.localStorage?.setItem(
       'work-time-tracker.projects',
       JSON.stringify([
         {
@@ -122,7 +129,7 @@ describe('local repository authentication', () => {
     await register('first@example.com')
 
     expect(await localRepository.listProjects()).toHaveLength(1)
-    expect(localStorage.getItem('work-time-tracker.projects')).toBeNull()
+    expect(globalThis.localStorage?.getItem('work-time-tracker.projects')).toBeNull()
 
     await register('second@example.com', OTHER_PASSWORD)
 

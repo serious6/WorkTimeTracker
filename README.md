@@ -95,9 +95,11 @@ discards the input and returns to the login page. Emails are unique and stored i
 passwords only as an Argon2id hash (PBKDF2 in the browser fallback).
 
 The burger menu in the header offers `Switch User` and `Logout`; both end the session and return to
-the login page. Sessions are never persisted, so a restart always asks for a login again. Projects,
-time entries, budgets, and settings belong to one account and are never visible to another. The data
-of an existing single-user database is handed to the first account that registers.
+the login page. In the native app, sessions are stored in memory, so a restart always asks for a
+login again. The browser fallback stores sessions in `sessionStorage`, so page reloads keep the user
+signed in, but closing the browser tab ends the session. Projects, time entries, budgets, and
+settings belong to one account and are never visible to another. The data of an existing single-user
+database is handed to the first account that registers.
 
 ## Dashboard
 
