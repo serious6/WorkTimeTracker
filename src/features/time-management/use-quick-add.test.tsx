@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { toDateKey } from '@/lib/date'
+import { fromDateKey, toDateKey } from '@/lib/date'
 import {
   createTestQueryClient,
   resetAppState,
@@ -12,6 +12,7 @@ import {
 } from '@/test/harness'
 import { useQuickAdd, DAY_FULL_MESSAGE } from './use-quick-add'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
+import { localRepository } from '@/features/storage/local-repository'
 
 beforeEach(async () => {
   await resetAppState()
@@ -36,6 +37,15 @@ describe('useQuickAdd', () => {
     const { hook, entries } = renderQuickAdd()
     await waitFor(() => expect(entries.current.isSuccess).toBe(true))
     await hook.current({ projectId: project.id, dateKey: TODAY, minutes: 30 })
+    await waitFor(async () =>
+      expect(await localRepository.listTimeEntries()).toContainEqual(
+        expect.objectContaining({
+          projectId: project.id,
+          startTime: atTime(fromDateKey(TODAY), 9, 0).toISOString(),
+          endTime: atTime(fromDateKey(TODAY), 9, 30).toISOString(),
+        }),
+      ),
+    )
   })
 
   it('throws DAY_FULL_MESSAGE when no slot is available', async () => {
@@ -61,5 +71,10 @@ describe('useQuickAdd', () => {
     const { hook, entries } = renderQuickAdd()
     await waitFor(() => expect(entries.current.isSuccess).toBe(true))
     await hook.current({ projectId: project.id, dateKey: TODAY, minutes: 15, note: 'test note' })
+    await waitFor(async () =>
+      expect(await localRepository.listTimeEntries()).toContainEqual(
+        expect.objectContaining({ projectId: project.id, note: 'test note' }),
+      ),
+    )
   })
 })

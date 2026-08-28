@@ -20,6 +20,10 @@ function entry(id: number, projectId: number, startIso: string, endIso: string):
   }
 }
 
+function localIso(day: number, hour: number): string {
+  return new Date(2026, 7, day, hour).toISOString()
+}
+
 const referenceDate = new Date(2026, 7, 27)
 const now = referenceDate.getTime()
 
@@ -41,7 +45,7 @@ describe('TimeByProjectCard', () => {
   it('shows project totals for today by default', () => {
     const projects = [project(1, 'Website')]
     const entries = [
-      entry(1, 1, '2026-08-27T00:00:00.000Z', '2026-08-27T02:00:00.000Z'),
+      entry(1, 1, localIso(27, 0), localIso(27, 2)),
     ]
     render(
       <TimeByProjectCard
@@ -59,7 +63,7 @@ describe('TimeByProjectCard', () => {
   it('switches range when a different option is selected', () => {
     const projects = [project(1, 'Website')]
     const entries = [
-      entry(1, 1, '2026-08-24T09:00:00.000Z', '2026-08-24T10:00:00.000Z'), // this week Mon
+      entry(1, 1, localIso(24, 9), localIso(24, 10)), // this week Mon
     ]
     render(
       <TimeByProjectCard
@@ -97,7 +101,7 @@ describe('TimeByProjectCard', () => {
     const onSelectProject = vi.fn()
     const projects = [project(1, 'Website')]
     const entries = [
-      entry(1, 1, '2026-08-27T00:00:00.000Z', '2026-08-27T01:00:00.000Z'),
+      entry(1, 1, localIso(27, 0), localIso(27, 1)),
     ]
     render(
       <TimeByProjectCard

@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { localRepository } from '@/features/storage/local-repository'
 import { renderWithProviders, resetAppState, signIn } from '@/test/harness'
 import { SettingsPage } from './settings-page'
 
@@ -36,9 +37,10 @@ describe('SettingsPage', () => {
   test('saves settings successfully', async () => {
     renderWithProviders(<SettingsPage />)
     await screen.findByText('Work schedule')
+    fireEvent.change(screen.getByLabelText(/weekly working time/i), { target: { value: '35' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
-    await waitFor(() => {
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await waitFor(async () => {
+      expect((await localRepository.getWorkSettings()).weeklyTargetMinutes).toBe(2_100)
     })
   })
 

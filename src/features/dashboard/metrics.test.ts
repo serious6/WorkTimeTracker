@@ -158,7 +158,7 @@ describe('metrics', () => {
     expect(result.map((e) => e.id)).toEqual([1, 2])
   })
 
-  it('monthRange covers the full calendar month', () => {
+  it('weekRange starts on Sunday when configured', () => {
     const { start } = weekRange(at(27, 0), 'sunday')
     expect(start.getDay()).toBe(0) // Sunday
   })

@@ -107,8 +107,8 @@ describe('formToSaveTimeEntry', () => {
     const save = formToSaveTimeEntry(form)
     expect(save.projectId).toBe(5)
     expect(save.note).toBe('coding')
-    expect(save.startTime).toContain('2026-08-27')
-    expect(save.endTime).toContain('2026-08-27')
+    expect(save.startTime).toBe(new Date(2026, 7, 27, 9).toISOString())
+    expect(save.endTime).toBe(new Date(2026, 7, 27, 11).toISOString())
     expect(new Date(save.endTime!).getTime()).toBeGreaterThan(new Date(save.startTime).getTime())
   })
 

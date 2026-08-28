@@ -48,15 +48,20 @@ describe('Dialog', () => {
     expect(screen.getByText('No Desc')).toBeInTheDocument()
   })
 
-  test('Tab key does not crash when dialog has focusable elements', () => {
+  test('Tab wraps focus from the last control to the first', () => {
     renderDialog(true)
-    // Fire Tab - should exercise the focus-trap branch
-    expect(() => fireEvent.keyDown(document, { key: 'Tab' })).not.toThrow()
+    const first = screen.getByRole('button', { name: 'Close dialog' })
+    screen.getByRole('button', { name: 'Last' }).focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(first).toHaveFocus()
   })
 
-  test('Shift+Tab key does not crash', () => {
+  test('Shift+Tab wraps focus from the first control to the last', () => {
     renderDialog(true)
-    expect(() => fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })).not.toThrow()
+    const last = screen.getByRole('button', { name: 'Last' })
+    screen.getByRole('button', { name: 'Close dialog' }).focus()
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(last).toHaveFocus()
   })
 
   test('non-escape/tab keys are ignored', () => {

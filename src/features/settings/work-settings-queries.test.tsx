@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test } from 'vitest'
 import { createTestQueryClient, resetAppState, signIn } from '@/test/harness'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { localRepository } from '@/features/storage/local-repository'
 import { useWorkSettings, useWorkSettingsQuery } from './work-settings-queries'
 import { DEFAULT_WORK_SETTINGS } from './work-settings-schema'
 
@@ -36,10 +37,15 @@ describe('useWorkSettings', () => {
   })
 
   test('returns loaded settings once query resolves', async () => {
+    await localRepository.updateWorkSettings({
+      weeklyTargetMinutes: 2_100,
+      workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+      weekStartsOn: 'monday',
+    })
     const qc = createTestQueryClient()
     const { result } = renderHook(() => useWorkSettings(), { wrapper: wrapper(qc) })
     await waitFor(() => {
-      expect(result.current.weeklyTargetMinutes).toBeGreaterThan(0)
+      expect(result.current.weeklyTargetMinutes).toBe(2_100)
     })
   })
 })

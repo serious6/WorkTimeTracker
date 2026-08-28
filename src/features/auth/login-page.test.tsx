@@ -63,8 +63,10 @@ describe('LoginPage', () => {
       target: { value: TEST_PASSWORD },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
-    await waitFor(() => {
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await waitFor(async () => {
+      expect(await localRepository.currentSession()).toMatchObject({
+        email: 'login-ok@example.com',
+      })
     })
   })
 })
