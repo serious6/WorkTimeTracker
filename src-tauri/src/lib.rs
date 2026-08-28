@@ -1,10 +1,13 @@
 mod auth;
 mod commands;
+#[cfg(test)]
+mod contract;
 mod database;
+mod error;
 mod models;
 mod window_state;
 
-use auth::Session;
+use auth::{LoginAttempts, Session};
 use database::Database;
 use tauri::{Manager, WindowEvent};
 
@@ -17,6 +20,7 @@ pub fn run() {
             let database = Database::open(data_dir.join("work-time-tracker.sqlite"))?;
             app.manage(database);
             app.manage(Session::default());
+            app.manage(LoginAttempts::default());
             if let Some(window) = app.get_webview_window("main") {
                 window_state::restore(&window.as_ref().window_ref());
             }
