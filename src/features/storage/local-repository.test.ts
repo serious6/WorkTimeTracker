@@ -4,6 +4,12 @@ import {
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
 } from '@/features/auth/auth-schema'
+import { DUPLICATE_BUDGET_MESSAGE } from '@/features/budgets/budget-schema'
+import {
+  DEFAULT_WORK_SETTINGS,
+  NO_WORKING_DAY_MESSAGE,
+} from '@/features/settings/work-settings-schema'
+import { ORDER_MESSAGE, OVERLAP_MESSAGE } from '@/features/time-entries/time-entry-schema'
 import { localRepository, NOT_SIGNED_IN_MESSAGE } from './local-repository'
 
 const PASSWORD = 'Str0ng-Passphrase!!x'
@@ -134,5 +140,372 @@ describe('local repository authentication', () => {
     await register('second@example.com', OTHER_PASSWORD)
 
     expect(await localRepository.listProjects()).toEqual([])
+  })
+})
+
+describe('local repository projects', () => {
+  beforeEach(async () => {
+    await register('first@example.com')
+  })
+
+  it('lists projects in alphabetical order', async () => {
+    await createProject('Website Redesign')
+    await createProject('API Migration')
+
+    expect((await localRepository.listProjects()).map(({ name }) => name)).toEqual([
+      'API Migration',
+      'Website Redesign',
+    ])
+  })
+
+  it('assigns increasing ids and timestamps on creation', async () => {
+    const first = await createProject('Website Redesign')
+    const second = await createProject('API Migration')
+
+    expect(second.id).toBe(first.id + 1)
+    expect(first.createdAt).toBe(first.updatedAt)
+  })
+
+  it('rejects a project without a name', async () => {
+    await expect(
+      localRepository.createProject({ name: '  ', description: null, color: '#22c55e', active: true }),
+    ).rejects.toThrow('Project name is required')
+  })
+
+  it('rejects a color that is no hex value', async () => {
+    await expect(
+      localRepository.createProject({ name: 'Website', description: null, color: 'green', active: true }),
+    ).rejects.toThrow('Choose a project color')
+  })
+
+  it('updates a project and keeps its creation time', async () => {
+    const project = await createProject('Website Redesign')
+
+    const updated = await localRepository.updateProject(project.id, {
+      name: 'Website Relaunch',
+      description: 'Second iteration',
+      color: '#3b82f6',
+      active: false,
+    })
+
+    expect(updated).toMatchObject({
+      id: project.id,
+      name: 'Website Relaunch',
+      description: 'Second iteration',
+      color: '#3b82f6',
+      active: false,
+      createdAt: project.createdAt,
+    })
+  })
+
+  it('rejects an update of an unknown project', async () => {
+    await expect(
+      localRepository.updateProject(404, {
+        name: 'Ghost',
+        description: null,
+        color: '#22c55e',
+        active: true,
+      }),
+    ).rejects.toThrow('Project not found')
+  })
+
+  it('keeps the time entries of a deleted project without their project', async () => {
+    const project = await createProject('Website Redesign')
+    await localRepository.createTimeEntry({
+      projectId: project.id,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T09:00:00.000Z',
+      note: null,
+    })
+    await localRepository.createProjectBudget({
+      projectId: project.id,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+
+    await localRepository.deleteProject(project.id)
+
+    expect(await localRepository.listProjects()).toEqual([])
+    expect(await localRepository.listProjectBudgets()).toEqual([])
+    expect((await localRepository.listTimeEntries())[0].projectId).toBeNull()
+  })
+})
+
+describe('local repository time entries', () => {
+  let projectId: number
+
+  beforeEach(async () => {
+    await register('first@example.com')
+    projectId = (await createProject('Website Redesign')).id
+  })
+
+  async function createEntry(startTime: string, endTime: string | null, note: string | null = null) {
+    return localRepository.createTimeEntry({ projectId, startTime, endTime, note })
+  }
+
+  it('lists entries ordered by their start time', async () => {
+    await createEntry('2026-08-27T12:00:00.000Z', '2026-08-27T13:00:00.000Z')
+    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+
+    expect((await localRepository.listTimeEntries()).map(({ startTime }) => startTime)).toEqual([
+      '2026-08-27T08:00:00.000Z',
+      '2026-08-27T12:00:00.000Z',
+    ])
+  })
+
+  it('requires a project', async () => {
+    await expect(
+      localRepository.createTimeEntry({
+        projectId: null,
+        startTime: '2026-08-27T08:00:00.000Z',
+        endTime: '2026-08-27T09:00:00.000Z',
+        note: null,
+      }),
+    ).rejects.toThrow('Project is required')
+  })
+
+  it('rejects an end time before the start time', async () => {
+    await expect(createEntry('2026-08-27T09:00:00.000Z', '2026-08-27T08:00:00.000Z')).rejects.toThrow(
+      ORDER_MESSAGE,
+    )
+  })
+
+  it('rejects overlapping entries but allows adjacent ones', async () => {
+    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+
+    await expect(createEntry('2026-08-27T08:30:00.000Z', '2026-08-27T09:30:00.000Z')).rejects.toThrow(
+      OVERLAP_MESSAGE,
+    )
+    await expect(createEntry('2026-08-27T09:00:00.000Z', '2026-08-27T10:00:00.000Z')).resolves.toBeTruthy()
+  })
+
+  it('treats a running entry as open ended', async () => {
+    await createEntry('2026-08-27T08:00:00.000Z', null)
+
+    await expect(createEntry('2026-08-27T18:00:00.000Z', '2026-08-27T19:00:00.000Z')).rejects.toThrow(
+      OVERLAP_MESSAGE,
+    )
+  })
+
+  it('updates an entry without counting it as its own overlap', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+
+    const updated = await localRepository.updateTimeEntry(entry.id, {
+      projectId,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T10:00:00.000Z',
+      note: 'Longer than planned',
+    })
+
+    expect(updated).toMatchObject({ endTime: '2026-08-27T10:00:00.000Z', note: 'Longer than planned' })
+  })
+
+  it('rejects an update that overlaps another entry', async () => {
+    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    const second = await createEntry('2026-08-27T10:00:00.000Z', '2026-08-27T11:00:00.000Z')
+
+    await expect(
+      localRepository.updateTimeEntry(second.id, {
+        projectId,
+        startTime: '2026-08-27T08:30:00.000Z',
+        endTime: '2026-08-27T11:00:00.000Z',
+        note: null,
+      }),
+    ).rejects.toThrow(OVERLAP_MESSAGE)
+  })
+
+  it('rejects an update of an unknown entry', async () => {
+    await expect(
+      localRepository.updateTimeEntry(404, {
+        projectId,
+        startTime: '2026-08-27T08:00:00.000Z',
+        endTime: '2026-08-27T09:00:00.000Z',
+        note: null,
+      }),
+    ).rejects.toThrow('Time entry not found')
+  })
+
+  it('trims a note and clears an empty one', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z', 'Draft')
+
+    expect((await localRepository.updateTimeEntryNote(entry.id, '  Reviewed  ')).note).toBe('Reviewed')
+    expect((await localRepository.updateTimeEntryNote(entry.id, '   ')).note).toBeNull()
+    await expect(localRepository.updateTimeEntryNote(404, 'Ghost')).rejects.toThrow(
+      'Time entry not found',
+    )
+  })
+
+  it('closes the running entry and starts the next one at the same timestamp', async () => {
+    const running = await createEntry('2026-08-27T08:00:00.000Z', null)
+    const other = await createProject('API Migration')
+
+    const created = await localRepository.switchRunningTimeEntry(running.id, {
+      projectId: other.id,
+      startTime: '2026-08-27T09:00:00.000Z',
+      endTime: null,
+      note: null,
+    })
+
+    const entries = await localRepository.listTimeEntries()
+
+    expect(entries).toHaveLength(2)
+    expect(entries[0].endTime).toBe('2026-08-27T09:00:00.000Z')
+    expect(created).toMatchObject({ projectId: other.id, endTime: null })
+  })
+
+  it('refuses to switch a timer that is not running or moves backwards', async () => {
+    const closed = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    const running = await createEntry('2026-08-27T10:00:00.000Z', null)
+    const input = { projectId, startTime: '2026-08-27T11:00:00.000Z', endTime: null, note: null }
+
+    await expect(localRepository.switchRunningTimeEntry(404, input)).rejects.toThrow(
+      'Time entry not found',
+    )
+    await expect(localRepository.switchRunningTimeEntry(closed.id, input)).rejects.toThrow(
+      'Timer is not running',
+    )
+    await expect(
+      localRepository.switchRunningTimeEntry(running.id, {
+        ...input,
+        startTime: '2026-08-27T09:30:00.000Z',
+      }),
+    ).rejects.toThrow(ORDER_MESSAGE)
+    await expect(
+      localRepository.switchRunningTimeEntry(running.id, { ...input, projectId: null }),
+    ).rejects.toThrow('Invalid timer switch')
+    await expect(
+      localRepository.switchRunningTimeEntry(running.id, {
+        ...input,
+        endTime: '2026-08-27T12:00:00.000Z',
+      }),
+    ).rejects.toThrow('Invalid timer switch')
+  })
+
+  it('deletes an entry and ignores an unknown id', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+
+    await localRepository.deleteTimeEntry(entry.id)
+    await localRepository.deleteTimeEntry(404)
+
+    expect(await localRepository.listTimeEntries()).toEqual([])
+  })
+})
+
+describe('local repository budgets and settings', () => {
+  let projectId: number
+
+  beforeEach(async () => {
+    await register('first@example.com')
+    projectId = (await createProject('Website Redesign')).id
+  })
+
+  it('lists budgets ordered by their due date', async () => {
+    const other = await createProject('API Migration')
+    await localRepository.createProjectBudget({ projectId, budgetMinutes: 600, dueDate: '2026-12-31' })
+    await localRepository.createProjectBudget({
+      projectId: other.id,
+      budgetMinutes: 1_200,
+      dueDate: '2026-06-30',
+    })
+
+    expect((await localRepository.listProjectBudgets()).map(({ dueDate }) => dueDate)).toEqual([
+      '2026-06-30',
+      '2026-12-31',
+    ])
+  })
+
+  it('allows one budget per project only', async () => {
+    await localRepository.createProjectBudget({ projectId, budgetMinutes: 600, dueDate: '2026-12-31' })
+
+    await expect(
+      localRepository.createProjectBudget({ projectId, budgetMinutes: 900, dueDate: '2027-01-31' }),
+    ).rejects.toThrow(DUPLICATE_BUDGET_MESSAGE)
+  })
+
+  it('rejects a budget without hours or with an invalid due date', async () => {
+    await expect(
+      localRepository.createProjectBudget({ projectId, budgetMinutes: 0, dueDate: '2026-12-31' }),
+    ).rejects.toThrow('Budget must be greater than zero hours')
+    await expect(
+      localRepository.createProjectBudget({ projectId, budgetMinutes: 600, dueDate: '2026-02-31' }),
+    ).rejects.toThrow('Due date must be a valid calendar date')
+  })
+
+  it('updates a budget and keeps it unique per project', async () => {
+    const other = await createProject('API Migration')
+    const budget = await localRepository.createProjectBudget({
+      projectId,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+    const second = await localRepository.createProjectBudget({
+      projectId: other.id,
+      budgetMinutes: 900,
+      dueDate: '2026-11-30',
+    })
+
+    const updated = await localRepository.updateProjectBudget(budget.id, {
+      projectId,
+      budgetMinutes: 1_500,
+      dueDate: '2027-01-31',
+    })
+
+    expect(updated).toMatchObject({ budgetMinutes: 1_500, dueDate: '2027-01-31' })
+    await expect(
+      localRepository.updateProjectBudget(second.id, {
+        projectId,
+        budgetMinutes: 900,
+        dueDate: '2026-11-30',
+      }),
+    ).rejects.toThrow(DUPLICATE_BUDGET_MESSAGE)
+    await expect(
+      localRepository.updateProjectBudget(404, { projectId, budgetMinutes: 60, dueDate: '2027-01-31' }),
+    ).rejects.toThrow('Budget not found')
+  })
+
+  it('deletes a budget', async () => {
+    const budget = await localRepository.createProjectBudget({
+      projectId,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+
+    await localRepository.deleteProjectBudget(budget.id)
+
+    expect(await localRepository.listProjectBudgets()).toEqual([])
+  })
+
+  it('returns the defaults until settings are saved', async () => {
+    expect(await localRepository.getWorkSettings()).toEqual(DEFAULT_WORK_SETTINGS)
+
+    const saved = await localRepository.updateWorkSettings({
+      weeklyTargetMinutes: 1_800,
+      workingDays: ['friday', 'monday'],
+      weekStartsOn: 'sunday',
+    })
+
+    expect(saved.workingDays).toEqual(['monday', 'friday'])
+    expect(await localRepository.getWorkSettings()).toEqual(saved)
+  })
+
+  it('rejects settings without a working day', async () => {
+    await expect(
+      localRepository.updateWorkSettings({
+        weeklyTargetMinutes: 1_800,
+        workingDays: [],
+        weekStartsOn: 'monday',
+      }),
+    ).rejects.toThrow(NO_WORKING_DAY_MESSAGE)
+  })
+
+  it('falls back to the defaults when the stored settings are corrupt', async () => {
+    const key = `work-time-tracker.${(await localRepository.currentSession())?.id}.work-settings`
+    globalThis.localStorage?.setItem(key, '{ not json')
+
+    expect(await localRepository.getWorkSettings()).toEqual(DEFAULT_WORK_SETTINGS)
+  })
+
+  it('reports no application version in the browser', async () => {
+    expect(await localRepository.getAppVersion()).toBeNull()
   })
 })
