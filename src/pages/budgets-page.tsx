@@ -9,7 +9,7 @@ import { useDeleteProjectBudget, useProjectBudgets } from '@/features/budgets/bu
 import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import { useProjects } from '@/features/projects/project-queries'
 import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
-import { formatDay, fromDateKey } from '@/lib/date'
+import { formatDay, formatDuration, fromDateKey } from '@/lib/date'
 
 export function BudgetsPage() {
   const { data: budgets = [] } = useProjectBudgets()
@@ -62,7 +62,8 @@ export function BudgetsPage() {
                     {projectName(budget.projectId)}
                   </span>
                   <span className="tabular-nums text-muted-foreground">
-                    {budget.budgetMinutes / 60}h until {formatDay(fromDateKey(budget.dueDate))}
+                    {formatDuration(budget.budgetMinutes)} until{' '}
+                    {formatDay(fromDateKey(budget.dueDate))}
                   </span>
                   <Button
                     aria-label={`Edit budget for ${projectName(budget.projectId)}`}
