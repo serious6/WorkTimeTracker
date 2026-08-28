@@ -9,7 +9,6 @@ import {
   useWorkSettingsQuery,
 } from '@/features/settings/work-settings-queries'
 import {
-  DEFAULT_WORK_SETTINGS,
   NO_WORKING_DAY_MESSAGE,
   WEEKDAYS,
   WEEKDAY_LABELS,
@@ -79,10 +78,10 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
             Weekly working time (hours)
             <Input
               max="168"
-              min="0.5"
+              min="0"
               name="weeklyTargetHours"
               onChange={(event) => setWeeklyHours(event.target.value)}
-              step="0.5"
+              step="any"
               type="number"
               value={weeklyHours}
             />
@@ -136,7 +135,7 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
 }
 
 export function SettingsPage() {
-  const { data, isError, isPending } = useWorkSettingsQuery()
+  const { data, isError, isPending, isFetching, refetch } = useWorkSettingsQuery()
 
   return (
     <div className="space-y-5">
@@ -147,19 +146,20 @@ export function SettingsPage() {
         </p>
       </header>
 
-      {isError && (
-        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          The settings could not be loaded. The defaults are shown until the database is available.
-        </p>
-      )}
-
-      {!isPending || isError ? (
-        <GeneralSettingsForm
-          key={JSON.stringify(data ?? DEFAULT_WORK_SETTINGS)}
-          settings={data ?? DEFAULT_WORK_SETTINGS}
-        />
-      ) : (
+      {isError ? (
+        <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <p>
+            The settings could not be loaded. They cannot be edited until the database is available,
+            so the stored values are not overwritten.
+          </p>
+          <Button disabled={isFetching} onClick={() => void refetch()} variant="outline">
+            Try again
+          </Button>
+        </div>
+      ) : isPending ? (
         <p className="text-sm text-muted-foreground">Loading settings…</p>
+      ) : (
+        <GeneralSettingsForm key={JSON.stringify(data)} settings={data} />
       )}
 
       <Card>

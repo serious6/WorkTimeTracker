@@ -71,7 +71,11 @@ export function KpiCards({
         caption={targetCaption('of', dailyTargetMinutes)}
         icon={Clock}
         label="Tracked Today"
-        progress={progressPercentage(trackedTodayMinutes, dailyTargetMinutes)}
+        progress={
+          dailyTargetMinutes > 0
+            ? progressPercentage(trackedTodayMinutes, dailyTargetMinutes)
+            : undefined
+        }
         value={formatDuration(trackedTodayMinutes)}
       />
       <KpiCard

@@ -110,7 +110,7 @@ export function TimeManagementPage() {
             ))}
             <Button
               disabled={!projectId}
-              onClick={() => quickAddTime(Math.round(dailyTargetMinutes(settings)))}
+              onClick={() => quickAddTime(dailyTargetMinutes(settings))}
               variant="subtle"
             >
               <Plus className="size-4" />
