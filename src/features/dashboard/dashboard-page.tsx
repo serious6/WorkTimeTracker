@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { ProjectDialog } from '@/features/projects/components/project-dialog'
 import { useProjects } from '@/features/projects/project-queries'
+import {
+  scheduledMinutesInRange,
+  targetMinutesForDay,
+} from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { TimeEntryDialog } from '@/features/time-entries/components/time-entry-dialog'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
@@ -40,6 +44,8 @@ export function DashboardPage() {
   const weekEntries = entriesInRange(entries, selectedWeekRange, now)
   const trackedTodayMinutes = totalMinutes(dayEntries, now, todayRange)
   const trackedWeekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
+  const dailyTargetMinutes = targetMinutesForDay(settings, selectedDate)
+  const weeklyTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange)
 
   function toggleTimer() {
     if (timer.status.running) void timer.stop()
@@ -72,10 +78,10 @@ export function DashboardPage() {
       )}
 
       <KpiCards
-        dailyTargetMinutes={settings.dailyTargetMinutes}
+        dailyTargetMinutes={dailyTargetMinutes}
         trackedTodayMinutes={trackedTodayMinutes}
         trackedWeekMinutes={trackedWeekMinutes}
-        weeklyTargetMinutes={settings.weeklyTargetMinutes}
+        weeklyTargetMinutes={weeklyTargetMinutes}
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -109,14 +115,14 @@ export function DashboardPage() {
             weekStartsOn={settings.weekStartsOn}
           />
           <OvertimeOverviewCard
-            dailyTargetMinutes={settings.dailyTargetMinutes}
+            dailyTargetMinutes={dailyTargetMinutes}
             onOpenDay={() => navigate('time-entries', { dateFilter: selectedDate })}
             onOpenWeek={() => navigate('reports')}
             selectedDate={selectedDate}
             trackedTodayMinutes={trackedTodayMinutes}
             trackedWeekMinutes={trackedWeekMinutes}
             weekStart={startOfWeek(selectedDate, settings.weekStartsOn)}
-            weeklyTargetMinutes={settings.weeklyTargetMinutes}
+            weeklyTargetMinutes={weeklyTargetMinutes}
           />
           <RecentProjectsCard
             entries={entries}

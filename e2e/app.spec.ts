@@ -107,7 +107,38 @@ test('navigates between days and views', async ({ page }) => {
   await page.getByRole('button', { name: 'Projects' }).click()
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Settings' }).click()
-  await expect(page.getByRole('heading', { name: 'Work targets' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Work schedule' })).toBeVisible()
+})
+
+test('configures the weekly working time and the working days', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  const weeklyHours = page.getByLabel('Weekly working time (hours)')
+  await expect(weeklyHours).toHaveValue('40')
+  await expect(page.getByText('Daily target: 8h 00m per working day')).toBeVisible()
+  await expect(page.getByRole('checkbox', { name: 'Monday' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Saturday' })).not.toBeChecked()
+
+  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+    await page.getByRole('checkbox', { name: day }).uncheck()
+  }
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByText('Select at least one working day')).toBeVisible()
+
+  await page.getByRole('checkbox', { name: 'Monday' }).check()
+  await page.getByRole('checkbox', { name: 'Saturday' }).check()
+  await weeklyHours.fill('20')
+  await expect(page.getByText('Daily target: 10h 00m per working day')).toBeVisible()
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByText('Settings saved')).toBeVisible()
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.getByLabel('Weekly working time (hours)')).toHaveValue('20')
+  await expect(page.getByRole('checkbox', { name: 'Saturday' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Friday' })).not.toBeChecked()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await expect(page.getByText('of 20h 00m')).toBeVisible()
 })
 
 test('quick-adds time on the time management page', async ({ page }) => {
