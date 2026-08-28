@@ -3,7 +3,9 @@ import { cn } from './utils'
 
 describe('cn', () => {
   it('joins class names and drops falsy values', () => {
-    expect(cn('px-2', undefined, false && 'hidden', 'py-1')).toBe('px-2 py-1')
+    const hidden = false
+
+    expect(cn('px-2', undefined, hidden && 'hidden', 'py-1')).toBe('px-2 py-1')
   })
 
   it('lets the later tailwind class win over the earlier one', () => {

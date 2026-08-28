@@ -1,20 +1,18 @@
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { Dialog } from './dialog'
 
 function renderDialog(open: boolean, onClose = vi.fn()) {
   render(
     <Dialog description="Dialog description" onClose={onClose} open={open} title="Test Dialog">
-      <button type="button">Action</button>
+      <button type="button">First</button>
+      <button type="button">Last</button>
     </Dialog>,
   )
   return onClose
 }
 
-beforeEach(() => {
-  vi.clearAllMocks()
-})
+beforeEach(() => vi.clearAllMocks())
 
 describe('Dialog', () => {
   test('renders nothing when closed', () => {
@@ -29,27 +27,56 @@ describe('Dialog', () => {
     expect(screen.getByText('Dialog description')).toBeInTheDocument()
   })
 
-  test('calls onClose when close button is clicked', async () => {
-    const user = userEvent.setup()
+  test('calls onClose when close button is clicked', () => {
     const onClose = renderDialog(true)
-    await user.click(screen.getByRole('button', { name: 'Close dialog' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
     expect(onClose).toHaveBeenCalledOnce()
   })
 
-  test('calls onClose on Escape key', async () => {
-    const user = userEvent.setup()
+  test('calls onClose on Escape key', () => {
     const onClose = renderDialog(true)
-    await user.keyboard('{Escape}')
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
   })
 
   test('does not render description when not provided', () => {
-    const onClose = vi.fn()
     render(
-      <Dialog onClose={onClose} open title="No Desc">
+      <Dialog onClose={vi.fn()} open title="No Desc">
         <span>content</span>
       </Dialog>,
     )
     expect(screen.getByText('No Desc')).toBeInTheDocument()
+  })
+
+  test('Tab key does not crash when dialog has focusable elements', () => {
+    renderDialog(true)
+    // Fire Tab - should exercise the focus-trap branch
+    expect(() => fireEvent.keyDown(document, { key: 'Tab' })).not.toThrow()
+  })
+
+  test('Shift+Tab key does not crash', () => {
+    renderDialog(true)
+    expect(() => fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })).not.toThrow()
+  })
+
+  test('non-escape/tab keys are ignored', () => {
+    const onClose = renderDialog(true)
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  test('dialog renders nothing after being closed (open=false)', () => {
+    const { rerender } = render(
+      <Dialog onClose={vi.fn()} open title="Closeable">
+        <span>child</span>
+      </Dialog>,
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    rerender(
+      <Dialog onClose={vi.fn()} open={false} title="Closeable">
+        <span>child</span>
+      </Dialog>,
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

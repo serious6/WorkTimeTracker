@@ -6,7 +6,6 @@ import {
   entriesInRange,
   entryMinutes,
   findRunningEntry,
-  monthRange,
   overtimeMinutes,
   progressPercentage,
   projectTotals,
@@ -160,7 +159,7 @@ describe('metrics', () => {
   })
 
   it('monthRange covers the full calendar month', () => {
-    const { start, end } = weekRange(at(27, 0), 'sunday')
+    const { start } = weekRange(at(27, 0), 'sunday')
     expect(start.getDay()).toBe(0) // Sunday
   })
 })

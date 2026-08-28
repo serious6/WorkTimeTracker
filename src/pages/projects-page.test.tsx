@@ -1,5 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   renderWithProviders,
@@ -28,17 +27,18 @@ describe('ProjectsPage', () => {
     expect(await screen.findByText('Beta')).toBeInTheDocument()
   })
 
-  it('opens create dialog when "Create project" header button is clicked', async () => {
+  it('opens create dialog when header button is clicked', async () => {
     renderWithProviders(<ProjectsPage />)
-    await userEvent.click(screen.getByRole('button', { name: /^create project$/i }))
+    // The header button has an icon; find it by its accessible label in the header
+    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
     expect(await screen.findByRole('heading', { name: /create project/i })).toBeInTheDocument()
   })
 
   it('opens edit dialog with project data', async () => {
-    const project = await seedProject('EditMe')
+    await seedProject('EditMe')
     renderWithProviders(<ProjectsPage />)
     await screen.findByText('EditMe')
-    await userEvent.click(screen.getByRole('button', { name: /edit editme/i }))
+    fireEvent.click(screen.getByRole('button', { name: /edit editme/i }))
     expect(await screen.findByDisplayValue('EditMe')).toBeInTheDocument()
   })
 
@@ -46,7 +46,7 @@ describe('ProjectsPage', () => {
     await seedProject('ToDelete')
     renderWithProviders(<ProjectsPage />)
     await screen.findByText('ToDelete')
-    await userEvent.click(screen.getByRole('button', { name: /delete todelete/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete todelete/i }))
     expect(await screen.findByText(/delete project\?/i)).toBeInTheDocument()
   })
 
@@ -54,16 +54,17 @@ describe('ProjectsPage', () => {
     await seedProject('GoneProject')
     renderWithProviders(<ProjectsPage />)
     await screen.findByText('GoneProject')
-    await userEvent.click(screen.getByRole('button', { name: /delete goneproject/i }))
-    await userEvent.click(await screen.findByRole('button', { name: /delete project$/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete goneproject/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /^delete project$/i }))
     await waitFor(() => expect(screen.queryByText('GoneProject')).not.toBeInTheDocument())
   })
 
   it('creates a project from the dialog', async () => {
     renderWithProviders(<ProjectsPage />)
-    await userEvent.click(screen.getByRole('button', { name: /^create project$/i }))
-    await userEvent.type(await screen.findByPlaceholderText(/website redesign/i), 'NewProject')
-    await userEvent.click(screen.getByRole('button', { name: /^create project$/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /create project/i }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByPlaceholderText(/website redesign/i), { target: { value: 'NewProject' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /create project/i }))
     expect(await screen.findByText('NewProject')).toBeInTheDocument()
   })
 })

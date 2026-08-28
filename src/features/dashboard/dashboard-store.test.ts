@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { toDateKey } from '@/lib/date'
-import { useDashboardStore, useSelectedDate } from './dashboard-store'
+import { useDashboardStore } from './dashboard-store'
 
 beforeEach(() => {
   useDashboardStore.setState({ selectedDate: toDateKey(new Date()) })

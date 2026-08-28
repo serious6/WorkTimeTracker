@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/features/projects/project-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
+import { renderWithProviders } from '@/test/harness'
 import { DayEntriesCard } from './day-entries-card'
 
 function project(id: number, name: string): Project {
@@ -28,7 +29,7 @@ const projects = [project(1, 'Website')]
 
 describe('DayEntriesCard', () => {
   it('shows empty state when no entries exist', () => {
-    render(
+    renderWithProviders(
       <DayEntriesCard
         entries={[]}
         now={now}
@@ -47,7 +48,7 @@ describe('DayEntriesCard', () => {
 
   it('calls onStartTimer when Start timer is clicked from empty state', () => {
     const onStartTimer = vi.fn()
-    render(
+    renderWithProviders(
       <DayEntriesCard
         entries={[]}
         now={now}
@@ -65,7 +66,7 @@ describe('DayEntriesCard', () => {
 
   it('calls onAddEntry when Add entry is clicked from empty state', () => {
     const onAddEntry = vi.fn()
-    render(
+    renderWithProviders(
       <DayEntriesCard
         entries={[]}
         now={now}
@@ -83,7 +84,7 @@ describe('DayEntriesCard', () => {
 
   it('shows total duration when entries exist', () => {
     const entries = [entry(1, 1, 0, 60)] // 1 hour
-    render(
+    renderWithProviders(
       <DayEntriesCard
         entries={entries}
         now={now}
@@ -99,7 +100,7 @@ describe('DayEntriesCard', () => {
   })
 
   it('always shows the Add time entry button', () => {
-    render(
+    renderWithProviders(
       <DayEntriesCard
         entries={[entry(1, 1, 0, 30)]}
         now={now}
@@ -115,7 +116,7 @@ describe('DayEntriesCard', () => {
   })
 
   it('uses the provided title', () => {
-    render(
+    renderWithProviders(
       <DayEntriesCard
         entries={[]}
         now={now}

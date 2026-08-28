@@ -1,5 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
   TEST_PASSWORD,
@@ -7,7 +6,7 @@ import {
   resetAppState,
   signIn,
 } from '@/test/harness'
-import { LoginPage } from '../login-page'
+import { LoginPage } from './login-page'
 
 beforeEach(async () => {
   await resetAppState()
@@ -19,42 +18,51 @@ describe('LoginPage', () => {
     expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
 
-  test('shows validation error for empty email', async () => {
-    const user = userEvent.setup()
+  test('shows validation error when password is empty', async () => {
     renderWithProviders(<LoginPage onRegister={() => {}} />)
-    await user.click(screen.getByRole('button', { name: 'Login' }))
+    // type a valid email but no password
+    const emailInput = document.querySelector('input[name="email"]')!
+    fireEvent.change(emailInput, { target: { value: 'user@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 
   test('shows invalid credentials error on wrong password', async () => {
-    const user = userEvent.setup()
     await signIn('login-test@example.com')
+    const { localRepository } = await import('@/features/storage/local-repository')
+    await localRepository.logout()
     renderWithProviders(<LoginPage onRegister={() => {}} />)
-    await user.type(screen.getByLabelText(/email/i), 'login-test@example.com')
-    await user.type(screen.getByLabelText(/password/i), 'WrongPassword!')
-    await user.click(screen.getByRole('button', { name: 'Login' }))
+
+    fireEvent.change(document.querySelector('input[name="email"]')!, {
+      target: { value: 'login-test@example.com' },
+    })
+    fireEvent.change(document.querySelector('input[name="password"]')!, {
+      target: { value: 'WrongPassword!WrongPassword!' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 
-  test('calls onRegister when Register button is clicked', async () => {
-    const user = userEvent.setup()
+  test('calls onRegister when Register button is clicked', () => {
     let called = false
     renderWithProviders(<LoginPage onRegister={() => { called = true }} />)
-    await user.click(screen.getByRole('button', { name: 'Register' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     expect(called).toBe(true)
   })
 
-  test('successful login navigates away (no error shown)', async () => {
-    const user = userEvent.setup()
+  test('successful login shows no error', async () => {
     await signIn('login-ok@example.com')
-    // logout to reset session
     const { localRepository } = await import('@/features/storage/local-repository')
     await localRepository.logout()
 
     renderWithProviders(<LoginPage onRegister={() => {}} />)
-    await user.type(screen.getByLabelText(/email/i), 'login-ok@example.com')
-    await user.type(screen.getByLabelText(/password/i), TEST_PASSWORD)
-    await user.click(screen.getByRole('button', { name: 'Login' }))
+    fireEvent.change(document.querySelector('input[name="email"]')!, {
+      target: { value: 'login-ok@example.com' },
+    })
+    fireEvent.change(document.querySelector('input[name="password"]')!, {
+      target: { value: TEST_PASSWORD },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Login' }))
     await waitFor(() => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })

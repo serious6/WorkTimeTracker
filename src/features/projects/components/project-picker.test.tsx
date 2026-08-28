@@ -1,5 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   renderWithProviders,
@@ -43,9 +42,9 @@ describe('ProjectPicker – closed state', () => {
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument())
   })
 
-  it('opens on button click', async () => {
+  it('opens on button click', () => {
     const { onOpenChange } = render()
-    await userEvent.click(screen.getByRole('button', { name: /select a project/i }))
+    fireEvent.click(screen.getByRole('button', { name: /select a project/i }))
     expect(onOpenChange).toHaveBeenCalledWith(true)
   })
 })
@@ -66,7 +65,7 @@ describe('ProjectPicker – open state', () => {
     await seedProject('Beta')
     render({ open: true })
     await waitFor(() => screen.getByRole('option', { name: /alpha/i }))
-    await userEvent.type(screen.getByRole('textbox', { name: /search/i }), 'alph')
+    fireEvent.change(screen.getByRole('textbox', { name: /search/i }), { target: { value: 'alph' } })
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
     expect(screen.getByText('Alpha')).toBeInTheDocument()
   })
@@ -75,7 +74,7 @@ describe('ProjectPicker – open state', () => {
     await seedProject('Alpha')
     render({ open: true })
     await waitFor(() => screen.getByRole('option', { name: /alpha/i }))
-    await userEvent.type(screen.getByRole('textbox', { name: /search/i }), 'zzz')
+    fireEvent.change(screen.getByRole('textbox', { name: /search/i }), { target: { value: 'zzz' } })
     expect(screen.getByText(/no projects found/i)).toBeInTheDocument()
   })
 
@@ -83,21 +82,21 @@ describe('ProjectPicker – open state', () => {
     const project = await seedProject('Alpha')
     const { onSelect, onOpenChange } = render({ open: true })
     await waitFor(() => screen.getByRole('option', { name: /alpha/i }))
-    await userEvent.click(screen.getByRole('option', { name: /alpha/i }))
+    fireEvent.click(screen.getByRole('option', { name: /alpha/i }))
     expect(onSelect).toHaveBeenCalledWith(project.id)
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('calls onCreate when "Create project" is clicked', async () => {
     const { onCreate, onOpenChange } = render({ open: true })
-    await userEvent.click(screen.getByRole('button', { name: /create project/i }))
+    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
     expect(onCreate).toHaveBeenCalled()
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
   it('closes on Escape key', async () => {
     const { onOpenChange } = render({ open: true })
-    await userEvent.keyboard('{Escape}')
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })
