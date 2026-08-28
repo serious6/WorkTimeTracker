@@ -9,8 +9,8 @@ export const WORK_DAY_START_HOUR = 9
 
 export const MAX_DURATION_MINUTES = 24 * 60
 
-const DURATION_FORMAT = /^(?:\d+(?:[.,]\d+)?\s*(?:hours?|hrs?|h|minutes?|mins?|m)?\s*)+$/iu
-const DURATION_TOKEN = /(\d+(?:[.,]\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m)?/giu
+// Sticky token matching keeps the scan linear, unlike a repeated group.
+const DURATION_TOKEN = /(\d+(?:[.,]\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m)?\s*/yiu
 
 /**
  * Parses free duration input such as `2h 45m`, `90m`, `1.5h` or `90` into
@@ -19,11 +19,14 @@ const DURATION_TOKEN = /(\d+(?:[.,]\d+)?)\s*(hours?|hrs?|h|minutes?|mins?|m)?/gi
  */
 export function parseDurationMinutes(input: string): number | null {
   const text = input.trim()
-  if (!DURATION_FORMAT.test(text)) return null
+  if (!text) return null
 
   let minutes = 0
-  for (const [, amount, unit] of text.matchAll(DURATION_TOKEN)) {
-    minutes += Number(amount.replace(',', '.')) * (unit?.toLowerCase().startsWith('h') ? 60 : 1)
+  DURATION_TOKEN.lastIndex = 0
+  while (DURATION_TOKEN.lastIndex < text.length) {
+    const match = DURATION_TOKEN.exec(text)
+    if (!match || !match[0]) return null
+    minutes += Number(match[1].replace(',', '.')) * (match[2]?.toLowerCase().startsWith('h') ? 60 : 1)
   }
 
   const rounded = Math.round(minutes)
