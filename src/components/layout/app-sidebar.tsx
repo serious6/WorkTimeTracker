@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Settings,
+  Timer,
   Wallet,
 } from 'lucide-react'
 import { useNavigationStore, type View } from '@/app/navigation'
@@ -15,6 +16,7 @@ const items: { view: View; label: string; icon: typeof LayoutDashboard }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { view: 'projects', label: 'Projects', icon: FolderKanban },
   { view: 'time-entries', label: 'Time Entries', icon: ListChecks },
+  { view: 'time-management', label: 'Time Management', icon: Timer },
   { view: 'budgets', label: 'Budgets', icon: Wallet },
   { view: 'reports', label: 'Reports', icon: BarChart3 },
   { view: 'calendar', label: 'Calendar', icon: CalendarDays },

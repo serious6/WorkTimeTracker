@@ -4,6 +4,7 @@ export type View =
   | 'dashboard'
   | 'projects'
   | 'time-entries'
+  | 'time-management'
   | 'budgets'
   | 'reports'
   | 'calendar'
