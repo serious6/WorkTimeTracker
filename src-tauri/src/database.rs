@@ -16,6 +16,7 @@ pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct Database(pub Mutex<Connection>);
 
+#[derive(Debug)]
 pub enum SwitchRunningTimeEntryError {
     InvalidTimer,
     Overlap,
