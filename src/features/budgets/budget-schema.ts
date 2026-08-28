@@ -1,7 +1,15 @@
 import { z } from 'zod'
-import { toDateKey } from '@/lib/date'
+import { fromDateKey, toDateKey } from '@/lib/date'
 
 export const DUPLICATE_BUDGET_MESSAGE = 'This project already has a budget'
+
+const dueDateSchema = z
+  .string()
+  .min(1, 'Due date is required')
+  .refine(
+    (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && toDateKey(fromDateKey(value)) === value,
+    'Due date must be a valid calendar date',
+  )
 
 export const projectBudgetSchema = z.object({
   id: z.number().int().positive(),
@@ -15,7 +23,7 @@ export const projectBudgetSchema = z.object({
 export const saveProjectBudgetSchema = z.object({
   projectId: z.number().int().positive('Project is required'),
   budgetMinutes: z.number().int().positive('Budget must be greater than zero hours'),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Due date is required'),
+  dueDate: dueDateSchema,
 })
 
 export type ProjectBudget = z.infer<typeof projectBudgetSchema>
@@ -32,7 +40,7 @@ export const budgetFormSchema = z
       .number({ error: 'Budget in hours is required' })
       .positive('Budget must be greater than zero hours')
       .max(100_000),
-    dueDate: z.string().min(1, 'Due date is required'),
+    dueDate: dueDateSchema,
   })
   .refine((values) => values.dueDate >= toDateKey(new Date()), {
     message: 'Due date must be today or later',

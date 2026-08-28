@@ -14,8 +14,9 @@ const DUPLICATE_BUDGET: &str = "This project already has a budget";
 
 fn budget_error(error: rusqlite::Error) -> String {
     if matches!(
-        error.sqlite_error_code(),
-        Some(rusqlite::ErrorCode::ConstraintViolation)
+        &error,
+        rusqlite::Error::SqliteFailure(error, _)
+            if error.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
     ) {
         return DUPLICATE_BUDGET.to_owned();
     }

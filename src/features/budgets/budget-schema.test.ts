@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { toDateKey } from '@/lib/date'
-import { budgetFormSchema, formToSaveProjectBudget } from './budget-schema'
+import {
+  budgetFormSchema,
+  formToSaveProjectBudget,
+  saveProjectBudgetSchema,
+} from './budget-schema'
 
 const tomorrow = toDateKey(new Date(Date.now() + 86_400_000))
 
@@ -42,6 +46,19 @@ describe('budgetFormSchema', () => {
     expect(parse({ dueDate: '2020-01-01' }).error?.issues[0]?.message).toBe(
       'Due date must be today or later',
     )
+  })
+
+  it('rejects an impossible due date', () => {
+    expect(parse({ dueDate: '2026-13-31' }).error?.issues[0]?.message).toBe(
+      'Due date must be a valid calendar date',
+    )
+    expect(
+      saveProjectBudgetSchema.safeParse({
+        projectId: 1,
+        budgetMinutes: 4_800,
+        dueDate: '2026-02-30',
+      }).success,
+    ).toBe(false)
   })
 
   it('accepts a due date of today', () => {
