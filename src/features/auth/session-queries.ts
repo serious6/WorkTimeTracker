@@ -45,6 +45,12 @@ export function useRegister() {
   })
 }
 
+/** Ends the session in the user interface, for example after it expired. */
+export function endSession(queryClient: QueryClient): void {
+  if (queryClient.getQueryData(sessionKeys.current) === null) return
+  applySession(queryClient, null)
+}
+
 export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({
