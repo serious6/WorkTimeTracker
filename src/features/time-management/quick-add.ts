@@ -1,5 +1,5 @@
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
-import { DAY_MS, MINUTE_MS, startOfDay } from '@/lib/date'
+import { addDays, MINUTE_MS, startOfDay } from '@/lib/date'
 
 /** Fixed quick-add durations in minutes; `1 day` uses the configured daily target. */
 export const QUICK_ADD_MINUTES = [15, 30, 60] as const
@@ -67,9 +67,11 @@ function freeGaps(busy: Interval[], dayStart: number, dayEnd: number): Interval[
  * in the earliest gap that is long enough. Returns `null` when the day is full.
  */
 export function findFreeSlot(entries: TimeEntry[], date: Date, minutes: number): Slot | null {
-  const dayStart = startOfDay(date).getTime()
-  const dayEnd = dayStart + DAY_MS
-  const preferred = dayStart + WORK_DAY_START_HOUR * 60 * MINUTE_MS
+  const day = startOfDay(date)
+  const dayStart = day.getTime()
+  // Derived from the calendar day so that daylight saving changes are respected.
+  const dayEnd = startOfDay(addDays(day, 1)).getTime()
+  const preferred = new Date(day).setHours(WORK_DAY_START_HOUR, 0, 0, 0)
   const length = minutes * MINUTE_MS
   const gaps = freeGaps(busyIntervals(entries, dayStart, dayEnd), dayStart, dayEnd)
 
