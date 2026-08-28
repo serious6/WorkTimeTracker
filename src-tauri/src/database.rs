@@ -529,7 +529,11 @@ fn claim_unowned_data_internal(connection: &Connection, user_id: i64) -> Result<
 }
 
 /// Registers a new user, claiming unowned data for the first user, all in one transaction.
-pub fn register_user(connection: &mut Connection, email: &str, password_hash: &str) -> Result<User> {
+pub fn register_user(
+    connection: &mut Connection,
+    email: &str,
+    password_hash: &str,
+) -> Result<User> {
     let transaction = connection.transaction()?;
     let first_user = count_users(&transaction)? == 0;
     let user = insert_user_internal(&transaction, email, password_hash)?;
