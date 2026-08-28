@@ -1,4 +1,5 @@
 import { useNavigationStore } from '@/app/navigation'
+import { AppFooter } from '@/components/layout/app-footer'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { Toaster } from '@/components/ui/toast'
 import { DashboardPage } from '@/features/dashboard/dashboard-page'
@@ -28,9 +29,12 @@ function App() {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <AppSidebar />
-      <main className="min-w-0 flex-1 p-5 lg:p-6">
-        <Page />
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <main className="min-w-0 flex-1 p-5 lg:p-6">
+          <Page />
+        </main>
+        <AppFooter />
+      </div>
       <Toaster />
     </div>
   )

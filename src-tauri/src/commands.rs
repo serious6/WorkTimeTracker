@@ -201,3 +201,8 @@ pub fn update_work_settings(
         database::write_settings(connection, &settings)
     })
 }
+
+#[tauri::command]
+pub fn get_app_version(database: State<'_, Database>) -> Result<Option<String>, String> {
+    with_connection(&database, database::read_app_version)
+}

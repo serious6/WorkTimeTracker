@@ -108,6 +108,7 @@ test('navigates between days and views', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'Work targets' })).toBeVisible()
+  await expect(page.getByRole('contentinfo')).toContainText('Build with ❤️ in Hamburg')
 })
 
 test('quick-adds time on the time management page', async ({ page }) => {

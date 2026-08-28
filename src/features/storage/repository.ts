@@ -20,4 +20,5 @@ export type Repository = {
   deleteProjectBudget: (id: number) => Promise<void>
   getWorkSettings: () => Promise<WorkSettings>
   updateWorkSettings: (settings: WorkSettings) => Promise<WorkSettings>
+  getAppVersion: () => Promise<string | null>
 }

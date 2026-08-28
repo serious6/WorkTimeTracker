@@ -52,7 +52,7 @@ Build the web frontend or desktop application with `npm run build` and `npm run 
 
 ## Release
 
-The `Release` workflow runs on manual dispatch (Actions → Release → Run workflow). It runs the web, Rust, and end-to-end checks in parallel, then bundles the desktop application on Linux, Windows, and macOS and publishes the bundles as a GitHub release. The tag defaults to `v<version from src-tauri/tauri.conf.json>` and can be overridden per run. Downloadable installers are attached to the release on the repository's Releases page.
+The `Release` workflow runs on manual dispatch (Actions → Release → Run workflow). It verifies that `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs the web, Rust, and end-to-end checks in parallel, then bundles the desktop application on Linux, Windows, and macOS and publishes the bundles as a GitHub release. The tag defaults to `v<version from src-tauri/tauri.conf.json>` and can be overridden per run. Downloadable installers are attached to the release on the repository's Releases page. On startup the application writes the version from `src-tauri/Cargo.toml` into the `app_metadata` table, and the footer shows that stored version.
 
 ## Containers
 
@@ -76,7 +76,7 @@ src/
   app/               Application providers and navigation
   components/        Layout and shadcn/ui-compatible primitives
   db/                Drizzle schema
-  features/          Dashboard, projects, time entries, time management, budgets, timer, settings, storage
+  features/          App info, dashboard, projects, time entries, time management, budgets, timer, settings, storage
   lib/               Date, error, and class-name helpers
   pages/             Projects, time entries, time management, budgets, reports, calendar, and settings views
 src-tauri/

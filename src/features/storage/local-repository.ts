@@ -226,4 +226,5 @@ export const localRepository: Repository = {
     write(SETTINGS_KEY, parsed)
     return parsed
   },
+  getAppVersion: async () => null,
 }

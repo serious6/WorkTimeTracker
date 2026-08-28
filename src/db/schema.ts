@@ -43,3 +43,8 @@ export const workSettings = sqliteTable('work_settings', {
   weeklyTargetMinutes: integer('weekly_target_minutes').notNull(),
   weekStartsOn: text('week_starts_on').notNull(),
 })
+
+export const appMetadata = sqliteTable('app_metadata', {
+  key: text().primaryKey(),
+  value: text().notNull(),
+})

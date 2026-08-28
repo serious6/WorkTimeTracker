@@ -1,10 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { z } from 'zod'
+import { z } from 'zod'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
 import type { Repository } from './repository'
+
+const appVersionSchema = z.string().min(1).nullable()
 
 async function call<Schema extends z.ZodType>(
   command: string,
@@ -43,4 +45,5 @@ export const tauriRepository: Repository = {
   },
   getWorkSettings: () => call('get_work_settings', {}, workSettingsSchema),
   updateWorkSettings: (settings) => call('update_work_settings', { settings }, workSettingsSchema),
+  getAppVersion: () => call('get_app_version', {}, appVersionSchema),
 }
