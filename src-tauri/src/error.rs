@@ -54,11 +54,6 @@ impl From<rusqlite::Error> for AppError {
             rusqlite::Error::QueryReturnedNoRows => {
                 Self::NotFound("The record was not found".to_owned())
             }
-            rusqlite::Error::SqliteFailure(failure, _)
-                if failure.code == rusqlite::ErrorCode::ConstraintViolation =>
-            {
-                Self::Conflict(error.to_string())
-            }
             _ => Self::Database(error.to_string()),
         }
     }

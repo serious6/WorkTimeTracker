@@ -3,7 +3,7 @@ use tauri::State;
 
 use crate::{
     auth::{self, LoginAttempts, Session},
-    database::{self, Database},
+    database::{self, Database, SwitchRunningTimeEntryError},
     error::{AppError, AppResult},
     models::{
         Credentials, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
@@ -256,10 +256,12 @@ pub fn switch_running_time_entry(
     let user_id = current_user(&session)?;
     let connection = database.0.lock()?;
     database::switch_running_time_entry(&connection, id, user_id, &input).map_err(|error| {
-        if matches!(error, rusqlite::Error::InvalidQuery) {
-            AppError::conflict(OVERLAP)
-        } else {
-            AppError::from(error)
+        match error {
+            SwitchRunningTimeEntryError::InvalidTimer => {
+                AppError::validation("invalid timer switch")
+            }
+            SwitchRunningTimeEntryError::Overlap => AppError::conflict(OVERLAP),
+            SwitchRunningTimeEntryError::Database(error) => AppError::from(error),
         }
     })
 }

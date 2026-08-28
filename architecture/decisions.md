@@ -30,11 +30,10 @@ restart always returns to the login page. Both backends lock an email out for 15
 failed logins, in memory only. The limits are part of the contract file, so both sides stay equal.
 
 The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
-session record with an expiry, so the signed in account cannot be changed by editing a user id.
-Client-side storage stays fully readable and writable, therefore the fallback is a development and
-test tool only. It is never shipped as the production path, which is also why it hashes passwords
-with PBKDF2-SHA256 (210,000 iterations, the strongest KDF available in the browser) while the Rust
-backend uses Argon2id for real credentials.
+session record with an expiry. Client-side storage stays fully readable and writable, therefore the
+fallback is a development and test tool only, not a security boundary. It is never shipped as the
+production path, which is also why it hashes passwords with PBKDF2-SHA256 (210,000 iterations, the
+strongest KDF available in the browser) while the Rust backend uses Argon2id for real credentials.
 
 ## 4. One mutex around SQLite
 

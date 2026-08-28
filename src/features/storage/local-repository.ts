@@ -4,6 +4,7 @@ import {
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
   authUserSchema,
+  credentialsSchema,
   registrationSchema,
   type AuthUser,
   type Credentials,
@@ -85,10 +86,7 @@ function readSessions(): Sessions {
   return read(SESSIONS_KEY, {}, (value) => sessionsSchema.parse(value))
 }
 
-/**
- * The browsing session only holds an opaque token, so the signed in account
- * cannot be changed by editing a user id.
- */
+/** Browser storage is a development and test fallback, not a security boundary. */
 function startSession(userId: number): void {
   const token = [...crypto.getRandomValues(new Uint8Array(32))]
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -252,10 +250,10 @@ export const localRepository: Repository = {
     return toAuthUser(user)
   },
   login: async (credentials: Credentials) => {
-    const email = credentials.email.trim().toLowerCase()
+    const { email, password } = validate(credentialsSchema, credentials)
     if (!loginAttempts.allows(email)) throw new AppError('rateLimited', LOCKED_OUT_MESSAGE)
     const user = readUsers().find((stored) => stored.email === email)
-    if (!user || !(await verifyPassword(credentials.password, user.passwordHash))) {
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
       loginAttempts.recordFailure(email)
       throw new AppError('validation', INVALID_CREDENTIALS_MESSAGE)
     }

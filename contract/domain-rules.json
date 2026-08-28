@@ -482,6 +482,25 @@
       "accepted": false
     }
   ],
+  "uniqueness": [
+    {
+      "name": "rejects a duplicate email",
+      "kind": "email",
+      "input": {
+        "email": "duplicate@example.com",
+        "password": "Str0ng-Passphrase!!x"
+      }
+    },
+    {
+      "name": "rejects a duplicate project budget",
+      "kind": "projectBudget",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 2400,
+        "dueDate": "2026-09-01"
+      }
+    }
+  ],
   "overlaps": [
     {
       "name": "allows an entry after another one",

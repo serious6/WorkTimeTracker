@@ -16,6 +16,12 @@ pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct Database(pub Mutex<Connection>);
 
+pub enum SwitchRunningTimeEntryError {
+    InvalidTimer,
+    Overlap,
+    Database(rusqlite::Error),
+}
+
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(include_str!("../../drizzle/0000_create_time_entries.sql")),
@@ -265,34 +271,44 @@ pub fn switch_running_time_entry(
     id: i64,
     user_id: i64,
     input: &SaveTimeEntry,
-) -> Result<TimeEntry> {
-    let transaction = connection.unchecked_transaction()?;
-    let current = read_entry(&transaction, id, user_id)?;
+) -> std::result::Result<TimeEntry, SwitchRunningTimeEntryError> {
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(SwitchRunningTimeEntryError::Database)?;
+    let current =
+        read_entry(&transaction, id, user_id).map_err(SwitchRunningTimeEntryError::Database)?;
     if current.end_time.is_some()
         || input.project_id.is_none()
         || input.end_time.is_some()
         || input.start_time <= current.start_time
     {
-        return Err(rusqlite::Error::InvalidQuery);
+        return Err(SwitchRunningTimeEntryError::InvalidTimer);
     }
 
-    transaction.execute(
-        "UPDATE time_entries
+    transaction
+        .execute(
+            "UPDATE time_entries
      SET end_time = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ?1 AND user_id = ?2",
-        params![id, user_id, input.start_time],
-    )?;
+            params![id, user_id, input.start_time],
+        )
+        .map_err(SwitchRunningTimeEntryError::Database)?;
     if overlaps(
         &transaction,
         user_id,
         &input.start_time,
         input.end_time.as_deref(),
         None,
-    )? {
-        return Err(rusqlite::Error::InvalidQuery);
+    )
+    .map_err(SwitchRunningTimeEntryError::Database)?
+    {
+        return Err(SwitchRunningTimeEntryError::Overlap);
     }
-    let created = insert_time_entry(&transaction, user_id, input)?;
-    transaction.commit()?;
+    let created = insert_time_entry(&transaction, user_id, input)
+        .map_err(SwitchRunningTimeEntryError::Database)?;
+    transaction
+        .commit()
+        .map_err(SwitchRunningTimeEntryError::Database)?;
     Ok(created)
 }
 

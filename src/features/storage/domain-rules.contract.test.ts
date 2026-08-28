@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import domainRules from '../../../contract/domain-rules.json'
 import { credentialsSchema, registrationSchema } from '@/features/auth/auth-schema'
 import {
@@ -11,6 +11,7 @@ import { saveProjectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { findOverlap } from '@/features/time-entries/overlap'
 import { saveTimeEntrySchema, type TimeEntry } from '@/features/time-entries/time-entry-schema'
+import { localRepository } from './local-repository'
 
 type Case = {
   name: string
@@ -30,6 +31,12 @@ type OverlapCase = {
   overlaps: boolean
 }
 
+type UniquenessCase = {
+  name: string
+  kind: 'email' | 'projectBudget'
+  input: unknown
+}
+
 /**
  * The same cases run against the Rust models in `src-tauri/src/contract.rs`.
  * A rule that changes on one side only makes one of the two suites fail.
@@ -45,6 +52,7 @@ const rules = domainRules as unknown as {
   timeEntries: Case[]
   projectBudgets: Case[]
   workSettings: Case[]
+  uniqueness: UniquenessCase[]
   overlaps: OverlapCase[]
 }
 
@@ -61,6 +69,11 @@ function entries(records: OverlapCase['existing']): TimeEntry[] {
 }
 
 describe('domain rule contract', () => {
+  beforeEach(() => {
+    globalThis.localStorage?.clear()
+    globalThis.sessionStorage?.clear()
+  })
+
   it('shares the security limits with the Rust backend', () => {
     expect(rules.securityLimits).toEqual({
       sessionTimeoutMinutes: SESSION_TIMEOUT_MINUTES,
@@ -103,6 +116,33 @@ describe('domain rule contract', () => {
     if (parsed.success && testCase.normalizedWorkingDays) {
       expect(parsed.data.workingDays).toEqual(testCase.normalizedWorkingDays)
     }
+  })
+
+  it.each(rules.uniqueness)('uniqueness: $name', async (testCase) => {
+    if (testCase.kind === 'email') {
+      const credentials = registrationSchema.parse(testCase.input)
+      await localRepository.register(credentials)
+
+      await expect(localRepository.register(credentials)).rejects.toMatchObject({ kind: 'conflict' })
+      return
+    }
+
+    await localRepository.register({
+      email: 'budget@example.com',
+      password: 'Str0ng-Passphrase!!x',
+    })
+    await localRepository.createProject({
+      name: 'Website Redesign',
+      description: null,
+      color: '#22c55e',
+      active: true,
+    })
+    const budget = saveProjectBudgetSchema.parse(testCase.input)
+    await localRepository.createProjectBudget(budget)
+
+    await expect(localRepository.createProjectBudget(budget)).rejects.toMatchObject({
+      kind: 'conflict',
+    })
   })
 
   it.each(rules.overlaps)('overlap: $name', (testCase) => {

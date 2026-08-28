@@ -50,6 +50,14 @@ struct OverlapCase {
     overlaps: bool,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UniquenessCase {
+    name: String,
+    kind: String,
+    input: Value,
+}
+
 fn rules() -> Value {
     serde_json::from_str(RULES).expect("the contract is valid JSON")
 }
@@ -127,6 +135,42 @@ fn validates_work_settings_like_the_contract() {
         let settings = check::<WorkSettings>(&case, WorkSettings::validate);
         if let (Some(settings), Some(days)) = (settings, case.normalized_working_days.as_ref()) {
             assert_eq!(&settings.working_days, days, "{}", case.name);
+        }
+    }
+}
+
+#[test]
+fn enforces_uniqueness_like_the_contract() {
+    let uniqueness: Vec<UniquenessCase> =
+        serde_json::from_value(rules()["uniqueness"].clone()).unwrap();
+
+    for case in uniqueness {
+        match case.kind.as_str() {
+            "email" => {
+                let credentials: Credentials = serde_json::from_value(case.input).unwrap();
+                let mut connection = Connection::open_in_memory().unwrap();
+                database::migrate(&mut connection).unwrap();
+                database::insert_user(&connection, &credentials.email, "argon2-hash").unwrap();
+
+                assert!(
+                    database::insert_user(&connection, &credentials.email, "argon2-hash").is_err(),
+                    "{}",
+                    case.name
+                );
+            }
+            "projectBudget" => {
+                let mut budget: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
+                let (connection, user_id) = database_with_project();
+                budget.project_id = 1;
+                database::insert_project_budget(&connection, user_id, &budget).unwrap();
+
+                assert!(
+                    database::insert_project_budget(&connection, user_id, &budget).is_err(),
+                    "{}",
+                    case.name
+                );
+            }
+            _ => panic!("{}: unknown uniqueness kind", case.name),
         }
     }
 }

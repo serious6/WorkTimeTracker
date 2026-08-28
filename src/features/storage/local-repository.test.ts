@@ -243,4 +243,23 @@ describe('local repository error kinds', () => {
       localRepository.login({ email: 'locked@example.com', password: PASSWORD }),
     ).rejects.toMatchObject({ kind: 'rateLimited', message: LOCKED_OUT_MESSAGE })
   })
+
+  it('does not count invalid credentials toward lockout', async () => {
+    await register('validation@example.com')
+    await localRepository.logout()
+
+    await expect(
+      localRepository.login({ email: 'validation@example.com', password: '' }),
+    ).rejects.toMatchObject({ kind: 'validation', message: 'Password is required' })
+
+    for (let attempt = 0; attempt < MAX_LOGIN_ATTEMPTS; attempt += 1) {
+      await expect(
+        localRepository.login({ email: 'validation@example.com', password: OTHER_PASSWORD }),
+      ).rejects.toMatchObject({ kind: 'validation', message: INVALID_CREDENTIALS_MESSAGE })
+    }
+
+    await expect(
+      localRepository.login({ email: 'validation@example.com', password: PASSWORD }),
+    ).rejects.toMatchObject({ kind: 'rateLimited', message: LOCKED_OUT_MESSAGE })
+  })
 })
