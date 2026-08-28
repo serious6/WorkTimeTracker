@@ -76,9 +76,9 @@ src/
   app/               Application providers and navigation
   components/        Layout and shadcn/ui-compatible primitives
   db/                Drizzle schema
-  features/          Dashboard, projects, time entries, timer, settings, storage
+  features/          Dashboard, projects, time entries, budgets, timer, settings, storage
   lib/               Date, error, and class-name helpers
-  pages/             Projects, time entries, reports, calendar, and settings views
+  pages/             Projects, time entries, budgets, reports, calendar, and settings views
 src-tauri/
   src/commands.rs    Tauri command boundary
   src/database.rs    SQLite persistence
@@ -94,3 +94,10 @@ time distribution per project, and recent projects.
 A running timer is a time entry without an end time, so durations are derived from timestamps
 and survive restarts, sleep, and backgrounding. In the browser the same UI runs against a
 `localStorage` repository, which keeps end-to-end tests independent from the native build.
+
+## Budgets
+
+The `Budgets` view manages one hour budget with a due date per project. Consumption and forecast
+are shown in `Reports` after selecting a project: budgeted hours, hours tracked until the due date,
+remaining hours, consumption in percent, and a forecast that extrapolates the pace so far over the
+remaining days. Budgets are never shown on the dashboard.

@@ -3,10 +3,24 @@ use tauri::State;
 
 use crate::{
     database::{self, Database},
-    models::{Project, SaveProject, SaveTimeEntry, TimeEntry, WorkSettings},
+    models::{
+        Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry,
+        WorkSettings,
+    },
 };
 
 const OVERLAP: &str = "This time overlaps with another time entry";
+const DUPLICATE_BUDGET: &str = "This project already has a budget";
+
+fn budget_error(error: rusqlite::Error) -> String {
+    if matches!(
+        error.sqlite_error_code(),
+        Some(rusqlite::ErrorCode::ConstraintViolation)
+    ) {
+        return DUPLICATE_BUDGET.to_owned();
+    }
+    error.to_string()
+}
 
 fn with_connection<T>(
     database: &State<'_, Database>,
@@ -135,6 +149,39 @@ pub fn switch_running_time_entry(
 pub fn delete_time_entry(database: State<'_, Database>, id: i64) -> Result<(), String> {
     with_connection(&database, |connection| {
         database::delete_time_entry(connection, id)
+    })
+}
+
+#[tauri::command]
+pub fn list_project_budgets(database: State<'_, Database>) -> Result<Vec<ProjectBudget>, String> {
+    with_connection(&database, database::list_project_budgets)
+}
+
+#[tauri::command]
+pub fn create_project_budget(
+    database: State<'_, Database>,
+    mut input: SaveProjectBudget,
+) -> Result<ProjectBudget, String> {
+    input.validate().map_err(str::to_owned)?;
+    let connection = database.0.lock().map_err(|error| error.to_string())?;
+    database::insert_project_budget(&connection, &input).map_err(budget_error)
+}
+
+#[tauri::command]
+pub fn update_project_budget(
+    database: State<'_, Database>,
+    id: i64,
+    mut input: SaveProjectBudget,
+) -> Result<ProjectBudget, String> {
+    input.validate().map_err(str::to_owned)?;
+    let connection = database.0.lock().map_err(|error| error.to_string())?;
+    database::update_project_budget(&connection, id, &input).map_err(budget_error)
+}
+
+#[tauri::command]
+pub fn delete_project_budget(database: State<'_, Database>, id: i64) -> Result<(), String> {
+    with_connection(&database, |connection| {
+        database::delete_project_budget(connection, id)
     })
 }
 

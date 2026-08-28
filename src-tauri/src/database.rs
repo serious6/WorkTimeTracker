@@ -3,7 +3,9 @@ use std::{path::Path, sync::Mutex};
 use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use rusqlite_migration::{Migrations, M};
 
-use crate::models::{Project, SaveProject, SaveTimeEntry, TimeEntry, WorkSettings};
+use crate::models::{
+    Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, WorkSettings,
+};
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
 
@@ -13,6 +15,9 @@ fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(include_str!("../../drizzle/0000_create_time_entries.sql")),
         M::up(include_str!("../../drizzle/0000_create_schema.sql")),
+        M::up(include_str!(
+            "../../drizzle/0001_create_project_budgets.sql"
+        )),
     ])
 }
 
@@ -224,6 +229,67 @@ pub fn delete_time_entry(connection: &Connection, id: i64) -> Result<()> {
     Ok(())
 }
 
+const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
+
+fn budget_from_row(row: &Row<'_>) -> Result<ProjectBudget> {
+    Ok(ProjectBudget {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        budget_minutes: row.get(2)?,
+        due_date: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
+pub fn list_project_budgets(connection: &Connection) -> Result<Vec<ProjectBudget>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {BUDGET_COLUMNS} FROM project_budgets ORDER BY due_date"
+    ))?;
+    let budgets = statement.query_map([], budget_from_row)?;
+    budgets.collect()
+}
+
+fn read_budget(connection: &Connection, id: i64) -> Result<ProjectBudget> {
+    connection.query_row(
+        &format!("SELECT {BUDGET_COLUMNS} FROM project_budgets WHERE id = ?1"),
+        [id],
+        budget_from_row,
+    )
+}
+
+pub fn insert_project_budget(
+    connection: &Connection,
+    input: &SaveProjectBudget,
+) -> Result<ProjectBudget> {
+    connection.execute(
+        "INSERT INTO project_budgets (project_id, budget_minutes, due_date, created_at, updated_at)
+     VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        params![input.project_id, input.budget_minutes, input.due_date],
+    )?;
+    read_budget(connection, connection.last_insert_rowid())
+}
+
+pub fn update_project_budget(
+    connection: &Connection,
+    id: i64,
+    input: &SaveProjectBudget,
+) -> Result<ProjectBudget> {
+    connection.execute(
+        "UPDATE project_budgets
+     SET project_id = ?2, budget_minutes = ?3, due_date = ?4,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     WHERE id = ?1",
+        params![id, input.project_id, input.budget_minutes, input.due_date],
+    )?;
+    read_budget(connection, id)
+}
+
+pub fn delete_project_budget(connection: &Connection, id: i64) -> Result<()> {
+    connection.execute("DELETE FROM project_budgets WHERE id = ?1", [id])?;
+    Ok(())
+}
+
 pub fn read_settings(connection: &Connection) -> Result<WorkSettings> {
     let settings = connection
         .query_row(
@@ -307,7 +373,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(2)
+            Ok(3)
         );
     }
 
@@ -323,7 +389,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(2)
+            Ok(3)
         );
         assert!(list_projects(&connection).unwrap().is_empty());
         assert!(list_time_entries(&connection).unwrap().is_empty());
@@ -515,6 +581,58 @@ mod tests {
                 .and_then(|entry| entry.end_time.as_deref()),
             Some("2026-08-27T09:00:00.000Z")
         );
+    }
+
+    #[test]
+    fn round_trips_and_deletes_project_budgets() {
+        let connection = connect();
+        let project = project(&connection);
+        let created = insert_project_budget(
+            &connection,
+            &SaveProjectBudget {
+                project_id: project.id,
+                budget_minutes: 4_800,
+                due_date: "2026-12-31".into(),
+            },
+        )
+        .unwrap();
+
+        let id = created.id;
+        assert_eq!(list_project_budgets(&connection).unwrap(), vec![created]);
+
+        let updated = update_project_budget(
+            &connection,
+            id,
+            &SaveProjectBudget {
+                project_id: project.id,
+                budget_minutes: 6_000,
+                due_date: "2027-01-31".into(),
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.budget_minutes, 6_000);
+
+        delete_project_budget(&connection, updated.id).unwrap();
+        assert!(list_project_budgets(&connection).unwrap().is_empty());
+    }
+
+    #[test]
+    fn removes_budgets_of_deleted_projects() {
+        let connection = connect();
+        let project = project(&connection);
+        insert_project_budget(
+            &connection,
+            &SaveProjectBudget {
+                project_id: project.id,
+                budget_minutes: 4_800,
+                due_date: "2026-12-31".into(),
+            },
+        )
+        .unwrap();
+
+        delete_project(&connection, project.id).unwrap();
+
+        assert!(list_project_budgets(&connection).unwrap().is_empty());
     }
 
     #[test]

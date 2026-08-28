@@ -20,6 +20,18 @@ export const timeEntries = sqliteTable('time_entries', {
   updatedAt: text('updated_at').notNull(),
 })
 
+export const projectBudgets = sqliteTable('project_budgets', {
+  id: integer().primaryKey({ autoIncrement: true }),
+  projectId: integer('project_id')
+    .notNull()
+    .unique()
+    .references(() => projects.id, { onDelete: 'cascade' }),
+  budgetMinutes: integer('budget_minutes').notNull(),
+  dueDate: text('due_date').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+})
+
 export const workSettings = sqliteTable('work_settings', {
   id: integer().primaryKey(),
   dailyTargetMinutes: integer('daily_target_minutes').notNull(),
