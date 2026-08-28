@@ -40,12 +40,13 @@ export function TimeManagementPage() {
   async function add(input: QuickAddInput) {
     const project = projects.find((candidate) => candidate.id === input.projectId)
     await quickAdd(input)
+    setDateKey(input.dateKey)
     toast('Time added', `${formatDuration(input.minutes)} added to ${project?.name ?? 'project'}`)
   }
 
   function quickAddTime(minutes: number) {
     if (!projectId) return
-    add({ projectId, dateKey, minutes }).catch((failure) =>
+    add({ projectId, dateKey: dateKey || toDateKey(new Date()), minutes }).catch((failure) =>
       errorToast('Time not added', errorMessage(failure, 'The time could not be added.')),
     )
   }
