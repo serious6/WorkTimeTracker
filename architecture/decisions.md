@@ -4,7 +4,8 @@
 
 The Rust commands (`src-tauri/src/commands.rs`) are the production backend. The browser fallback
 (`src/features/storage/local-repository.ts`) exists so that the UI can be developed and tested with
-Playwright without a native build. Both implement the same domain rules, so they can drift apart.
+Playwright without a native build. Both implement the same domain rules and would otherwise drift
+apart silently.
 
 `contract/domain-rules.json` is the single source of truth for those rules. Every case is executed
 twice: by `src-tauri/src/contract.rs` against the Rust models and by
