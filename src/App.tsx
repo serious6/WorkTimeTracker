@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { AppFooter } from '@/components/layout/app-footer'
 import { AppHeader } from '@/components/layout/app-header'
@@ -33,8 +33,11 @@ function App() {
   const [registering, setRegistering] = useState(false)
   const Page = pages[view]
 
+  useEffect(() => {
+    if (user) setRegistering(false)
+  }, [user])
+
   if (isPending) return null
-  if (user && registering) setRegistering(false)
 
   if (!user) {
     return (
