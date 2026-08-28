@@ -2,6 +2,7 @@ import { useNavigationStore } from '@/app/navigation'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { Toaster } from '@/components/ui/toast'
 import { DashboardPage } from '@/features/dashboard/dashboard-page'
+import { BudgetsPage } from '@/pages/budgets-page'
 import { CalendarPage } from '@/pages/calendar-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { ReportsPage } from '@/pages/reports-page'
@@ -14,6 +15,7 @@ const pages = {
   projects: ProjectsPage,
   'time-entries': TimeEntriesPage,
   'time-management': TimeManagementPage,
+  budgets: BudgetsPage,
   reports: ReportsPage,
   calendar: CalendarPage,
   settings: SettingsPage,

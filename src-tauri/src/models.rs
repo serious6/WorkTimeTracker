@@ -1,4 +1,4 @@
-use chrono::{DateTime, SecondsFormat};
+use chrono::{DateTime, NaiveDate, SecondsFormat};
 use serde::{Deserialize, Serialize};
 
 const MAX_NAME: usize = 100;
@@ -25,6 +25,10 @@ fn is_color(value: &str) -> bool {
     value.len() == 7
         && value.starts_with('#')
         && value[1..].chars().all(|char| char.is_ascii_hexdigit())
+}
+
+fn is_date(value: &str) -> bool {
+    NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok_and(|date| date.to_string() == value)
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,6 +125,41 @@ pub struct TimeEntry {
     pub updated_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveProjectBudget {
+    pub project_id: i64,
+    pub budget_minutes: i64,
+    pub due_date: String,
+}
+
+impl SaveProjectBudget {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize(&mut self.due_date);
+        if self.project_id <= 0 {
+            return Err("invalid project");
+        }
+        if self.budget_minutes <= 0 {
+            return Err("budget must be greater than zero");
+        }
+        if !is_date(&self.due_date) {
+            return Err("invalid due date");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectBudget {
+    pub id: i64,
+    pub project_id: i64,
+    pub budget_minutes: i64,
+    pub due_date: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkSettings {
@@ -206,6 +245,36 @@ mod tests {
         };
 
         assert_eq!(input.validate(), Err("invalid start time"));
+    }
+
+    #[test]
+    fn validates_project_budget_input() {
+        let mut input = SaveProjectBudget {
+            project_id: 1,
+            budget_minutes: 4_800,
+            due_date: " 2026-12-31 ".into(),
+        };
+        input.validate().unwrap();
+        assert_eq!(input.due_date, "2026-12-31");
+    }
+
+    #[test]
+    fn rejects_invalid_project_budgets() {
+        let budget = |project_id, budget_minutes, due_date: &str| {
+            SaveProjectBudget {
+                project_id,
+                budget_minutes,
+                due_date: due_date.into(),
+            }
+            .validate()
+        };
+
+        assert_eq!(budget(0, 60, "2026-12-31"), Err("invalid project"));
+        assert_eq!(
+            budget(1, 0, "2026-12-31"),
+            Err("budget must be greater than zero")
+        );
+        assert_eq!(budget(1, 60, "2026-13-31"), Err("invalid due date"));
     }
 
     #[test]

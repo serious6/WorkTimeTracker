@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { z } from 'zod'
+import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
@@ -32,6 +33,13 @@ export const tauriRepository: Repository = {
     call('switch_running_time_entry', { id, input }, timeEntrySchema),
   deleteTimeEntry: async (id) => {
     await invoke('delete_time_entry', { id })
+  },
+  listProjectBudgets: () => call('list_project_budgets', {}, projectBudgetSchema.array()),
+  createProjectBudget: (input) => call('create_project_budget', { input }, projectBudgetSchema),
+  updateProjectBudget: (id, input) =>
+    call('update_project_budget', { id, input }, projectBudgetSchema),
+  deleteProjectBudget: async (id) => {
+    await invoke('delete_project_budget', { id })
   },
   getWorkSettings: () => call('get_work_settings', {}, workSettingsSchema),
   updateWorkSettings: (settings) => call('update_work_settings', { settings }, workSettingsSchema),

@@ -76,9 +76,9 @@ src/
   app/               Application providers and navigation
   components/        Layout and shadcn/ui-compatible primitives
   db/                Drizzle schema
-  features/          Dashboard, projects, time entries, time management, timer, settings, storage
+  features/          Dashboard, projects, time entries, time management, budgets, timer, settings, storage
   lib/               Date, error, and class-name helpers
-  pages/             Projects, time entries, time management, reports, calendar, and settings views
+  pages/             Projects, time entries, time management, budgets, reports, calendar, and settings views
 src-tauri/
   src/commands.rs    Tauri command boundary
   src/database.rs    SQLite persistence
@@ -101,3 +101,10 @@ Time Management adds already worked time retroactively. Pick a project and a dat
 quick-add buttons (15 min, 30 min, 1 hour, 1 day from the daily target) or `Custom` for free
 durations such as `2h 45m`, `90m`, or `1.5h`. Entries are placed in the first free slot of that
 day, so they never overlap existing entries, and can be edited or deleted in the list below.
+
+## Budgets
+
+The `Budgets` view manages one hour budget with a due date per project. Consumption and forecast
+are shown in `Reports` after selecting a project: budgeted hours, hours tracked until the due date,
+remaining hours, consumption in percent, and a forecast that extrapolates the pace so far over the
+remaining days. Budgets are never shown on the dashboard.

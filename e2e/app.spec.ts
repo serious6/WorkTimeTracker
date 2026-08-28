@@ -8,6 +8,12 @@ function trackingCard(page: Page) {
   return page.getByRole('region', { name: 'Currently Tracking' })
 }
 
+function dateKey(inDays: number) {
+  const date = new Date()
+  date.setDate(date.getDate() + inDays)
+  return date.toISOString().slice(0, 10)
+}
+
 async function createProject(page: Page, name: string) {
   await trackingCard(page).getByRole('button', { name: 'Create project' }).click()
   await dialog(page).getByLabel('Name').fill(name)
@@ -142,4 +148,50 @@ test('quick-adds time on the time management page', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Dashboard' }).click()
   await expect(page.getByText('1h 15m').first()).toBeVisible()
+})
+
+test('manages a project budget and reports its consumption and forecast', async ({ page }) => {
+  await createProject(page, 'Budgeted Project')
+  await addEntry(page, 'Budgeted Project', '09:00', '11:00')
+
+  await page.getByRole('button', { name: 'Budgets' }).click()
+  await expect(page.getByRole('heading', { name: 'Budgets', exact: true })).toBeVisible()
+  await expect(page.getByText('No budgets yet.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Create budget' }).click()
+  await dialog(page).getByLabel('Project').selectOption({ label: 'Budgeted Project' })
+  await dialog(page).getByLabel('Budget (hours)').fill('0')
+  await dialog(page).getByLabel('Due date').fill(dateKey(30))
+  await dialog(page).getByRole('button', { name: 'Create budget' }).click()
+  await expect(page.getByText('Budget must be greater than zero hours')).toBeVisible()
+
+  await dialog(page).getByLabel('Budget (hours)').fill('10')
+  await dialog(page).getByLabel('Due date').fill('2020-01-01')
+  await dialog(page).getByRole('button', { name: 'Create budget' }).click()
+  await expect(page.getByText('Due date must be today or later')).toBeVisible()
+
+  await dialog(page).getByLabel('Due date').fill(dateKey(30))
+  await dialog(page).getByRole('button', { name: 'Create budget' }).click()
+  await expect(dialog(page)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Reports' }).click()
+  await expect(page.getByText('Select a project to see its budget.')).toBeVisible()
+  await page.getByLabel('Budget project').selectOption({ label: 'Budgeted Project' })
+  await expect(page.getByRole('progressbar', { name: 'Budget consumption' })).toBeVisible()
+  await expect(page.getByText('2h 00m', { exact: true })).toBeVisible()
+  await expect(page.getByText('20%', { exact: true })).toBeVisible()
+  await expect(page.getByText('Forecast')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Budgets' }).click()
+  await page.getByRole('button', { name: 'Delete budget for Budgeted Project' }).click()
+  await dialog(page).getByRole('button', { name: 'Delete budget' }).click()
+  await expect(page.getByText('Budget deleted')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Reports' }).click()
+  await page.getByLabel('Budget project').selectOption({ label: 'Budgeted Project' })
+  await expect(page.getByText('No budget is defined for this project.')).toBeVisible()
+})
+
+test('does not show budgets on the dashboard', async ({ page }) => {
+  await expect(page.getByText('Project budget')).toBeHidden()
 })

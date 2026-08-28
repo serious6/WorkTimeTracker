@@ -5,6 +5,7 @@ export type View =
   | 'projects'
   | 'time-entries'
   | 'time-management'
+  | 'budgets'
   | 'reports'
   | 'calendar'
   | 'settings'

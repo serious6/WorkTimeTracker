@@ -1,4 +1,10 @@
 import {
+  DUPLICATE_BUDGET_MESSAGE,
+  projectBudgetSchema,
+  saveProjectBudgetSchema,
+  type ProjectBudget,
+} from '@/features/budgets/budget-schema'
+import {
   projectSchema,
   saveProjectSchema,
   type Project,
@@ -21,6 +27,7 @@ import type { Repository } from './repository'
 
 const PROJECTS_KEY = 'work-time-tracker.projects'
 const ENTRIES_KEY = 'work-time-tracker.time-entries'
+const BUDGETS_KEY = 'work-time-tracker.project-budgets'
 const SETTINGS_KEY = 'work-time-tracker.work-settings'
 
 function read<Value>(key: string, fallback: Value, parse: (value: unknown) => Value): Value {
@@ -42,6 +49,10 @@ function readProjects(): Project[] {
 
 function readEntries(): TimeEntry[] {
   return read(ENTRIES_KEY, [], (value) => timeEntrySchema.array().parse(value))
+}
+
+function readBudgets(): ProjectBudget[] {
+  return read(BUDGETS_KEY, [], (value) => projectBudgetSchema.array().parse(value))
 }
 
 function nextId(records: { id: number }[]): number {
@@ -83,6 +94,10 @@ export const localRepository: Repository = {
     write(
       PROJECTS_KEY,
       readProjects().filter((project) => project.id !== id),
+    )
+    write(
+      BUDGETS_KEY,
+      readBudgets().filter((budget) => budget.projectId !== id),
     )
     write(
       ENTRIES_KEY,
@@ -163,6 +178,45 @@ export const localRepository: Repository = {
     write(
       ENTRIES_KEY,
       readEntries().filter((entry) => entry.id !== id),
+    )
+  },
+  listProjectBudgets: async () =>
+    readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
+  createProjectBudget: async (input) => {
+    const parsed = saveProjectBudgetSchema.parse(input)
+    const budgets = readBudgets()
+    if (budgets.some((budget) => budget.projectId === parsed.projectId)) {
+      throw new Error(DUPLICATE_BUDGET_MESSAGE)
+    }
+    const now = new Date().toISOString()
+    const budget = projectBudgetSchema.parse({
+      ...parsed,
+      id: nextId(budgets),
+      createdAt: now,
+      updatedAt: now,
+    })
+    write(BUDGETS_KEY, [...budgets, budget])
+    return budget
+  },
+  updateProjectBudget: async (id, input) => {
+    const parsed = saveProjectBudgetSchema.parse(input)
+    const budgets = readBudgets()
+    const current = budgets.find((budget) => budget.id === id)
+    if (!current) throw new Error('Budget not found')
+    if (budgets.some((budget) => budget.projectId === parsed.projectId && budget.id !== id)) {
+      throw new Error(DUPLICATE_BUDGET_MESSAGE)
+    }
+    const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
+    write(
+      BUDGETS_KEY,
+      budgets.map((budget) => (budget.id === id ? updated : budget)),
+    )
+    return updated
+  },
+  deleteProjectBudget: async (id) => {
+    write(
+      BUDGETS_KEY,
+      readBudgets().filter((budget) => budget.id !== id),
     )
   },
   getWorkSettings: async () =>
