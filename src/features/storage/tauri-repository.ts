@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { z } from 'zod'
+import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
@@ -21,6 +22,12 @@ async function call<Schema extends z.ZodType>(
 }
 
 export const tauriRepository: Repository = {
+  currentSession: () => call('current_session', {}, authUserSchema.nullable()),
+  register: (credentials) => call('register', { credentials }, authUserSchema),
+  login: (credentials) => call('login', { credentials }, authUserSchema),
+  logout: async () => {
+    await invoke('logout')
+  },
   listProjects: () => call('list_projects', {}, projectSchema.array()),
   createProject: (input) => call('create_project', { input }, projectSchema),
   updateProject: (id, input) => call('update_project', { id, input }, projectSchema),

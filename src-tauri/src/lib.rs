@@ -1,8 +1,10 @@
+mod auth;
 mod commands;
 mod database;
 mod models;
 mod window_state;
 
+use auth::Session;
 use database::Database;
 use tauri::{Manager, WindowEvent};
 
@@ -14,6 +16,7 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             let database = Database::open(data_dir.join("work-time-tracker.sqlite"))?;
             app.manage(database);
+            app.manage(Session::default());
             if let Some(window) = app.get_webview_window("main") {
                 window_state::restore(&window.as_ref().window_ref());
             }
@@ -25,6 +28,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::register,
+            commands::login,
+            commands::logout,
+            commands::current_session,
             commands::list_projects,
             commands::create_project,
             commands::update_project,

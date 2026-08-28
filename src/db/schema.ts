@@ -1,8 +1,16 @@
 import { sql } from 'drizzle-orm'
 import { check, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
+export const users = sqliteTable('users', {
+  id: integer().primaryKey({ autoIncrement: true }),
+  email: text().notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: text('created_at').notNull(),
+})
+
 export const projects = sqliteTable('projects', {
   id: integer().primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
   name: text().notNull(),
   description: text(),
   color: text().notNull(),
@@ -13,6 +21,7 @@ export const projects = sqliteTable('projects', {
 
 export const timeEntries = sqliteTable('time_entries', {
   id: integer().primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   startTime: text('start_time').notNull(),
   endTime: text('end_time'),
@@ -25,6 +34,7 @@ export const projectBudgets = sqliteTable(
   'project_budgets',
   {
     id: integer().primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
     projectId: integer('project_id')
       .notNull()
       .unique()
@@ -38,7 +48,10 @@ export const projectBudgets = sqliteTable(
 )
 
 export const workSettings = sqliteTable('work_settings', {
-  id: integer().primaryKey(),
+  id: integer().primaryKey({ autoIncrement: true }),
+  userId: integer('user_id')
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
   weeklyTargetMinutes: integer('weekly_target_minutes').notNull(),
   workingDays: text('working_days').notNull(),
   weekStartsOn: text('week_starts_on').notNull(),

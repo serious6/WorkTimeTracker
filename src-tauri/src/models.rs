@@ -31,6 +31,87 @@ fn is_date(value: &str) -> bool {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok_and(|date| date.to_string() == value)
 }
 
+const MAX_EMAIL: usize = 254;
+
+/// Minimum length required by the password policy.
+pub const MIN_PASSWORD_LENGTH: usize = 20;
+/// Number of special characters required by the password policy.
+pub const MIN_PASSWORD_SPECIAL_CHARACTERS: usize = 2;
+
+fn is_email(value: &str) -> bool {
+    let mut parts = value.split('@');
+    let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !value.chars().any(char::is_whitespace)
+        && value.len() <= MAX_EMAIL
+}
+
+fn is_special(character: char) -> bool {
+    !character.is_alphanumeric() && !character.is_whitespace()
+}
+
+/// Mirrors the policy that the user creation page validates while typing.
+pub fn check_password_policy(password: &str) -> Result<(), &'static str> {
+    if password.chars().count() < MIN_PASSWORD_LENGTH {
+        return Err("password must have at least 20 characters");
+    }
+    if !password.chars().any(char::is_uppercase) {
+        return Err("password must contain an uppercase letter");
+    }
+    if !password.chars().any(char::is_lowercase) {
+        return Err("password must contain a lowercase letter");
+    }
+    if password
+        .chars()
+        .filter(|character| is_special(*character))
+        .count()
+        < MIN_PASSWORD_SPECIAL_CHARACTERS
+    {
+        return Err("password must contain at least two special characters");
+    }
+    Ok(())
+}
+
+/// Login and registration input. The password is only used to derive a hash.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Credentials {
+    pub email: String,
+    pub password: String,
+}
+
+impl Credentials {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize(&mut self.email);
+        self.email = self.email.to_lowercase();
+        if !is_email(&self.email) {
+            return Err("invalid email");
+        }
+        if self.password.is_empty() {
+            return Err("password is required");
+        }
+        Ok(())
+    }
+
+    pub fn validate_registration(&mut self) -> Result<(), &'static str> {
+        self.validate()?;
+        check_password_policy(&self.password)
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct User {
+    pub id: i64,
+    pub email: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveProject {
@@ -341,6 +422,64 @@ mod tests {
         assert_eq!(
             settings(2_400, &["someday"]).validate(),
             Err("invalid working day")
+        );
+    }
+
+    fn credentials(email: &str, password: &str) -> Credentials {
+        Credentials {
+            email: email.into(),
+            password: password.into(),
+        }
+    }
+
+    #[test]
+    fn normalizes_the_email_of_credentials() {
+        let mut input = credentials(" User@Example.COM ", "secret");
+        input.validate().unwrap();
+        assert_eq!(input.email, "user@example.com");
+    }
+
+    #[test]
+    fn rejects_malformed_emails() {
+        for email in ["user", "user@example", "user@@example.com", "@example.com"] {
+            assert_eq!(
+                credentials(email, "secret").validate(),
+                Err("invalid email"),
+                "{email}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_a_policy_compliant_password() {
+        check_password_policy("Str0ng-Passphrase!!x").unwrap();
+    }
+
+    #[test]
+    fn rejects_passwords_that_break_the_policy() {
+        assert_eq!(
+            check_password_policy("Short!!a"),
+            Err("password must have at least 20 characters")
+        );
+        assert_eq!(
+            check_password_policy("str0ng-passphrase!!x"),
+            Err("password must contain an uppercase letter")
+        );
+        assert_eq!(
+            check_password_policy("STR0NG-PASSPHRASE!!X"),
+            Err("password must contain a lowercase letter")
+        );
+        assert_eq!(
+            check_password_policy("Str0ngPassphrase!xxxx"),
+            Err("password must contain at least two special characters")
+        );
+    }
+
+    #[test]
+    fn rejects_registrations_that_break_the_password_policy() {
+        assert_eq!(
+            credentials("user@example.com", "secret").validate_registration(),
+            Err("password must have at least 20 characters")
         );
     }
 }

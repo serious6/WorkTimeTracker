@@ -18,11 +18,16 @@ model {
       technology 'SQLite, Drizzle schema'
     }
 
+    session = container 'Session' {
+      technology 'Rust, Argon2id password hashes'
+    }
+
     frontend -> backend 'Invokes commands'
-    backend -> database 'Reads and writes'
+    backend -> session 'Resolves the signed in user'
+    backend -> database 'Reads and writes data of that user, verifies credentials'
   }
 
-  user -> application 'Tracks work time'
+  user -> application 'Signs in and tracks work time'
 }
 
 views {

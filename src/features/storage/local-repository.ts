@@ -1,3 +1,13 @@
+import { z } from 'zod'
+import {
+  DUPLICATE_EMAIL_MESSAGE,
+  INVALID_CREDENTIALS_MESSAGE,
+  PASSWORD_POLICY_MESSAGE,
+  authUserSchema,
+  registrationSchema,
+  type AuthUser,
+  type Credentials,
+} from '@/features/auth/auth-schema'
 import {
   DUPLICATE_BUDGET_MESSAGE,
   projectBudgetSchema,
@@ -25,10 +35,18 @@ import {
 } from '@/features/time-entries/time-entry-schema'
 import type { Repository } from './repository'
 
-const PROJECTS_KEY = 'work-time-tracker.projects'
-const ENTRIES_KEY = 'work-time-tracker.time-entries'
-const BUDGETS_KEY = 'work-time-tracker.project-budgets'
-const SETTINGS_KEY = 'work-time-tracker.work-settings'
+const USERS_KEY = 'work-time-tracker.users'
+const SCOPED_KEYS = ['projects', 'time-entries', 'project-budgets', 'work-settings'] as const
+
+type ScopedKey = (typeof SCOPED_KEYS)[number]
+
+export const NOT_SIGNED_IN_MESSAGE = 'Please sign in first'
+
+const storedUserSchema = authUserSchema.extend({ passwordHash: z.string() })
+
+type StoredUser = z.infer<typeof storedUserSchema>
+
+const SESSION_KEY = 'work-time-tracker.session'
 
 function read<Value>(key: string, fallback: Value, parse: (value: unknown) => Value): Value {
   try {
@@ -43,20 +61,108 @@ function write(key: string, value: unknown): void {
   globalThis.localStorage?.setItem(key, JSON.stringify(value))
 }
 
+/** The session ends with the browsing session, so a restart asks for a login. */
+function sessionUserId(): number | null {
+  const stored = Number(globalThis.sessionStorage?.getItem(SESSION_KEY))
+  return Number.isInteger(stored) && stored > 0 ? stored : null
+}
+
+function setSessionUserId(userId: number | null): void {
+  if (userId === null) globalThis.sessionStorage?.removeItem(SESSION_KEY)
+  else globalThis.sessionStorage?.setItem(SESSION_KEY, String(userId))
+}
+
+function requireUserId(): number {
+  const userId = sessionUserId()
+  if (userId === null) throw new Error(NOT_SIGNED_IN_MESSAGE)
+  return userId
+}
+
+/** All records are stored below the key of their owner. */
+function scopedKey(key: ScopedKey): string {
+  return `work-time-tracker.${requireUserId()}.${key}`
+}
+
+function readUsers(): StoredUser[] {
+  return read(USERS_KEY, [], (value) => storedUserSchema.array().parse(value))
+}
+
+function toAuthUser({ id, email, createdAt }: StoredUser): AuthUser {
+  return { id, email, createdAt }
+}
+
 function readProjects(): Project[] {
-  return read(PROJECTS_KEY, [], (value) => projectSchema.array().parse(value))
+  return read(scopedKey('projects'), [], (value) => projectSchema.array().parse(value))
 }
 
 function readEntries(): TimeEntry[] {
-  return read(ENTRIES_KEY, [], (value) => timeEntrySchema.array().parse(value))
+  return read(scopedKey('time-entries'), [], (value) => timeEntrySchema.array().parse(value))
 }
 
 function readBudgets(): ProjectBudget[] {
-  return read(BUDGETS_KEY, [], (value) => projectBudgetSchema.array().parse(value))
+  return read(scopedKey('project-budgets'), [], (value) => projectBudgetSchema.array().parse(value))
 }
 
 function nextId(records: { id: number }[]): number {
   return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
+}
+
+const PBKDF2_ITERATIONS = 210_000
+
+function toBase64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+}
+
+function fromBase64(value: string): Uint8Array {
+  return Uint8Array.from(atob(value), (character) => character.charCodeAt(0))
+}
+
+async function derive(password: string, salt: Uint8Array, iterations: number): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
+    key,
+    256,
+  )
+  return toBase64(new Uint8Array(bits))
+}
+
+/** Passwords are stored as a salted PBKDF2 digest, never in plaintext. */
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const digest = await derive(password, salt, PBKDF2_ITERATIONS)
+  return `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${toBase64(salt)}$${digest}`
+}
+
+function equals(left: string, right: string): boolean {
+  const maxLength = Math.max(left.length, right.length)
+  let difference = left.length ^ right.length
+  for (let index = 0; index < maxLength; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0)
+  }
+  return difference === 0
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  const [scheme, iterations, salt, digest] = hash.split('$')
+  if (scheme !== 'pbkdf2-sha256' || !salt || !digest) return false
+  return equals(await derive(password, fromBase64(salt), Number(iterations)), digest)
+}
+
+/** Hands the data of the former single-user storage to the first user. */
+function claimLegacyData(userId: number): void {
+  for (const key of SCOPED_KEYS) {
+    const legacy = globalThis.localStorage?.getItem(`work-time-tracker.${key}`)
+    if (legacy === null || legacy === undefined) continue
+    globalThis.localStorage?.setItem(`work-time-tracker.${userId}.${key}`, legacy)
+    globalThis.localStorage?.removeItem(`work-time-tracker.${key}`)
+  }
 }
 
 /**
@@ -64,6 +170,43 @@ function nextId(records: { id: number }[]): number {
  * behaviour of the Rust commands, including overlap rejection.
  */
 export const localRepository: Repository = {
+  currentSession: async () => {
+    const user = readUsers().find(({ id }) => id === sessionUserId())
+    return user ? toAuthUser(user) : null
+  },
+  register: async (credentials: Credentials) => {
+    const parsed = registrationSchema.safeParse(credentials)
+    if (!parsed.success) {
+      const emailError = parsed.error.issues.find((issue) => issue.path[0] === 'email')
+      if (emailError) throw new Error(emailError.message)
+      throw new Error(PASSWORD_POLICY_MESSAGE)
+    }
+    const { email, password } = parsed.data
+    const users = readUsers()
+    if (users.some((user) => user.email === email)) throw new Error(DUPLICATE_EMAIL_MESSAGE)
+    const user: StoredUser = {
+      id: nextId(users),
+      email,
+      createdAt: new Date().toISOString(),
+      passwordHash: await hashPassword(password),
+    }
+    write(USERS_KEY, [...users, user])
+    setSessionUserId(user.id)
+    if (users.length === 0) claimLegacyData(user.id)
+    return toAuthUser(user)
+  },
+  login: async (credentials: Credentials) => {
+    const email = credentials.email.trim().toLowerCase()
+    const user = readUsers().find((stored) => stored.email === email)
+    if (!user || !(await verifyPassword(credentials.password, user.passwordHash))) {
+      throw new Error(INVALID_CREDENTIALS_MESSAGE)
+    }
+    setSessionUserId(user.id)
+    return toAuthUser(user)
+  },
+  logout: async () => {
+    setSessionUserId(null)
+  },
   listProjects: async () => readProjects().sort((left, right) => left.name.localeCompare(right.name)),
   createProject: async (input) => {
     const parsed = saveProjectSchema.parse(input)
@@ -75,7 +218,7 @@ export const localRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(PROJECTS_KEY, [...projects, project])
+    write(scopedKey('projects'), [...projects, project])
     return project
   },
   updateProject: async (id, input) => {
@@ -85,22 +228,22 @@ export const localRepository: Repository = {
     if (!current) throw new Error('Project not found')
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
     write(
-      PROJECTS_KEY,
+      scopedKey('projects'),
       projects.map((project) => (project.id === id ? updated : project)),
     )
     return updated
   },
   deleteProject: async (id) => {
     write(
-      PROJECTS_KEY,
+      scopedKey('projects'),
       readProjects().filter((project) => project.id !== id),
     )
     write(
-      BUDGETS_KEY,
+      scopedKey('project-budgets'),
       readBudgets().filter((budget) => budget.projectId !== id),
     )
     write(
-      ENTRIES_KEY,
+      scopedKey('time-entries'),
       readEntries().map((entry) => (entry.projectId === id ? { ...entry, projectId: null } : entry)),
     )
   },
@@ -118,7 +261,7 @@ export const localRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(ENTRIES_KEY, [...entries, entry])
+    write(scopedKey('time-entries'), [...entries, entry])
     return entry
   },
   updateTimeEntry: async (id, input) => {
@@ -129,7 +272,7 @@ export const localRepository: Repository = {
     if (findOverlap(entries, parsed, id)) throw new Error(OVERLAP_MESSAGE)
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
     write(
-      ENTRIES_KEY,
+      scopedKey('time-entries'),
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
     return updated
@@ -144,7 +287,7 @@ export const localRepository: Repository = {
       updatedAt: new Date().toISOString(),
     })
     write(
-      ENTRIES_KEY,
+      scopedKey('time-entries'),
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
     return updated
@@ -171,12 +314,12 @@ export const localRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(ENTRIES_KEY, [...nextEntries, created])
+    write(scopedKey('time-entries'), [...nextEntries, created])
     return created
   },
   deleteTimeEntry: async (id) => {
     write(
-      ENTRIES_KEY,
+      scopedKey('time-entries'),
       readEntries().filter((entry) => entry.id !== id),
     )
   },
@@ -195,7 +338,7 @@ export const localRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(BUDGETS_KEY, [...budgets, budget])
+    write(scopedKey('project-budgets'), [...budgets, budget])
     return budget
   },
   updateProjectBudget: async (id, input) => {
@@ -208,22 +351,24 @@ export const localRepository: Repository = {
     }
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
     write(
-      BUDGETS_KEY,
+      scopedKey('project-budgets'),
       budgets.map((budget) => (budget.id === id ? updated : budget)),
     )
     return updated
   },
   deleteProjectBudget: async (id) => {
     write(
-      BUDGETS_KEY,
+      scopedKey('project-budgets'),
       readBudgets().filter((budget) => budget.id !== id),
     )
   },
   getWorkSettings: async () =>
-    read(SETTINGS_KEY, DEFAULT_WORK_SETTINGS, (value) => workSettingsSchema.parse(value)),
+    read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
+      workSettingsSchema.parse(value),
+    ),
   updateWorkSettings: async (settings) => {
     const parsed: WorkSettings = workSettingsSchema.parse(settings)
-    write(SETTINGS_KEY, parsed)
+    write(scopedKey('work-settings'), parsed)
     return parsed
   },
   getAppVersion: async () => null,

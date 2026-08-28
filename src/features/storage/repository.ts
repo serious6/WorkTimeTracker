@@ -1,9 +1,14 @@
+import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
 
 export type Repository = {
+  currentSession: () => Promise<AuthUser | null>
+  register: (credentials: Credentials) => Promise<AuthUser>
+  login: (credentials: Credentials) => Promise<AuthUser>
+  logout: () => Promise<void>
   listProjects: () => Promise<Project[]>
   createProject: (input: SaveProject) => Promise<Project>
   updateProject: (id: number, input: SaveProject) => Promise<Project>
