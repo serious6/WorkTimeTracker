@@ -49,6 +49,10 @@ function OvertimeSection({
   )
 }
 
+function targetCaption(targetMinutes: number): string {
+  return targetMinutes > 0 ? `vs ${formatDuration(targetMinutes)} target` : 'No target scheduled'
+}
+
 export function OvertimeOverviewCard({
   selectedDate,
   weekStart,
@@ -76,7 +80,7 @@ export function OvertimeOverviewCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <OvertimeSection
-          caption={`vs ${formatDuration(dailyTargetMinutes)} standard`}
+          caption={targetCaption(dailyTargetMinutes)}
           label="One Day"
           onOpen={onOpenDay}
           overtime={overtimeMinutes(trackedTodayMinutes, dailyTargetMinutes)}
@@ -84,7 +88,7 @@ export function OvertimeOverviewCard({
           progress={progressPercentage(trackedTodayMinutes, dailyTargetMinutes)}
         />
         <OvertimeSection
-          caption={`vs ${formatDuration(weeklyTargetMinutes)} standard`}
+          caption={targetCaption(weeklyTargetMinutes)}
           label="One Week"
           onOpen={onOpenWeek}
           overtime={overtimeMinutes(trackedWeekMinutes, weeklyTargetMinutes)}

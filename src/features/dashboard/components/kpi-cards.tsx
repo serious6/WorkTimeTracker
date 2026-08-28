@@ -46,6 +46,11 @@ function KpiCard({ label, value, caption, icon: Icon, accent = 'default', progre
   )
 }
 
+/** Days outside the configured schedule have no target to compare against. */
+function targetCaption(prefix: string, targetMinutes: number): string {
+  return targetMinutes > 0 ? `${prefix} ${formatDuration(targetMinutes)}` : 'No target scheduled'
+}
+
 export function KpiCards({
   trackedTodayMinutes,
   trackedWeekMinutes,
@@ -63,7 +68,7 @@ export function KpiCards({
   return (
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <KpiCard
-        caption={`of ${formatDuration(dailyTargetMinutes)} goal`}
+        caption={targetCaption('of', dailyTargetMinutes)}
         icon={Clock}
         label="Tracked Today"
         progress={progressPercentage(trackedTodayMinutes, dailyTargetMinutes)}
@@ -71,20 +76,20 @@ export function KpiCards({
       />
       <KpiCard
         accent={dailyOvertime > 0 ? 'success' : 'default'}
-        caption={`vs ${formatDuration(dailyTargetMinutes)} standard`}
+        caption={targetCaption('vs', dailyTargetMinutes)}
         icon={TrendingUp}
         label="Overtime Today"
         value={formatDuration(dailyOvertime)}
       />
       <KpiCard
         accent={weeklyOvertime > 0 ? 'success' : 'default'}
-        caption={`vs ${formatDuration(weeklyTargetMinutes)} standard`}
+        caption={targetCaption('vs', weeklyTargetMinutes)}
         icon={TrendingUp}
         label="Overtime This Week"
         value={formatDuration(weeklyOvertime)}
       />
       <KpiCard
-        caption={`of ${formatDuration(weeklyTargetMinutes)} standard`}
+        caption={targetCaption('of', weeklyTargetMinutes)}
         icon={CalendarCheck}
         label="Weekly Total"
         value={formatDuration(trackedWeekMinutes)}

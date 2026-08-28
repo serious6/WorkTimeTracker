@@ -39,7 +39,7 @@ export const projectBudgets = sqliteTable(
 
 export const workSettings = sqliteTable('work_settings', {
   id: integer().primaryKey(),
-  dailyTargetMinutes: integer('daily_target_minutes').notNull(),
   weeklyTargetMinutes: integer('weekly_target_minutes').notNull(),
+  workingDays: text('working_days').notNull(),
   weekStartsOn: text('week_starts_on').notNull(),
 })

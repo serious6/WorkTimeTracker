@@ -14,6 +14,10 @@ import {
 } from '@/features/dashboard/metrics'
 import { useSelectedDate } from '@/features/dashboard/dashboard-store'
 import { useProjects } from '@/features/projects/project-queries'
+import {
+  scheduledMinutesInRange,
+  targetMinutesForDay,
+} from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
 import { useTicker } from '@/features/timer/use-ticker'
@@ -33,6 +37,7 @@ export function ReportsPage() {
   const selectedWeekRange = weekRange(selectedDate, settings.weekStartsOn)
   const weekEntries = entriesInRange(entries, selectedWeekRange, now)
   const weekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
+  const weekTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange)
 
   const data = Array.from({ length: 7 }, (_, index) => {
     const day = addDays(weekStart, index)
@@ -40,6 +45,7 @@ export function ReportsPage() {
     return {
       day: day.toLocaleDateString('en-US', { weekday: 'short' }),
       hours: totalMinutes(entriesInRange(entries, range, now), now, range) / 60,
+      target: targetMinutesForDay(settings, day) / 60,
     }
   })
 
@@ -55,8 +61,9 @@ export function ReportsPage() {
           <CardHeader>
             <CardTitle>Tracked hours per day</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Total: {formatDuration(weekMinutes)} · Overtime:{' '}
-              {formatDuration(overtimeMinutes(weekMinutes, settings.weeklyTargetMinutes))}
+              Total: {formatDuration(weekMinutes)} · Target:{' '}
+              {formatDuration(weekTargetMinutes)} · Overtime:{' '}
+              {formatDuration(overtimeMinutes(weekMinutes, weekTargetMinutes))}
             </p>
           </CardHeader>
           <CardContent className="h-72">
@@ -73,7 +80,14 @@ export function ReportsPage() {
                     fontSize: '0.75rem',
                   }}
                 />
-                <Bar dataKey="hours" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Bar
+                  dataKey="target"
+                  fill="var(--muted-foreground)"
+                  fillOpacity={0.35}
+                  name="Target"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar dataKey="hours" fill="var(--primary)" name="Tracked" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

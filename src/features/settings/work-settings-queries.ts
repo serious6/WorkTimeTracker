@@ -4,11 +4,16 @@ import { DEFAULT_WORK_SETTINGS, type WorkSettings } from './work-settings-schema
 
 export const workSettingsKeys = { all: ['work-settings'] as const }
 
-export function useWorkSettings(): WorkSettings {
-  const { data } = useQuery({
+export function useWorkSettingsQuery() {
+  return useQuery({
     queryKey: workSettingsKeys.all,
     queryFn: repository.getWorkSettings,
   })
+}
+
+/** Persisted general settings; falls back to the defaults while loading. */
+export function useWorkSettings(): WorkSettings {
+  const { data } = useWorkSettingsQuery()
   return data ?? DEFAULT_WORK_SETTINGS
 }
 

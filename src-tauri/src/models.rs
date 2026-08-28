@@ -160,19 +160,50 @@ pub struct ProjectBudget {
     pub updated_at: String,
 }
 
+pub const WEEKDAYS: [&str; 7] = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+];
+
+pub const DEFAULT_WORKING_DAYS: [&str; 5] =
+    ["monday", "tuesday", "wednesday", "thursday", "friday"];
+
+/// General settings of the application, persisted as a single record.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkSettings {
-    pub daily_target_minutes: i64,
     pub weekly_target_minutes: i64,
+    pub working_days: Vec<String>,
     pub week_starts_on: String,
 }
 
 impl WorkSettings {
     pub fn validate(&mut self) -> Result<(), &'static str> {
         normalize(&mut self.week_starts_on);
-        if !(1..=1_440).contains(&self.daily_target_minutes)
-            || !(1..=10_080).contains(&self.weekly_target_minutes)
+        for day in &mut self.working_days {
+            normalize(day);
+        }
+        if self
+            .working_days
+            .iter()
+            .any(|day| !WEEKDAYS.contains(&day.as_str()))
+        {
+            return Err("invalid working day");
+        }
+        self.working_days = WEEKDAYS
+            .iter()
+            .filter(|day| self.working_days.iter().any(|selected| selected == *day))
+            .map(|day| (*day).to_owned())
+            .collect();
+        if self.working_days.is_empty() {
+            return Err("select at least one working day");
+        }
+        if !(1..=10_080).contains(&self.weekly_target_minutes)
             || !matches!(self.week_starts_on.as_str(), "monday" | "sunday")
         {
             return Err("invalid work settings");
@@ -277,13 +308,39 @@ mod tests {
         assert_eq!(budget(1, 60, "2026-13-31"), Err("invalid due date"));
     }
 
+    fn settings(weekly_target_minutes: i64, working_days: &[&str]) -> WorkSettings {
+        WorkSettings {
+            weekly_target_minutes,
+            working_days: working_days.iter().map(|day| (*day).to_owned()).collect(),
+            week_starts_on: "monday".into(),
+        }
+    }
+
     #[test]
     fn rejects_settings_outside_the_supported_range() {
-        let mut settings = WorkSettings {
-            daily_target_minutes: 0,
-            weekly_target_minutes: 2_400,
-            week_starts_on: "monday".into(),
-        };
-        assert!(settings.validate().is_err());
+        assert!(settings(0, &DEFAULT_WORKING_DAYS).validate().is_err());
+    }
+
+    #[test]
+    fn rejects_an_empty_working_day_selection() {
+        assert_eq!(
+            settings(2_400, &[]).validate(),
+            Err("select at least one working day")
+        );
+    }
+
+    #[test]
+    fn sorts_and_deduplicates_working_days() {
+        let mut input = settings(2_400, &["sunday", " monday ", "monday"]);
+        input.validate().unwrap();
+        assert_eq!(input.working_days, vec!["monday", "sunday"]);
+    }
+
+    #[test]
+    fn rejects_unknown_working_days() {
+        assert_eq!(
+            settings(2_400, &["someday"]).validate(),
+            Err("invalid working day")
+        );
     }
 }

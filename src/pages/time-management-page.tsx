@@ -6,6 +6,7 @@ import { Input, Select } from '@/components/ui/input'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { dayRange, entriesInRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
+import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { TimeEntryList } from '@/features/time-entries/components/time-entry-list'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
@@ -109,7 +110,7 @@ export function TimeManagementPage() {
             ))}
             <Button
               disabled={!projectId}
-              onClick={() => quickAddTime(settings.dailyTargetMinutes)}
+              onClick={() => quickAddTime(Math.round(dailyTargetMinutes(settings)))}
               variant="subtle"
             >
               <Plus className="size-4" />
