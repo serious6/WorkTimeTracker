@@ -69,7 +69,8 @@ The browser UI is then available at <http://localhost:1420>. Native Tauri window
 ## Project layout
 
 ```text
-architecture/        LikeC4 model
+architecture/        LikeC4 model and decision records
+contract/            Domain rules shared by the Rust backend and the browser fallback
 drizzle/             Versioned SQLite migrations
 e2e/                 Playwright tests
 src/
@@ -80,8 +81,10 @@ src/
   lib/               Date, error, and class-name helpers
   pages/             Projects, time entries, time management, budgets, reports, calendar, and settings views
 src-tauri/
-  src/auth.rs        Password hashing and the in-memory session
+  src/auth.rs        Password hashing, the in-memory session, and login lockout
   src/commands.rs    Tauri command boundary
+  src/contract.rs    Runs the shared domain rules against the Rust models
+  src/error.rs       Structured AppError returned by every command
   src/database.rs    SQLite persistence
   src/window_state.rs Window size and position persistence
 ```
@@ -92,14 +95,20 @@ The application starts on the login page. `Register` opens the user creation pag
 the password policy while typing: at least 20 characters, one upper and one lower case letter, and
 two special characters. A new account is signed in directly and lands on the dashboard, `Cancel`
 discards the input and returns to the login page. Emails are unique and stored in lower case,
-passwords only as an Argon2id hash (PBKDF2 in the browser fallback).
+passwords only as an Argon2id hash (PBKDF2 in the browser fallback). After five failed logins an
+email is locked for fifteen minutes.
 
 The burger menu in the header offers `Switch User` and `Logout`; both end the session and return to
 the login page. In the native app, sessions are stored in memory, so a restart always asks for a
-login again. The browser fallback stores sessions in `sessionStorage`, so page reloads keep the user
-signed in, but closing the browser tab ends the session. Projects, time entries, budgets, and
-settings belong to one account and are never visible to another. The data of an existing single-user
-database is handed to the first account that registers.
+login again. Sessions end after 480 idle minutes. The browser fallback stores an opaque session
+token in `sessionStorage`, so page reloads keep the user signed in, but closing the browser tab ends
+the session. Projects, time entries, budgets, and settings belong to one account and are never
+visible to another. The data of an existing single-user database is handed to the first account that
+registers.
+
+Architecture decisions on the shared domain rules, the structured command errors, session
+hardening, and the single-mutex database access are documented in
+[`architecture/decisions.md`](architecture/decisions.md).
 
 ## Dashboard
 
