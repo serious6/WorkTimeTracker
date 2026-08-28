@@ -35,6 +35,10 @@ pub fn run() {
             commands::update_time_entry_note,
             commands::switch_running_time_entry,
             commands::delete_time_entry,
+            commands::list_project_budgets,
+            commands::create_project_budget,
+            commands::update_project_budget,
+            commands::delete_project_budget,
             commands::get_work_settings,
             commands::update_work_settings
         ])

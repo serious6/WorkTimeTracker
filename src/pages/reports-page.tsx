@@ -1,5 +1,9 @@
+import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useNavigationStore } from '@/app/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useProjectBudgets } from '@/features/budgets/budget-queries'
+import { BudgetReportCard } from '@/features/budgets/components/budget-report-card'
 import {
   dayRange,
   entriesInRange,
@@ -20,7 +24,10 @@ export function ReportsPage() {
   const settings = useWorkSettings()
   const { data: entries = [] } = useTimeEntries()
   const { data: projects = [] } = useProjects()
+  const { data: budgets = [] } = useProjectBudgets()
+  const projectFilter = useNavigationStore((state) => state.projectFilter)
   const now = useTicker(true)
+  const [budgetProjectId, setBudgetProjectId] = useState<number | null>(projectFilter)
 
   const weekStart = startOfWeek(selectedDate, settings.weekStartsOn)
   const selectedWeekRange = weekRange(selectedDate, settings.weekStartsOn)
@@ -98,6 +105,15 @@ export function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <BudgetReportCard
+        budgets={budgets}
+        entries={entries}
+        now={now}
+        onSelectProject={setBudgetProjectId}
+        projects={projects}
+        selectedProjectId={budgetProjectId}
+      />
     </div>
   )
 }
