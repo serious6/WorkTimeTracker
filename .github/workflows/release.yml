@@ -31,12 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify the release version is consistent
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           config=$(node -p "require('./src-tauri/tauri.conf.json').version")
           package=$(node -p "require('./package.json').version")
           cargo=$(node -p "require('fs').readFileSync('src-tauri/Cargo.toml','utf8').match(/^version = \"(.*)\"$/m)[1]")
           if [ "$config" != "$cargo" ] || [ "$config" != "$package" ]; then
             echo "::error::Version mismatch (tauri.conf.json $config, Cargo.toml $cargo, package.json $package). The version stored in the local database comes from Cargo.toml and must match the release."
+            exit 1
+          fi
+          if [ -n "$INPUT_TAG" ] && [ "$INPUT_TAG" != "v$config" ]; then
+            echo "::error::Release tag $INPUT_TAG does not match the configured version v$config."
             exit 1
           fi
           echo "Releasing version $config"

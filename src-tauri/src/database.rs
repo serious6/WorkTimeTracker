@@ -695,4 +695,32 @@ mod tests {
             Some("1.5.0".to_owned())
         );
     }
+
+    #[test]
+    fn synchronizes_the_app_version_when_opening_a_database() {
+        let path = std::env::temp_dir().join(format!(
+            "work-time-tracker-database-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let database = Database::open(&path).unwrap();
+        {
+            let connection = database.0.lock().unwrap();
+            assert_eq!(
+                read_app_version(&connection).unwrap(),
+                Some(APP_VERSION.into())
+            );
+            write_app_version(&connection, "stale").unwrap();
+        }
+        drop(database);
+
+        let database = Database::open(&path).unwrap();
+        assert_eq!(
+            read_app_version(&database.0.lock().unwrap()).unwrap(),
+            Some(APP_VERSION.into())
+        );
+        drop(database);
+        std::fs::remove_file(path).unwrap();
+    }
 }

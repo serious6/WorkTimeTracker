@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
+import { appVersionKeys } from '@/features/app-info/use-app-version'
 import { AppFooter } from './app-footer'
 
 const getAppVersion = vi.fn<() => Promise<string | null>>()
@@ -14,6 +15,7 @@ function renderFooter() {
       <AppFooter />
     </QueryClientProvider>,
   )
+  return queryClient
 }
 
 beforeEach(() => {
@@ -30,7 +32,11 @@ test('shows the attribution and the stored version', async () => {
 
 test('keeps the attribution when the version is unavailable', async () => {
   getAppVersion.mockRejectedValue(new Error('database unavailable'))
-  renderFooter()
+  const queryClient = renderFooter()
+
+  await waitFor(() =>
+    expect(queryClient.getQueryState(appVersionKeys.all)?.status).toBe('error'),
+  )
 
   expect(screen.getByText('Build with ❤️ in Hamburg')).toBeInTheDocument()
   expect(screen.queryByText(/^v/)).not.toBeInTheDocument()
