@@ -357,6 +357,9 @@ pub fn read_app_version(connection: &Connection) -> Result<Option<String>> {
 mod tests {
     use super::*;
 
+    static NEXT_DATABASE_TEST_ID: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+
     fn connect() -> Connection {
         let mut connection = Connection::open_in_memory().unwrap();
         connection
@@ -699,8 +702,9 @@ mod tests {
     #[test]
     fn synchronizes_the_app_version_when_opening_a_database() {
         let path = std::env::temp_dir().join(format!(
-            "work-time-tracker-database-{}.sqlite",
-            std::process::id()
+            "work-time-tracker-database-{}-{}.sqlite",
+            std::process::id(),
+            NEXT_DATABASE_TEST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let _ = std::fs::remove_file(&path);
 
