@@ -1,0 +1,645 @@
+{
+  "securityLimits": {
+    "sessionTimeoutMinutes": 480,
+    "maxLoginAttempts": 5,
+    "loginLockoutMinutes": 15
+  },
+  "credentials": [
+    {
+      "name": "accepts a login",
+      "input": {
+        "email": "first@example.com",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": true,
+      "normalizedEmail": "first@example.com"
+    },
+    {
+      "name": "trims and lowercases the email",
+      "input": {
+        "email": " User@Example.COM ",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": true,
+      "normalizedEmail": "user@example.com"
+    },
+    {
+      "name": "rejects an empty password",
+      "input": {
+        "email": "first@example.com",
+        "password": ""
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects an email without a domain",
+      "input": {
+        "email": "first",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects an email without a top level domain",
+      "input": {
+        "email": "first@example",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects two at signs",
+      "input": {
+        "email": "first@@example.com",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects a missing local part",
+      "input": {
+        "email": "@example.com",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects an empty domain label",
+      "input": {
+        "email": "first@example..com",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects whitespace in the email",
+      "input": {
+        "email": "fi rst@example.com",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "accepts a policy compliant registration",
+      "input": {
+        "email": "first@example.com",
+        "password": "Str0ng-Passphrase!!x"
+      },
+      "registration": true,
+      "accepted": true
+    },
+    {
+      "name": "rejects a short password",
+      "input": {
+        "email": "first@example.com",
+        "password": "Sh0rt!!x"
+      },
+      "registration": true,
+      "accepted": false
+    },
+    {
+      "name": "rejects a password without an uppercase letter",
+      "input": {
+        "email": "first@example.com",
+        "password": "str0ng-passphrase!!x"
+      },
+      "registration": true,
+      "accepted": false
+    },
+    {
+      "name": "rejects a password without a lowercase letter",
+      "input": {
+        "email": "first@example.com",
+        "password": "STR0NG-PASSPHRASE!!X"
+      },
+      "registration": true,
+      "accepted": false
+    },
+    {
+      "name": "rejects a password with too few special characters",
+      "input": {
+        "email": "first@example.com",
+        "password": "Str0ngPassphrase!xxxx"
+      },
+      "registration": true,
+      "accepted": false
+    }
+  ],
+  "projects": [
+    {
+      "name": "accepts a project",
+      "input": {
+        "name": "Website Redesign",
+        "description": null,
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": true
+    },
+    {
+      "name": "trims the name",
+      "input": {
+        "name": "  Website Redesign  ",
+        "description": null,
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": true,
+      "normalizedName": "Website Redesign"
+    },
+    {
+      "name": "rejects an empty name",
+      "input": {
+        "name": "",
+        "description": null,
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a blank name",
+      "input": {
+        "name": "   ",
+        "description": null,
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": false
+    },
+    {
+      "name": "accepts a name of one hundred characters",
+      "input": {
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "description": null,
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects a longer name",
+      "input": {
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "description": null,
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a color that is not hexadecimal",
+      "input": {
+        "name": "Website Redesign",
+        "description": null,
+        "color": "green",
+        "active": true
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a short color",
+      "input": {
+        "name": "Website Redesign",
+        "description": null,
+        "color": "#22c5e",
+        "active": true
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a long description",
+      "input": {
+        "name": "Website Redesign",
+        "description": "ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "color": "#22c55e",
+        "active": true
+      },
+      "accepted": false
+    }
+  ],
+  "timeEntries": [
+    {
+      "name": "accepts a closed entry",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:00:00.000Z",
+        "endTime": "2026-08-27T09:00:00.000Z",
+        "note": null
+      },
+      "accepted": true
+    },
+    {
+      "name": "accepts a running entry",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:00:00.000Z",
+        "endTime": null,
+        "note": null
+      },
+      "accepted": true
+    },
+    {
+      "name": "accepts an entry without a project",
+      "input": {
+        "projectId": null,
+        "startTime": "2026-08-27T08:00:00.000Z",
+        "endTime": null,
+        "note": null
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects an end before the start",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T10:00:00.000Z",
+        "endTime": "2026-08-27T09:00:00.000Z",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an end equal to the start",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T10:00:00.000Z",
+        "endTime": "2026-08-27T10:00:00.000Z",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a timestamp without milliseconds",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T10:00:00Z",
+        "endTime": null,
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a local timestamp",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27 10:00:00",
+        "endTime": null,
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unusable project",
+      "input": {
+        "projectId": 0,
+        "startTime": "2026-08-27T10:00:00.000Z",
+        "endTime": null,
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a long note",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:00:00.000Z",
+        "endTime": null,
+        "note": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
+      },
+      "accepted": false
+    }
+  ],
+  "projectBudgets": [
+    {
+      "name": "accepts a budget",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 4800,
+        "dueDate": "2026-12-31"
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects an unusable project",
+      "input": {
+        "projectId": 0,
+        "budgetMinutes": 4800,
+        "dueDate": "2026-12-31"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a budget of zero",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 0,
+        "dueDate": "2026-12-31"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a negative budget",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": -60,
+        "dueDate": "2026-12-31"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unknown month",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 4800,
+        "dueDate": "2026-13-31"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a day outside the month",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 4800,
+        "dueDate": "2026-02-30"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a malformed date",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 4800,
+        "dueDate": "31.12.2026"
+      },
+      "accepted": false
+    }
+  ],
+  "workSettings": [
+    {
+      "name": "accepts the default settings",
+      "input": {
+        "weeklyTargetMinutes": 2400,
+        "workingDays": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday"
+        ],
+        "weekStartsOn": "monday"
+      },
+      "accepted": true
+    },
+    {
+      "name": "sorts and deduplicates the working days",
+      "input": {
+        "weeklyTargetMinutes": 2400,
+        "workingDays": [
+          "sunday",
+          "monday",
+          "monday"
+        ],
+        "weekStartsOn": "sunday"
+      },
+      "accepted": true,
+      "normalizedWorkingDays": [
+        "monday",
+        "sunday"
+      ]
+    },
+    {
+      "name": "rejects an empty working day selection",
+      "input": {
+        "weeklyTargetMinutes": 2400,
+        "workingDays": [],
+        "weekStartsOn": "monday"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unknown working day",
+      "input": {
+        "weeklyTargetMinutes": 2400,
+        "workingDays": [
+          "someday"
+        ],
+        "weekStartsOn": "monday"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a weekly target of zero",
+      "input": {
+        "weeklyTargetMinutes": 0,
+        "workingDays": [
+          "monday"
+        ],
+        "weekStartsOn": "monday"
+      },
+      "accepted": false
+    },
+    {
+      "name": "accepts a full week as target",
+      "input": {
+        "weeklyTargetMinutes": 10080,
+        "workingDays": [
+          "monday"
+        ],
+        "weekStartsOn": "monday"
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects more than a full week",
+      "input": {
+        "weeklyTargetMinutes": 10081,
+        "workingDays": [
+          "monday"
+        ],
+        "weekStartsOn": "monday"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unknown week start",
+      "input": {
+        "weeklyTargetMinutes": 2400,
+        "workingDays": [
+          "monday"
+        ],
+        "weekStartsOn": "tuesday"
+      },
+      "accepted": false
+    }
+  ],
+  "uniqueness": [
+    {
+      "name": "rejects a duplicate email",
+      "kind": "email",
+      "input": {
+        "email": "duplicate@example.com",
+        "password": "Str0ng-Passphrase!!x"
+      }
+    },
+    {
+      "name": "rejects a duplicate project budget",
+      "kind": "projectBudget",
+      "input": {
+        "projectId": 1,
+        "budgetMinutes": 2400,
+        "dueDate": "2026-09-01"
+      }
+    }
+  ],
+  "overlaps": [
+    {
+      "name": "allows an entry after another one",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T08:00:00.000Z",
+          "endTime": "2026-08-27T09:00:00.000Z",
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T09:00:00.000Z",
+        "endTime": "2026-08-27T10:00:00.000Z",
+        "note": null
+      },
+      "excludeIndex": null,
+      "overlaps": false
+    },
+    {
+      "name": "rejects an entry inside another one",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T08:00:00.000Z",
+          "endTime": "2026-08-27T10:00:00.000Z",
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:30:00.000Z",
+        "endTime": "2026-08-27T09:00:00.000Z",
+        "note": null
+      },
+      "excludeIndex": null,
+      "overlaps": true
+    },
+    {
+      "name": "rejects an entry that surrounds another one",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T08:30:00.000Z",
+          "endTime": "2026-08-27T09:00:00.000Z",
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:00:00.000Z",
+        "endTime": "2026-08-27T10:00:00.000Z",
+        "note": null
+      },
+      "excludeIndex": null,
+      "overlaps": true
+    },
+    {
+      "name": "treats a running entry as open ended",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T08:00:00.000Z",
+          "endTime": null,
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T09:00:00.000Z",
+        "endTime": "2026-08-27T10:00:00.000Z",
+        "note": null
+      },
+      "excludeIndex": null,
+      "overlaps": true
+    },
+    {
+      "name": "rejects a running entry before another one",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T10:00:00.000Z",
+          "endTime": "2026-08-27T11:00:00.000Z",
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T09:00:00.000Z",
+        "endTime": null,
+        "note": null
+      },
+      "excludeIndex": null,
+      "overlaps": true
+    },
+    {
+      "name": "ignores the entry that is edited",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T08:00:00.000Z",
+          "endTime": "2026-08-27T09:00:00.000Z",
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:15:00.000Z",
+        "endTime": "2026-08-27T09:00:00.000Z",
+        "note": null
+      },
+      "excludeIndex": 1,
+      "overlaps": false
+    },
+    {
+      "name": "finds the overlap with a second entry",
+      "existing": [
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T08:00:00.000Z",
+          "endTime": "2026-08-27T09:00:00.000Z",
+          "note": null
+        },
+        {
+          "projectId": 1,
+          "startTime": "2026-08-27T09:00:00.000Z",
+          "endTime": "2026-08-27T10:00:00.000Z",
+          "note": null
+        }
+      ],
+      "candidate": {
+        "projectId": 1,
+        "startTime": "2026-08-27T09:30:00.000Z",
+        "endTime": "2026-08-27T11:00:00.000Z",
+        "note": null
+      },
+      "excludeIndex": 1,
+      "overlaps": true
+    }
+  ]
+}

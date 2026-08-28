@@ -4,6 +4,7 @@ import {
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
   authUserSchema,
+  credentialsSchema,
   registrationSchema,
   type AuthUser,
   type Credentials,
@@ -25,6 +26,11 @@ import {
   workSettingsSchema,
   type WorkSettings,
 } from '@/features/settings/work-settings-schema'
+import {
+  LOCKED_OUT_MESSAGE,
+  LoginAttempts,
+  SESSION_TIMEOUT_MINUTES,
+} from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
 import {
   OVERLAP_MESSAGE,
@@ -33,6 +39,7 @@ import {
   type SaveTimeEntry,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
+import { AppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
 const USERS_KEY = 'work-time-tracker.users'
@@ -47,6 +54,16 @@ const storedUserSchema = authUserSchema.extend({ passwordHash: z.string() })
 type StoredUser = z.infer<typeof storedUserSchema>
 
 const SESSION_KEY = 'work-time-tracker.session'
+const SESSIONS_KEY = 'work-time-tracker.sessions'
+
+const sessionsSchema = z.record(
+  z.string(),
+  z.object({ userId: z.number().int().positive(), expiresAt: z.number().int().positive() }),
+)
+
+type Sessions = z.infer<typeof sessionsSchema>
+
+const loginAttempts = new LoginAttempts()
 
 function read<Value>(key: string, fallback: Value, parse: (value: unknown) => Value): Value {
   try {
@@ -61,21 +78,52 @@ function write(key: string, value: unknown): void {
   globalThis.localStorage?.setItem(key, JSON.stringify(value))
 }
 
-/** The session ends with the browsing session, so a restart asks for a login. */
-function sessionUserId(): number | null {
-  const stored = Number(globalThis.sessionStorage?.getItem(SESSION_KEY))
-  return Number.isInteger(stored) && stored > 0 ? stored : null
+function expiresAt(): number {
+  return Date.now() + SESSION_TIMEOUT_MINUTES * 60_000
 }
 
-function setSessionUserId(userId: number | null): void {
-  if (userId === null) globalThis.sessionStorage?.removeItem(SESSION_KEY)
-  else globalThis.sessionStorage?.setItem(SESSION_KEY, String(userId))
+function readSessions(): Sessions {
+  return read(SESSIONS_KEY, {}, (value) => sessionsSchema.parse(value))
+}
+
+/** Browser storage is a development and test fallback, not a security boundary. */
+function startSession(userId: number): void {
+  const token = [...crypto.getRandomValues(new Uint8Array(32))]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+  write(SESSIONS_KEY, { [token]: { userId, expiresAt: expiresAt() } })
+  globalThis.sessionStorage?.setItem(SESSION_KEY, token)
+}
+
+function endSession(): void {
+  write(SESSIONS_KEY, {})
+  globalThis.sessionStorage?.removeItem(SESSION_KEY)
+}
+
+/** An idle session ends after the timeout, every access extends it. */
+function sessionUserId(): number | null {
+  const token = globalThis.sessionStorage?.getItem(SESSION_KEY)
+  const session = token ? readSessions()[token] : undefined
+  if (!token || !session) return null
+  if (session.expiresAt <= Date.now()) {
+    endSession()
+    return null
+  }
+  write(SESSIONS_KEY, { [token]: { userId: session.userId, expiresAt: expiresAt() } })
+  return session.userId
 }
 
 function requireUserId(): number {
   const userId = sessionUserId()
-  if (userId === null) throw new Error(NOT_SIGNED_IN_MESSAGE)
+  if (userId === null) throw new AppError('notSignedIn', NOT_SIGNED_IN_MESSAGE)
   return userId
+}
+
+/** Rejected input reads like a rejected command of the Rust backend. */
+function validate<Schema extends z.ZodType>(schema: Schema, value: unknown): z.output<Schema> {
+  const parsed = schema.safeParse(value)
+  if (parsed.success) return parsed.data
+  throw new AppError('validation', parsed.error.issues[0]?.message ?? 'invalid input')
 }
 
 /** All records are stored below the key of their owner. */
@@ -133,7 +181,11 @@ async function derive(password: string, salt: Uint8Array, iterations: number): P
   return toBase64(new Uint8Array(bits))
 }
 
-/** Passwords are stored as a salted PBKDF2 digest, never in plaintext. */
+/**
+ * Passwords are stored as a salted PBKDF2 digest, never in plaintext. The
+ * fallback is limited to the primitives of the browser, the Tauri backend uses
+ * Argon2id for real credentials.
+ */
 async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16))
   const digest = await derive(password, salt, PBKDF2_ITERATIONS)
@@ -178,12 +230,14 @@ export const localRepository: Repository = {
     const parsed = registrationSchema.safeParse(credentials)
     if (!parsed.success) {
       const emailError = parsed.error.issues.find((issue) => issue.path[0] === 'email')
-      if (emailError) throw new Error(emailError.message)
-      throw new Error(PASSWORD_POLICY_MESSAGE)
+      if (emailError) throw new AppError('validation', emailError.message)
+      throw new AppError('validation', PASSWORD_POLICY_MESSAGE)
     }
     const { email, password } = parsed.data
     const users = readUsers()
-    if (users.some((user) => user.email === email)) throw new Error(DUPLICATE_EMAIL_MESSAGE)
+    if (users.some((user) => user.email === email)) {
+      throw new AppError('conflict', DUPLICATE_EMAIL_MESSAGE)
+    }
     const user: StoredUser = {
       id: nextId(users),
       email,
@@ -191,25 +245,28 @@ export const localRepository: Repository = {
       passwordHash: await hashPassword(password),
     }
     write(USERS_KEY, [...users, user])
-    setSessionUserId(user.id)
+    startSession(user.id)
     if (users.length === 0) claimLegacyData(user.id)
     return toAuthUser(user)
   },
   login: async (credentials: Credentials) => {
-    const email = credentials.email.trim().toLowerCase()
+    const { email, password } = validate(credentialsSchema, credentials)
+    if (!loginAttempts.allows(email)) throw new AppError('rateLimited', LOCKED_OUT_MESSAGE)
     const user = readUsers().find((stored) => stored.email === email)
-    if (!user || !(await verifyPassword(credentials.password, user.passwordHash))) {
-      throw new Error(INVALID_CREDENTIALS_MESSAGE)
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      loginAttempts.recordFailure(email)
+      throw new AppError('validation', INVALID_CREDENTIALS_MESSAGE)
     }
-    setSessionUserId(user.id)
+    loginAttempts.recordSuccess(email)
+    startSession(user.id)
     return toAuthUser(user)
   },
   logout: async () => {
-    setSessionUserId(null)
+    endSession()
   },
   listProjects: async () => readProjects().sort((left, right) => left.name.localeCompare(right.name)),
   createProject: async (input) => {
-    const parsed = saveProjectSchema.parse(input)
+    const parsed = validate(saveProjectSchema, input)
     const projects = readProjects()
     const now = new Date().toISOString()
     const project = projectSchema.parse({
@@ -222,10 +279,10 @@ export const localRepository: Repository = {
     return project
   },
   updateProject: async (id, input) => {
-    const parsed: SaveProject = saveProjectSchema.parse(input)
+    const parsed: SaveProject = validate(saveProjectSchema, input)
     const projects = readProjects()
     const current = projects.find((project) => project.id === id)
-    if (!current) throw new Error('Project not found')
+    if (!current) throw new AppError('notFound', 'Project not found')
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
     write(
       scopedKey('projects'),
@@ -250,10 +307,10 @@ export const localRepository: Repository = {
   listTimeEntries: async () =>
     readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
   createTimeEntry: async (input) => {
-    const parsed: SaveTimeEntry = saveTimeEntrySchema.parse(input)
-    if (parsed.projectId === null) throw new Error('Project is required')
+    const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
+    if (parsed.projectId === null) throw new AppError('validation', 'Project is required')
     const entries = readEntries()
-    if (findOverlap(entries, parsed)) throw new Error(OVERLAP_MESSAGE)
+    if (findOverlap(entries, parsed)) throw new AppError('conflict', OVERLAP_MESSAGE)
     const now = new Date().toISOString()
     const entry = timeEntrySchema.parse({
       ...parsed,
@@ -265,11 +322,11 @@ export const localRepository: Repository = {
     return entry
   },
   updateTimeEntry: async (id, input) => {
-    const parsed: SaveTimeEntry = saveTimeEntrySchema.parse(input)
+    const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
     const entries = readEntries()
     const current = entries.find((entry) => entry.id === id)
-    if (!current) throw new Error('Time entry not found')
-    if (findOverlap(entries, parsed, id)) throw new Error(OVERLAP_MESSAGE)
+    if (!current) throw new AppError('notFound', 'Time entry not found')
+    if (findOverlap(entries, parsed, id)) throw new AppError('conflict', OVERLAP_MESSAGE)
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
     write(
       scopedKey('time-entries'),
@@ -280,7 +337,7 @@ export const localRepository: Repository = {
   updateTimeEntryNote: async (id, note) => {
     const entries = readEntries()
     const current = entries.find((entry) => entry.id === id)
-    if (!current) throw new Error('Time entry not found')
+    if (!current) throw new AppError('notFound', 'Time entry not found')
     const updated = timeEntrySchema.parse({
       ...current,
       note: note?.trim() || null,
@@ -293,20 +350,20 @@ export const localRepository: Repository = {
     return updated
   },
   switchRunningTimeEntry: async (id, input) => {
-    const parsed: SaveTimeEntry = saveTimeEntrySchema.parse(input)
-    if (parsed.projectId === null || parsed.endTime !== null) throw new Error('Invalid timer switch')
+    const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
+    if (parsed.projectId === null || parsed.endTime !== null) throw new AppError('validation', 'Invalid timer switch')
     const entries = readEntries()
     const current = entries.find((entry) => entry.id === id)
-    if (!current) throw new Error('Time entry not found')
-    if (current.endTime !== null) throw new Error('Timer is not running')
-    if (parsed.startTime <= current.startTime) throw new Error('End time must be later than start time')
+    if (!current) throw new AppError('notFound', 'Time entry not found')
+    if (current.endTime !== null) throw new AppError('validation', 'Timer is not running')
+    if (parsed.startTime <= current.startTime) throw new AppError('validation', 'End time must be later than start time')
     const closed = timeEntrySchema.parse({
       ...current,
       endTime: parsed.startTime,
       updatedAt: new Date().toISOString(),
     })
     const nextEntries = entries.map((entry) => (entry.id === id ? closed : entry))
-    if (findOverlap(nextEntries, parsed)) throw new Error(OVERLAP_MESSAGE)
+    if (findOverlap(nextEntries, parsed)) throw new AppError('conflict', OVERLAP_MESSAGE)
     const now = new Date().toISOString()
     const created = timeEntrySchema.parse({
       ...parsed,
@@ -326,10 +383,10 @@ export const localRepository: Repository = {
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {
-    const parsed = saveProjectBudgetSchema.parse(input)
+    const parsed = validate(saveProjectBudgetSchema, input)
     const budgets = readBudgets()
     if (budgets.some((budget) => budget.projectId === parsed.projectId)) {
-      throw new Error(DUPLICATE_BUDGET_MESSAGE)
+      throw new AppError('conflict', DUPLICATE_BUDGET_MESSAGE)
     }
     const now = new Date().toISOString()
     const budget = projectBudgetSchema.parse({
@@ -342,12 +399,12 @@ export const localRepository: Repository = {
     return budget
   },
   updateProjectBudget: async (id, input) => {
-    const parsed = saveProjectBudgetSchema.parse(input)
+    const parsed = validate(saveProjectBudgetSchema, input)
     const budgets = readBudgets()
     const current = budgets.find((budget) => budget.id === id)
-    if (!current) throw new Error('Budget not found')
+    if (!current) throw new AppError('notFound', 'Budget not found')
     if (budgets.some((budget) => budget.projectId === parsed.projectId && budget.id !== id)) {
-      throw new Error(DUPLICATE_BUDGET_MESSAGE)
+      throw new AppError('conflict', DUPLICATE_BUDGET_MESSAGE)
     }
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
     write(
@@ -367,7 +424,7 @@ export const localRepository: Repository = {
       workSettingsSchema.parse(value),
     ),
   updateWorkSettings: async (settings) => {
-    const parsed: WorkSettings = workSettingsSchema.parse(settings)
+    const parsed: WorkSettings = validate(workSettingsSchema, settings)
     write(scopedKey('work-settings'), parsed)
     return parsed
   },

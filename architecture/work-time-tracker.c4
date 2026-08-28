@@ -13,13 +13,16 @@ model {
     }
     backend = container 'Desktop backend' {
       technology 'Tauri 2, Rust commands'
+      description 'Validates input and returns structured AppError kinds'
     }
     database = container 'Local database' {
       technology 'SQLite, Drizzle schema'
+      description 'One process-wide mutex serializes every access; see architecture/decisions.md'
     }
 
     session = container 'Session' {
       technology 'Rust, Argon2id password hashes'
+      description 'In-memory session with idle timeout and login lockout'
     }
 
     frontend -> backend 'Invokes commands'
