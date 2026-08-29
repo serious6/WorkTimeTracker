@@ -32,7 +32,8 @@ Prerequisites and the contribution workflow are described in
 
 The development container runs the browser UI with `docker compose up --build` or
 `podman compose up --build`. Native Tauri windows need a desktop display server and should be run
-on the host.
+on the host. Its SQLite database persists in the `app_data` volume at
+`/root/.local/share/io.github.serious6.worktimetracker/work-time-tracker.sqlite`.
 
 ## Project layout
 
