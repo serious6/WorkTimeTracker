@@ -53,6 +53,12 @@ The `Release` workflow runs on manual dispatch. It verifies that `package.json`,
 then bundles the desktop application on Linux, Windows, and macOS and attaches the installers to a
 GitHub release tagged `v<version>`.
 
+## Third-party licenses
+
+`src/data/licenses.json` is the committed, build-time notice for production npm dependencies and
+Rust crates. Run `npm run licenses:generate` after updating either lockfile; `npm run licenses:check`
+verifies it is current. Development-only npm tools are excluded because they are not shipped.
+
 ## Documentation
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, and quality checks

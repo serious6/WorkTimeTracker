@@ -74,6 +74,16 @@ describe('App shell', () => {
     expect(await screen.findByRole('heading', { name: /calendar/i })).toBeInTheDocument()
   })
 
+  test('navigating to Third-Party Licenses shows the license notices page', async () => {
+    await signIn('nav-licenses@example.com')
+    renderApp()
+    await screen.findByRole('navigation', { name: 'Main' })
+    useNavigationStore.getState().navigate('licenses')
+    expect(
+      await screen.findByRole('heading', { name: 'Third-Party Licenses' }, { timeout: 3_000 }),
+    ).toBeInTheDocument()
+  })
+
   test('logout returns to login page', async () => {
     await signIn('logout-app@example.com')
     const { queryClient } = renderApp()
