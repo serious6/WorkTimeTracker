@@ -46,6 +46,8 @@ describe('structured errors', () => {
 
     expect(errorMessage(failure, 'fallback')).toBe('Email is required')
     expect(errorMessage(new Error('boom'), 'fallback')).toBe('boom')
+    expect(errorMessage(new Error(''), 'fallback')).toBe('fallback')
+    expect(errorMessage('boom', 'fallback')).toBe('fallback')
     expect(errorMessage(undefined, 'fallback')).toBe('fallback')
   })
 })

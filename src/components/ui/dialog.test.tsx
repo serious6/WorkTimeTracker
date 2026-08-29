@@ -1,0 +1,87 @@
+import { fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { Dialog } from './dialog'
+
+function renderDialog(open: boolean, onClose = vi.fn()) {
+  render(
+    <Dialog description="Dialog description" onClose={onClose} open={open} title="Test Dialog">
+      <button type="button">First</button>
+      <button type="button">Last</button>
+    </Dialog>,
+  )
+  return onClose
+}
+
+beforeEach(() => vi.clearAllMocks())
+
+describe('Dialog', () => {
+  test('renders nothing when closed', () => {
+    renderDialog(false)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  test('renders title and description when open', () => {
+    renderDialog(true)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Test Dialog')).toBeInTheDocument()
+    expect(screen.getByText('Dialog description')).toBeInTheDocument()
+  })
+
+  test('calls onClose when close button is clicked', () => {
+    const onClose = renderDialog(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  test('calls onClose on Escape key', () => {
+    const onClose = renderDialog(true)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  test('does not render description when not provided', () => {
+    render(
+      <Dialog onClose={vi.fn()} open title="No Desc">
+        <span>content</span>
+      </Dialog>,
+    )
+    expect(screen.getByText('No Desc')).toBeInTheDocument()
+  })
+
+  test('Tab wraps focus from the last control to the first', () => {
+    renderDialog(true)
+    const first = screen.getByRole('button', { name: 'Close dialog' })
+    screen.getByRole('button', { name: 'Last' }).focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+    expect(first).toHaveFocus()
+  })
+
+  test('Shift+Tab wraps focus from the first control to the last', () => {
+    renderDialog(true)
+    const last = screen.getByRole('button', { name: 'Last' })
+    screen.getByRole('button', { name: 'Close dialog' }).focus()
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    expect(last).toHaveFocus()
+  })
+
+  test('non-escape/tab keys are ignored', () => {
+    const onClose = renderDialog(true)
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  test('dialog renders nothing after being closed (open=false)', () => {
+    const { rerender } = render(
+      <Dialog onClose={vi.fn()} open title="Closeable">
+        <span>child</span>
+      </Dialog>,
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    rerender(
+      <Dialog onClose={vi.fn()} open={false} title="Closeable">
+        <span>child</span>
+      </Dialog>,
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})

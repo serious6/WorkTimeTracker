@@ -103,4 +103,63 @@ describe('metrics', () => {
       'Website Redesign',
     ])
   })
+
+  it('returns empty array from findRunningEntry when no entries are running', () => {
+    const closed = entry(1, 1, at(27, 9), at(27, 10))
+    expect(findRunningEntry([closed])).toBeUndefined()
+    expect(findRunningEntry([])).toBeUndefined()
+  })
+
+  it('entryMinutes defaults now when no second argument is given', () => {
+    const start = new Date(Date.now() - 60_000)
+    const e = entry(1, 1, start, null)
+    expect(entryMinutes(e)).toBeGreaterThanOrEqual(1)
+  })
+
+  it('progressPercentage returns 0 when targetMinutes is 0', () => {
+    expect(progressPercentage(120, 0)).toBe(0)
+  })
+
+  it('projectTotals with range clips minute contributions', () => {
+    const range = dayRange(at(27, 0))
+    const spanning = [entry(1, 1, at(26, 23), at(27, 1))]
+    const totals = projectTotals(spanning, projects, at(27, 0).getTime(), range)
+    expect(totals[0]?.minutes).toBe(60)
+  })
+
+  it('projectTotals hides entries with zero minutes in range', () => {
+    const range = dayRange(at(27, 0))
+    const outsideEntry = [entry(1, 1, at(28, 9), at(28, 10))]
+    const totals = projectTotals(outsideEntry, projects, at(28, 0).getTime(), range)
+    expect(totals).toEqual([])
+  })
+
+  it('recentProjects respects the limit parameter', () => {
+    const manyEntries = [1, 2].map((id) => entry(id, id, at(27, id), at(27, id + 1)))
+    expect(recentProjects(manyEntries, projects, 1).length).toBe(1)
+  })
+
+  it('recentProjects skips entries with null projectId', () => {
+    const withNull = [entry(1, null, at(27, 9), at(27, 10))]
+    expect(recentProjects(withNull, projects)).toEqual([])
+  })
+
+  it('recentProjects omits projects that are not found in the projects list', () => {
+    const entries = [entry(1, 99, at(27, 9), at(27, 10))]
+    expect(recentProjects(entries, projects)).toEqual([])
+  })
+
+  it('entriesInRange sorts results by start time', () => {
+    const entries = [
+      entry(2, 1, at(27, 10), at(27, 11)),
+      entry(1, 1, at(27, 8), at(27, 9)),
+    ]
+    const result = entriesInRange(entries, dayRange(at(27, 0)))
+    expect(result.map((e) => e.id)).toEqual([1, 2])
+  })
+
+  it('weekRange starts on Sunday when configured', () => {
+    const { start } = weekRange(at(27, 0), 'sunday')
+    expect(start.getDay()).toBe(0) // Sunday
+  })
 })

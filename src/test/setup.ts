@@ -4,6 +4,15 @@ import { afterEach } from 'vitest'
 
 afterEach(cleanup)
 
+/** jsdom ships no ResizeObserver, which the chart components observe with. */
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
 /**
  * Node 26 owns a `localStorage` global that stays undefined without
  * `--localstorage-file` and hides the one jsdom provides.

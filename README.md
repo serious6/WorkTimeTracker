@@ -43,10 +43,13 @@ npm run dev
 npm run lint
 npm run typecheck
 npm test
+npm run test:coverage
 npm run test:e2e
 npm run architecture:check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
+
+`npm run test:coverage` fails below 80 percent statement, branch, function, or line coverage.
 
 Build the web frontend or desktop application with `npm run build` and `npm run tauri build`.
 
