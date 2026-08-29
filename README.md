@@ -1,148 +1,59 @@
 # WorkTimeTracker
 
-A local-first, open-source desktop work-time tracker built with Tauri 2.
+A local-first, open-source desktop work-time tracker built with Tauri 2. All data stays in a local
+SQLite database, no proprietary runtime service is required.
+
+## Features
+
+- **Dashboard**: start, pause, resume, stop, and switch timers, manual entries, day navigation,
+  daily and weekly targets with overtime, and time distribution per project.
+- **Time Management**: add worked time retroactively via quick-add buttons or custom durations
+  such as `2h 45m`; entries are placed in the first free slot of the day and never overlap.
+- **Budgets**: one hour budget with a due date per project; consumption and forecast appear in
+  `Reports`.
+- **Settings**: weekly working time and working days; the daily target is derived from both.
+- **Accounts**: registration with a strict password policy, Argon2id hashes, login lockout, and
+  per-user data isolation.
 
 ## Stack
 
-- Tauri 2 with typed Rust commands
-- React, TypeScript, Vite, Tailwind CSS, and shadcn/ui-compatible components
-- Zustand for local UI state and TanStack Query for asynchronous state
-- Zod validation
-- Drizzle SQLite schema with a bundled SQLite database managed by Rust
-- Native versioned migrations with `rusqlite_migration`
-- Recharts
-- Vitest and Playwright
-- LikeC4 architecture documentation
+Tauri 2 with typed Rust commands, React, TypeScript, Vite, Tailwind CSS, Zustand, TanStack Query,
+Zod, Drizzle schema with `rusqlite_migration`, Recharts, Vitest, Playwright, and LikeC4.
 
-AI support is intentionally deferred.
-
-## Prerequisites
-
-- Node.js 26+
-- Rust stable
-- [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/)
-
-All direct software dependencies use OSI-approved MIT, Apache-2.0, BSD, or compatible dual licenses. The application works locally without a proprietary runtime service.
-
-## Development
+## Getting started
 
 ```sh
 npm ci
-npm run tauri dev
+npm run tauri dev   # desktop application
+npm run dev         # browser-only UI at http://localhost:1420
 ```
 
-For browser-only UI development:
+Prerequisites and the contribution workflow are described in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-```sh
-npm run dev
-```
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contribution workflow.
-
-## Quality checks
-
-```sh
-npm run lint
-npm run typecheck
-npm test
-npm run test:coverage
-npm run test:e2e
-npm run architecture:check
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-`npm run test:coverage` fails below 80 percent statement, branch, function, or line coverage.
-
-Build the web frontend or desktop application with `npm run build` and `npm run tauri build`.
-
-## Release
-
-The `Release` workflow runs on manual dispatch (Actions → Release → Run workflow). It verifies that `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs the web, Rust, and end-to-end checks in parallel, then bundles the desktop application on Linux, Windows, and macOS and publishes the bundles as a GitHub release. The tag defaults to `v<version from src-tauri/tauri.conf.json>` and can be overridden per run. Downloadable installers are attached to the release on the repository's Releases page. On startup the application writes the version from `src-tauri/Cargo.toml` into the `app_metadata` table, and the footer shows that stored version.
-
-## Containers
-
-The development container supports both Docker Compose and Podman Compose:
-
-```sh
-docker compose up --build
-# or
-podman compose up --build
-```
-
-The browser UI is then available at <http://localhost:1420>. Native Tauri windows should be run on the host because containers do not provide a desktop display server by default.
+The development container runs the browser UI with `docker compose up --build` or
+`podman compose up --build`. Native Tauri windows need a desktop display server and should be run
+on the host.
 
 ## Project layout
 
 ```text
-architecture/        LikeC4 model and decision records
-contract/            Domain rules shared by the Rust backend and the browser fallback
-drizzle/             Versioned SQLite migrations
-e2e/                 Playwright tests
-src/
-  app/               Application providers and navigation
-  components/        Layout and shadcn/ui-compatible primitives
-  db/                Drizzle schema
-  features/          App info, auth, dashboard, projects, time entries, time management, budgets, timer, settings, storage
-  lib/               Date, error, and class-name helpers
-  pages/             Projects, time entries, time management, budgets, reports, calendar, and settings views
-src-tauri/
-  src/auth.rs        Password hashing, the in-memory session, and login lockout
-  src/commands.rs    Tauri command boundary
-  src/contract.rs    Runs the shared domain rules against the Rust models
-  src/error.rs       Structured AppError returned by every command
-  src/database.rs    SQLite persistence
-  src/window_state.rs Window size and position persistence
+architecture/   LikeC4 model and decision records
+contract/       Domain rules shared by the Rust backend and the browser fallback
+drizzle/        Versioned SQLite migrations
+e2e/            Playwright tests
+src/            React application (app, components, db, features, lib, pages)
+src-tauri/src/  Rust backend (auth, commands, contract, database, error, window_state)
 ```
 
-## Accounts
+## Release
 
-The application starts on the login page. `Register` opens the user creation page, which validates
-the password policy while typing: at least 20 characters, one upper and one lower case letter, and
-two special characters. A new account is signed in directly and lands on the dashboard, `Cancel`
-discards the input and returns to the login page. Emails are unique and stored in lower case,
-passwords only as an Argon2id hash (PBKDF2 in the browser fallback). After five failed logins an
-email is locked for fifteen minutes.
+The `Release` workflow runs on manual dispatch. It verifies that `package.json`,
+`src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs all checks,
+then bundles the desktop application on Linux, Windows, and macOS and attaches the installers to a
+GitHub release tagged `v<version>`.
 
-The burger menu in the header offers `Switch User` and `Logout`; both end the session and return to
-the login page. In the native app, sessions are stored in memory, so a restart always asks for a
-login again. Sessions end after 480 idle minutes. The browser fallback stores an opaque session
-token in `sessionStorage`, so page reloads keep the user signed in, but closing the browser tab ends
-the session. Projects, time entries, budgets, and settings belong to one account and are never
-visible to another. The data of an existing single-user database is handed to the first account that
-registers.
+## Documentation
 
-Architecture decisions on the shared domain rules, the structured command errors, session
-hardening, and the single-mutex database access are documented in
-[`architecture/decisions.md`](architecture/decisions.md).
-
-## Dashboard
-
-The dashboard is the landing page and covers the daily workflow: start, pause, resume, stop,
-and switch timers, manual time entries, day navigation, daily and weekly targets with overtime,
-time distribution per project, and recent projects.
-
-A running timer is a time entry without an end time, so durations are derived from timestamps
-and survive restarts, sleep, and backgrounding. In the browser the same UI runs against a
-`localStorage` repository, which keeps end-to-end tests independent from the native build.
-
-## Time Management
-
-Time Management adds already worked time retroactively. Pick a project and a date, then use the
-quick-add buttons (15 min, 30 min, 1 hour, 1 day from the daily target) or `Custom` for free
-durations such as `2h 45m`, `90m`, or `1.5h`. Entries are placed in the first free slot of that
-day, so they never overlap existing entries, and can be edited or deleted in the list below.
-
-## Budgets
-
-The `Budgets` view manages one hour budget with a due date per project. Consumption and forecast
-are shown in `Reports` after selecting a project: budgeted hours, hours tracked until the due date,
-remaining hours, consumption in percent, and a forecast that extrapolates the pace so far over the
-remaining days. Budgets are never shown on the dashboard.
-
-## Settings
-
-`Settings` holds the general settings, stored in the database and loaded at start. The work
-schedule defines the weekly working time (40 hours by default) and the working days (Monday to
-Friday by default, at least one day required). The daily target is the weekly working time
-divided by the selected working days, days outside the schedule have no target, and dashboard
-and reports recalculate immediately after a change.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, and quality checks
+- [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
