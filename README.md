@@ -42,8 +42,16 @@ contract/       Domain rules shared by the Rust backend and the browser fallback
 drizzle/        Versioned SQLite migrations
 e2e/            Playwright tests
 src/            React application (app, components, db, features, lib, pages)
-src-tauri/src/  Rust backend (auth, commands, contract, database, error, window_state)
+src-tauri/src/  Rust backend (auth, commands, contract, database, error, logging, window_state)
 ```
+
+## Logs
+
+Errors of the backend and of the user interface are appended to
+`<app data directory>/logs/work-time-tracker.log`, for example
+`~/.local/share/io.github.serious6.worktimetracker/logs/work-time-tracker.log` on Linux. Credentials, hashes,
+e-mail addresses and file system paths are redacted, and the file is rotated once it exceeds
+512 KiB.
 
 ## Release
 

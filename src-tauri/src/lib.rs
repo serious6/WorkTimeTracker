@@ -4,6 +4,7 @@ mod commands;
 mod contract;
 mod database;
 mod error;
+mod logging;
 mod models;
 mod window_state;
 
@@ -11,13 +12,29 @@ use auth::{LoginAttempts, Session};
 use database::Database;
 use tauri::{Manager, WindowEvent};
 
+/// Panics of the backend end up in the log file instead of only on stderr.
+fn log_panics() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|location| format!("{}:{}", location.file(), location.line()))
+            .unwrap_or_else(|| "unknown location".to_owned());
+        logging::error("panic", &format!("{location} {info}"));
+        previous(info);
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            let database = Database::open(data_dir.join("work-time-tracker.sqlite"))?;
+            logging::init(&data_dir);
+            log_panics();
+            let database = Database::open(data_dir.join("work-time-tracker.sqlite"))
+                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
             app.manage(database);
             app.manage(Session::default());
             app.manage(LoginAttempts::default());
@@ -52,7 +69,8 @@ pub fn run() {
             commands::delete_project_budget,
             commands::get_work_settings,
             commands::update_work_settings,
-            commands::get_app_version
+            commands::get_app_version,
+            commands::log_client_error
         ])
         .run(tauri::generate_context!())
         .expect("error while running WorkTimeTracker");

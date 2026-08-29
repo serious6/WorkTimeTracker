@@ -23,7 +23,20 @@ Commands return `AppError` (`src-tauri/src/error.rs`) instead of `String`. The v
 the `database` kind are replaced by the fallback text of the calling view, so infrastructure
 details never reach the user interface.
 
-## 3. Sessions and credentials
+## 3. One log file for both sides
+
+Every failed command is written to `<app data>/logs/work-time-tracker.log` by `logging::logged`
+(`src-tauri/src/logging.rs`), together with backend panics and setup failures. The frontend sends
+its own failures through the `log_client_error` command, so render errors, unhandled rejections and
+failed queries end up in the same file. The browser fallback has no file system and logs to the
+console instead.
+
+Both sides redact before writing: e-mail addresses, password hashes, values of keys such as
+`password` or `token`, and file system paths are replaced by `[redacted]`. The rules are mirrored in
+`src-tauri/src/logging.rs` and `src/lib/redact.ts` and every message is clamped to 2,000 characters.
+The file is rotated once it passes 512 KiB, and a failing logger never breaks a command.
+
+## 4. Sessions and credentials
 
 Native sessions live in memory and end after 480 idle minutes; every command extends them, a
 restart always returns to the login page. Both backends lock an email out for 15 minutes after 5
@@ -35,7 +48,7 @@ fallback is a development and test tool only, not a security boundary. It is nev
 production path, which is also why it hashes passwords with PBKDF2-SHA256 (210,000 iterations, the
 strongest KDF available in the browser) while the Rust backend uses Argon2id for real credentials.
 
-## 4. One mutex around SQLite
+## 5. One mutex around SQLite
 
 `Database(pub Mutex<Connection>)` serializes every database access of the application. For a local,
 single-user desktop app with short-lived commands this is intentional: it keeps transactions simple

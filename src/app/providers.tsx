@@ -2,10 +2,15 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@ta
 import { useState, type PropsWithChildren } from 'react'
 import { endSession } from '@/features/auth/session-queries'
 import { isErrorKind } from '@/lib/errors'
+import { reportError } from '@/lib/logger'
 
-/** An expired or missing session returns the application to the login page. */
+/**
+ * Every failed query and mutation reaches the log file. An expired or missing
+ * session returns the application to the login page.
+ */
 function createQueryClient(): QueryClient {
   const onError = (error: unknown) => {
+    reportError('data', error)
     if (isErrorKind(error, 'notSignedIn')) endSession(queryClient)
   }
   const queryClient = new QueryClient({
