@@ -37,6 +37,8 @@ For browser-only UI development:
 npm run dev
 ```
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contribution workflow.
+
 ## Quality checks
 
 ```sh
