@@ -134,7 +134,7 @@ export function DashboardPage() {
           <WeeklySummaryCard
             entries={entries}
             now={now}
-            onOpenReports={() => navigate('reports')}
+            onOpenReports={() => navigate('week')}
             referenceDate={selectedDate}
             weekStartsOn={settings.weekStartsOn}
           />

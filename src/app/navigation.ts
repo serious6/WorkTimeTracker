@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 export type View =
   | 'dashboard'
+  | 'week'
   | 'projects'
   | 'time-entries'
   | 'time-management'

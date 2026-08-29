@@ -21,6 +21,7 @@ const pages = {
       default: module.DashboardPage,
     })),
   ),
+  week: lazy(() => import('@/pages/week-page').then((module) => ({ default: module.WeekPage }))),
   projects: lazy(() =>
     import('@/pages/projects-page').then((module) => ({ default: module.ProjectsPage })),
   ),

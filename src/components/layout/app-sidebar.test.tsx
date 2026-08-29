@@ -12,6 +12,7 @@ describe('AppSidebar', () => {
   test('renders all navigation items', () => {
     renderWithProviders(<AppSidebar />)
     expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Week' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Projects' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument()
   })

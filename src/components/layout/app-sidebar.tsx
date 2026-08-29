@@ -1,6 +1,7 @@
 import {
   BarChart3,
   CalendarDays,
+  CalendarRange,
   Clock,
   FolderKanban,
   LayoutDashboard,
@@ -14,6 +15,7 @@ import { cn } from '@/lib/utils'
 
 const items: { view: View; label: string; icon: typeof LayoutDashboard }[] = [
   { view: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { view: 'week', label: 'Week', icon: CalendarRange },
   { view: 'projects', label: 'Projects', icon: FolderKanban },
   { view: 'time-entries', label: 'Time Entries', icon: ListChecks },
   { view: 'time-management', label: 'Time Management', icon: Timer },

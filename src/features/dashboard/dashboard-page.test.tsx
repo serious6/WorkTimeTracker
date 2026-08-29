@@ -209,7 +209,7 @@ describe('DashboardPage – navigation callbacks', () => {
     expect(useNavigationStore.getState().view).toBe('projects')
   })
 
-  it('clicking Weekly Summary navigates to reports', async () => {
+  it('clicking Weekly Summary navigates to week', async () => {
     renderWithProviders(<DashboardPage />)
     await waitFor(() => screen.getByText('Weekly Summary'))
 
@@ -218,7 +218,7 @@ describe('DashboardPage – navigation callbacks', () => {
     const summaryButton = comparisonText.closest('button') as HTMLElement
     fireEvent.click(summaryButton)
 
-    expect(useNavigationStore.getState().view).toBe('reports')
+    expect(useNavigationStore.getState().view).toBe('week')
   })
 
   it('clicking a project in Recent Projects navigates to time-entries', async () => {
@@ -241,4 +241,3 @@ describe('DashboardPage – navigation callbacks', () => {
     expect(useNavigationStore.getState().view).toBe('time-entries')
   })
 })
-
