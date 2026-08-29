@@ -137,7 +137,9 @@ function crateMetadata(directory) {
 }
 
 function cargoPackages() {
-  const metadataById = new Map(cargoMetadata().map((item) => [item.id, item]))
+  const metadataByNameAndVersion = new Map(
+    cargoMetadata().map((item) => [`${item.name}@${item.version}`, item]),
+  )
   const lock = readFileSync(join(root, 'src-tauri/Cargo.lock'), 'utf8')
   const packages = [...lock.matchAll(/\[\[package\]\]\n([\s\S]*?)(?=\n\[\[package\]\]|\s*$)/g)]
     .map((match) => ({
@@ -150,9 +152,7 @@ function cargoPackages() {
   const registrySources = join(process.env.CARGO_HOME ?? join(process.env.HOME ?? '', '.cargo'), 'registry/src')
   return packages
     .map((item) => {
-      const metadata = [...metadataById.values()].find(
-        (candidate) => candidate.name === item.name && candidate.version === item.version,
-      )
+      const metadata = metadataByNameAndVersion.get(`${item.name}@${item.version}`)
       const directory = existsSync(registrySources)
         ? readdirSync(registrySources)
             .flatMap((registry) => [
