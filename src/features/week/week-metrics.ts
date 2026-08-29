@@ -97,7 +97,10 @@ function billingInfoOf(project: Project | undefined): BillingInfo {
         : typeof candidate.rate === 'number'
           ? candidate.rate
           : null
-  const hourlyRate = Number.isFinite(hourlyRateValue) && hourlyRateValue >= 0 ? hourlyRateValue : null
+  const hourlyRate =
+    typeof hourlyRateValue === 'number' && Number.isFinite(hourlyRateValue) && hourlyRateValue >= 0
+      ? hourlyRateValue
+      : null
   const billable = typeof candidate.billable === 'boolean' ? candidate.billable : null
   return { hourlyRate, billable }
 }
@@ -158,13 +161,16 @@ export function rangeMetrics({
   const remainingWorkingDays = Math.max(totalWorkingDays - elapsedWorkingDays, 0)
 
   const days = dayList.map((day) => {
-    const dayRange = { start: day, end: addDays(day, 1) }
-    const trackedMinutes = inRange.reduce((total, entry) => total + entryMinutesInRange(entry, dayRange, now), 0)
+    const dayInterval = { start: day, end: addDays(day, 1) }
+    const trackedMinutes = inRange.reduce(
+      (total, entry) => total + entryMinutesInRange(entry, dayInterval, now),
+      0,
+    )
     const targetMinutesForDay = isWorkingDay(settings, day) ? dailyTarget : 0
     const amount = inRange.reduce((total, entry) => {
       const project = entry.projectId ? projectById.get(entry.projectId) : undefined
       const billing = billingInfoOf(project)
-      return total + amountForMinutes(entryMinutesInRange(entry, dayRange, now), billing.hourlyRate)
+      return total + amountForMinutes(entryMinutesInRange(entry, dayInterval, now), billing.hourlyRate)
     }, 0)
     return {
       date: day,
@@ -182,9 +188,10 @@ export function rangeMetrics({
   const proratedTargetMinutes = elapsedWorkingDays * dailyTarget
   const balanceToDateMinutes = trackedMinutes - proratedTargetMinutes
 
+  const daysByKey = new Map(days.map((day) => [day.dateKey, day] as const))
   const trackedCompletedWorkingDays = completedDays
     .filter((day) => isWorkingDay(settings, day))
-    .reduce((total, day) => total + (days.find((candidate) => candidate.dateKey === toDateKey(day))?.trackedMinutes ?? 0), 0)
+    .reduce((total, day) => total + (daysByKey.get(toDateKey(day))?.trackedMinutes ?? 0), 0)
   const completedWorkingDays = completedDays.filter((day) => isWorkingDay(settings, day)).length
   const averageCompletedWorkingDayMinutes =
     completedWorkingDays > 0 ? trackedCompletedWorkingDays / completedWorkingDays : dailyTarget
@@ -348,8 +355,8 @@ export function isoWeekNumber(date: Date): number {
   return 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1_000))
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+export function formatCurrency(amount: number, locale = 'en-US', currency = 'USD'): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
 }
 
 export function dayTargetDeltaLabel(trackedMinutes: number, targetMinutes: number): string {
