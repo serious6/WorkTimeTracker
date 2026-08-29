@@ -40,6 +40,7 @@ on the host. Its SQLite database persists in the `app_data` volume at
 ```text
 architecture/   LikeC4 model and decision records
 contract/       Domain rules shared by the Rust backend and the browser fallback
+docs/           Data model and further documentation
 drizzle/        Versioned SQLite migrations
 e2e/            Playwright tests
 src/            React application (app, components, db, features, lib, pages)
@@ -71,3 +72,4 @@ verifies it is current. Development-only npm tools are excluded because they are
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, and quality checks
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
+- [`docs/data-model.md`](docs/data-model.md) — logical data model of the persistence layer in C4 style
