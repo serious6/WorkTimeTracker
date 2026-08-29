@@ -66,6 +66,14 @@ describe('App shell', () => {
     expect(await screen.findByRole('heading', { name: /reports/i })).toBeInTheDocument()
   })
 
+  test('navigating to Week shows the week page', async () => {
+    await signIn('nav-week@example.com')
+    renderApp()
+    await screen.findByRole('navigation', { name: 'Main' })
+    useNavigationStore.getState().navigate('week')
+    expect(await screen.findByRole('heading', { name: /week/i })).toBeInTheDocument()
+  })
+
   test('navigating to Calendar shows the calendar page', async () => {
     await signIn('nav-calendar@example.com')
     renderApp()
