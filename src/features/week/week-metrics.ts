@@ -10,7 +10,6 @@ export type RangeMetricsDay = {
   dateKey: string
   trackedMinutes: number
   targetMinutes: number
-  amount: number
   workingDay: boolean
 }
 
@@ -20,7 +19,6 @@ export type RangeMetricsProject = {
   color: string
   minutes: number
   sharePercentage: number
-  amount: number
 }
 
 export type RangeMetrics = {
@@ -39,13 +37,6 @@ export type RangeMetrics = {
   forecastMinutes: number
   forecastBalanceMinutes: number
   requiredAveragePerRemainingDayMinutes: number
-  billableMinutes: number
-  billableSharePercentage: number | null
-  amount: number
-  billableAmount: number
-  nonBillableAmount: number
-  hasBillableFlag: boolean
-  hasRates: boolean
   days: RangeMetricsDay[]
   projects: RangeMetricsProject[]
 }
@@ -65,11 +56,6 @@ export type MonthOverviewMetrics = RangeMetrics & {
   weekStrip: MonthWeekStrip[]
 }
 
-type BillingInfo = {
-  hourlyRate: number | null
-  billable: boolean | null
-}
-
 const DELETED_PROJECT_COLOR = '#64748b'
 
 function round(value: number): number {
@@ -79,30 +65,6 @@ function round(value: number): number {
 function percentage(part: number, total: number): number {
   if (total <= 0) return 0
   return round((part / total) * 100)
-}
-
-function amountForMinutes(minutes: number, hourlyRate: number | null): number {
-  if (hourlyRate === null) return 0
-  return (minutes / 60) * hourlyRate
-}
-
-function billingInfoOf(project: Project | undefined): BillingInfo {
-  if (!project) return { hourlyRate: null, billable: null }
-  const candidate = project as Project & Record<string, unknown>
-  const hourlyRateValue =
-    typeof candidate.hourlyRate === 'number'
-      ? candidate.hourlyRate
-      : typeof candidate.hourlyRateCents === 'number'
-        ? candidate.hourlyRateCents / 100
-        : typeof candidate.rate === 'number'
-          ? candidate.rate
-          : null
-  const hourlyRate =
-    typeof hourlyRateValue === 'number' && Number.isFinite(hourlyRateValue) && hourlyRateValue >= 0
-      ? hourlyRateValue
-      : null
-  const billable = typeof candidate.billable === 'boolean' ? candidate.billable : null
-  return { hourlyRate, billable }
 }
 
 function timeline(range: DateRange): Date[] {
@@ -167,17 +129,11 @@ export function rangeMetrics({
       0,
     )
     const targetMinutesForDay = isWorkingDay(settings, day) ? dailyTarget : 0
-    const amount = inRange.reduce((total, entry) => {
-      const project = entry.projectId ? projectById.get(entry.projectId) : undefined
-      const billing = billingInfoOf(project)
-      return total + amountForMinutes(entryMinutesInRange(entry, dayInterval, now), billing.hourlyRate)
-    }, 0)
     return {
       date: day,
       dateKey: toDateKey(day),
       trackedMinutes,
       targetMinutes: targetMinutesForDay,
-      amount,
       workingDay: targetMinutesForDay > 0,
     }
   })
@@ -200,26 +156,11 @@ export function rangeMetrics({
   const requiredAveragePerRemainingDayMinutes =
     remainingWorkingDays > 0 ? remainingMinutes / remainingWorkingDays : 0
 
-  let billableMinutes = 0
-  let amount = 0
-  let billableAmount = 0
-  let nonBillableAmount = 0
-  const hasBillableFlag = projects.some((project) => billingInfoOf(project).billable !== null)
-  const hasRates = projects.some((project) => billingInfoOf(project).hourlyRate !== null)
-
-  const perProject = new Map<number | null, { minutes: number; amount: number }>()
+  const perProject = new Map<number | null, { minutes: number }>()
   for (const entry of inRange) {
-    const project = entry.projectId ? projectById.get(entry.projectId) : undefined
-    const billing = billingInfoOf(project)
     const minutes = entryMinutesInRange(entry, range, now)
-    const entryAmount = amountForMinutes(minutes, billing.hourlyRate)
-    const current = perProject.get(entry.projectId) ?? { minutes: 0, amount: 0 }
-    perProject.set(entry.projectId, { minutes: current.minutes + minutes, amount: current.amount + entryAmount })
-    amount += entryAmount
-    if (billing.billable) {
-      billableMinutes += minutes
-      billableAmount += entryAmount
-    } else if (billing.billable === false) nonBillableAmount += entryAmount
+    const current = perProject.get(entry.projectId) ?? { minutes: 0 }
+    perProject.set(entry.projectId, { minutes: current.minutes + minutes })
   }
 
   const projectsBreakdown = [...perProject.entries()]
@@ -232,7 +173,6 @@ export function rangeMetrics({
         color: projectColor(project),
         minutes: row.minutes,
         sharePercentage: percentage(row.minutes, trackedMinutes),
-        amount: row.amount,
       }
     })
     .sort((left, right) => right.minutes - left.minutes)
@@ -253,13 +193,6 @@ export function rangeMetrics({
     forecastMinutes,
     forecastBalanceMinutes: forecastMinutes - targetMinutes,
     requiredAveragePerRemainingDayMinutes,
-    billableMinutes,
-    billableSharePercentage: hasBillableFlag ? percentage(billableMinutes, trackedMinutes) : null,
-    amount,
-    billableAmount,
-    nonBillableAmount,
-    hasBillableFlag,
-    hasRates,
     days,
     projects: projectsBreakdown,
   }
@@ -353,10 +286,6 @@ export function isoWeekNumber(date: Date): number {
   const firstThursday = new Date(target.getFullYear(), 0, 4)
   firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7))
   return 1 + Math.round((target.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1_000))
-}
-
-export function formatCurrency(amount: number, locale = 'en-US', currency = 'USD'): string {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount)
 }
 
 export function dayTargetDeltaLabel(trackedMinutes: number, targetMinutes: number): string {

@@ -4,11 +4,7 @@ import { DEFAULT_WORK_SETTINGS } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { monthOverviewMetrics, monthWeekStrip, rangeMetrics, weekMetrics } from './week-metrics'
 
-function project(
-  id: number,
-  name: string,
-  overrides: Partial<Project & { hourlyRate: number; billable: boolean }> = {},
-): Project {
+function project(id: number, name: string, overrides: Partial<Project> = {}): Project {
   return {
     id,
     name,
@@ -99,26 +95,6 @@ describe('week metrics', () => {
     expect(metrics.forecastMinutes).toBe(2_400)
   })
 
-  it('computes billable share and amounts when project metadata exists', () => {
-    const projects = [
-      project(1, 'Billable', { hourlyRate: 100, billable: true }),
-      project(2, 'Internal', { hourlyRate: 50, billable: false }),
-    ]
-    const entries = [entry(1, 1, at(24, 9), at(24, 11)), entry(2, 2, at(24, 12), at(24, 13))]
-    const metrics = weekMetrics({
-      entries,
-      projects,
-      settings,
-      selectedDate: at(27, 12),
-      now: at(27, 12).getTime(),
-    })
-
-    expect(metrics.billableSharePercentage).toBe(67)
-    expect(metrics.amount).toBe(250)
-    expect(metrics.billableAmount).toBe(200)
-    expect(metrics.nonBillableAmount).toBe(50)
-  })
-
   it('returns safe zero values for empty or zero-target ranges', () => {
     const emptyTargetSettings = { ...settings, weeklyTargetMinutes: 1, workingDays: [] }
     const metrics = weekMetrics({
@@ -130,7 +106,6 @@ describe('week metrics', () => {
     })
 
     expect(metrics.progressPercentage).toBe(0)
-    expect(metrics.billableSharePercentage).toBeNull()
     expect(metrics.averageDayLengthMinutes).toBe(0)
     expect(metrics.requiredAveragePerRemainingDayMinutes).toBe(0)
   })

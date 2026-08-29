@@ -19,7 +19,6 @@ import { useTicker } from '@/features/timer/use-ticker'
 import { useTimer } from '@/features/timer/use-timer'
 import {
   dayTargetDeltaLabel,
-  formatCurrency,
   formatWeekSubtitle,
   isoWeekNumber,
   monthOverviewMetrics,
@@ -81,7 +80,7 @@ export function WeekPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Week</h1>
           <p className="text-sm text-muted-foreground">
-            {formatWeekSubtitle(weekStart)} · KW {isoWeekNumber(weekStart)}
+            {formatWeekSubtitle(weekStart)} · KW {isoWeekNumber(settings.weekStartsOn === 'sunday' ? addDays(weekStart, 1) : weekStart)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -162,13 +161,6 @@ export function WeekPage() {
             <CardTitle>Secondary stats</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm">
-            {week.hasBillableFlag && (
-              <p>Billable share: {week.billableSharePercentage ?? 0}%</p>
-            )}
-            <p>
-              Amount: {formatCurrency(week.amount)}
-              {week.hasBillableFlag && ` (${formatCurrency(week.billableAmount)} billable)`}
-            </p>
             <p>Average day length: {formatDuration(week.averageDayLengthMinutes)}</p>
             <p>
               Days booked: {week.bookedDays} / {week.totalWorkingDays}
@@ -202,7 +194,7 @@ export function WeekPage() {
                     {day.date.toLocaleDateString('en-US', { weekday: 'short' })}, {day.date.getDate()}
                   </span>
                   <span className="tabular-nums">
-                    {formatDuration(day.trackedMinutes)} · {formatCurrency(day.amount)}
+                    {formatDuration(day.trackedMinutes)}
                   </span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -234,7 +226,7 @@ export function WeekPage() {
                   <span aria-hidden className="size-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                   <span className="min-w-0 flex-1 truncate">{item.name}</span>
                   <span className="tabular-nums text-muted-foreground">
-                    {formatDuration(item.minutes)} · {item.sharePercentage}% · {formatCurrency(item.amount)}
+                    {formatDuration(item.minutes)} · {item.sharePercentage}%
                   </span>
                 </li>
               ))}
@@ -420,7 +412,6 @@ export function WeekPage() {
               Forecast for month end: {formatDuration(month.forecastMinutes)} (
               {formatSignedDuration(month.forecastBalanceMinutes)})
             </p>
-            <p>Month amount: {formatCurrency(month.amount)}</p>
             <p>
               Days booked: {month.bookedDays} · Average day length: {formatDuration(month.averageDayLengthMinutes)}
             </p>
@@ -470,7 +461,7 @@ export function WeekPage() {
                     <span aria-hidden className="size-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                     <span className="min-w-0 flex-1 truncate">{item.name}</span>
                     <span className="tabular-nums text-muted-foreground">
-                      {formatDuration(item.minutes)} · {item.sharePercentage}% · {formatCurrency(item.amount)}
+                      {formatDuration(item.minutes)} · {item.sharePercentage}%
                     </span>
                   </li>
                 ))}
