@@ -30,6 +30,18 @@ impl AppError {
         Self::Conflict(message.into())
     }
 
+    /// Name of the variant, used as the category in the log file.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::NotSignedIn(_) => "notSignedIn",
+            Self::Validation(_) => "validation",
+            Self::Conflict(_) => "conflict",
+            Self::NotFound(_) => "notFound",
+            Self::RateLimited(_) => "rateLimited",
+            Self::Database(_) => "database",
+        }
+    }
+
     pub fn message(&self) -> &str {
         match self {
             Self::NotSignedIn(message)
@@ -94,6 +106,19 @@ mod tests {
             AppError::from("invalid email"),
             AppError::Validation("invalid email".to_owned())
         );
+    }
+
+    #[test]
+    fn names_every_kind_for_the_log() {
+        assert_eq!(AppError::not_signed_in().kind(), "notSignedIn");
+        assert_eq!(AppError::validation("nope").kind(), "validation");
+        assert_eq!(AppError::conflict("taken").kind(), "conflict");
+        assert_eq!(
+            AppError::from(rusqlite::Error::QueryReturnedNoRows).kind(),
+            "notFound"
+        );
+        assert_eq!(AppError::RateLimited(String::new()).kind(), "rateLimited");
+        assert_eq!(AppError::Database(String::new()).kind(), "database");
     }
 
     #[test]
