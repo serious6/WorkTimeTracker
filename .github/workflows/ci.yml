@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,30 +19,71 @@ env:
   NPM_CONFIG_FUND: 'false'
 
 jobs:
-  web:
+  # Detects which parts of the tree changed so PRs that only touch the
+  # frontend (or only touch src-tauri) can skip the unrelated job. Pushes to
+  # main and manual runs always run everything, so caches stay warm and main
+  # always gets full signal.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            web:
+              - '!src-tauri/**'
+            rust:
+              - 'src-tauri/**'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+
+  # Fast, cheap checks that all run in a single job since none of them takes
+  # more than a few seconds - splitting these further would only add
+  # checkout/setup overhead without shortening the wall clock.
+  lint-typecheck-build:
+    name: lint, typecheck, architecture, build
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: npm
-      - run: npm ci --prefer-offline
+      - uses: ./.github/actions/setup-node
       - run: npm run licenses:check
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm run test:coverage
       - run: npm run architecture:check
       - run: npm run build
 
-  rust:
+  # The slowest frontend step (~110s, dominated by the jsdom test
+  # environment), so it gets its own job to run in parallel with the fast
+  # checks and the rust/e2e jobs instead of serializing after them.
+  test:
+    name: unit tests (coverage)
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: npm
+      - uses: ./.github/actions/setup-node
+      - run: npm run test:coverage
+
+  rust:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Node is only needed for the npm steps below, which are all skipped on
+      # pull requests, so the dependency install is skipped there too.
+      - uses: ./.github/actions/setup-node
+        if: github.event_name != 'pull_request'
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: stable
@@ -53,21 +95,30 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
-      - run: npm ci --prefer-offline
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      # Runs in the lint/build job for any change that can affect licenses
+      # (package-lock.json is not under src-tauri/), so it is skipped here on
+      # pull requests together with the Tauri build below.
       - run: npm run licenses:check
-      - run: npm run tauri build -- --no-bundle
+        if: github.event_name != 'pull_request'
+      # Full Tauri compile (release-style, with the frontend bundled in)
+      # duplicates cargo test + the web build and takes ~60s on its own, so
+      # it is skipped on PRs. It still runs on every push to main (keeping
+      # the Rust cache warm) and can be triggered on demand for a PR via
+      # "Run workflow" (workflow_dispatch) from the Actions tab. Full
+      # installer bundles for a tagged release are built by release.yml.
+      - name: Build Tauri app (release verification, skipped on PRs)
+        if: github.event_name != 'pull_request'
+        run: npm run tauri build -- --no-bundle
 
   end-to-end:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
-          cache: npm
-      - run: npm ci --prefer-offline
+      - uses: ./.github/actions/setup-node
       - name: Resolve Playwright version
         id: playwright
         run: echo "version=$(node -p 'require("@playwright/test/package.json").version')" >> "$GITHUB_OUTPUT"
@@ -87,3 +138,24 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Single required status check that branch protection can depend on: it
+  # succeeds when every non-skipped job above succeeded, so PRs that skip the
+  # rust or web jobs (via path filtering) aren't blocked by a "missing" check.
+  ci-success:
+    name: CI success
+    if: always()
+    needs: [changes, lint-typecheck-build, test, rust, end-to-end]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more required jobs failed."
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required jobs were cancelled."
+            exit 1
+          fi
+          echo "All required jobs succeeded (or were skipped)."
