@@ -26,6 +26,10 @@ describe('redact', () => {
     )
   })
 
+  it('keeps shell style variables', () => {
+    expect(redact('reading $HOME failed')).toBe('reading $HOME failed')
+  })
+
   it('removes file system paths', () => {
     expect(redact('unable to open /home/jane/.local/share/db.sqlite')).toBe(
       'unable to open [redacted path]',

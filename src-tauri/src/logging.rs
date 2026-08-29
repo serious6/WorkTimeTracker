@@ -31,6 +31,9 @@ const SENSITIVE_KEYS: [&str; 11] = [
     "cookie",
 ];
 
+/// Prefixes of the password hash formats that may appear in a message.
+const HASH_PREFIXES: [&str; 6] = ["$argon2", "$pbkdf2", "$scrypt", "$2a$", "$2b$", "$2y$"];
+
 static LOG_FILE: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
 /// Points the logger at `<directory>/logs`. Logging before this call is a no-op,
@@ -68,6 +71,7 @@ fn write_line(level: &str, source: &str, message: &str) {
     let Ok(path) = path.lock() else {
         return;
     };
+    // The lock also serializes rotation and appending, so lines cannot interleave.
     rotate(&path);
     append(&path, &format_line(level, source, message));
 }
@@ -104,7 +108,9 @@ fn timestamp() -> String {
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();
-    DateTime::from_timestamp(elapsed.as_secs() as i64, 0)
+    i64::try_from(elapsed.as_secs())
+        .ok()
+        .and_then(|seconds| DateTime::from_timestamp(seconds, 0))
         .map(|time| time.to_rfc3339_opts(SecondsFormat::Secs, true))
         .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_owned())
 }
@@ -185,9 +191,10 @@ fn contains_email(token: &str) -> bool {
             .any(|character| character.is_ascii_alphanumeric())
 }
 
-/// Argon2 and PBKDF2 hashes are written as `$argon2id$...`.
+/// Password hashes carry their algorithm as a prefix, `$argon2id$...` here.
 fn is_hash(token: &str) -> bool {
-    token.starts_with('$') && token.len() > 1
+    let token = token.to_ascii_lowercase();
+    HASH_PREFIXES.iter().any(|prefix| token.starts_with(prefix))
 }
 
 fn is_path(token: &str) -> bool {
@@ -227,6 +234,11 @@ mod tests {
     fn removes_values_of_sensitive_keys() {
         assert_eq!(redact("token: abc123"), "token: [redacted]");
         assert_eq!(redact("Authorization=Bearer"), "Authorization=[redacted]");
+    }
+
+    #[test]
+    fn keeps_shell_style_variables() {
+        assert_eq!(redact("reading $HOME failed"), "reading $HOME failed");
     }
 
     #[test]

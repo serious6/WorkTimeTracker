@@ -17,6 +17,9 @@ const SENSITIVE_KEYS = [
   'cookie',
 ]
 
+/** Prefixes of the password hash formats that may appear in a message. */
+const HASH_PREFIXES = ['$argon2', '$pbkdf2', '$scrypt', '$2a$', '$2b$', '$2y$']
+
 function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEYS.includes(key.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase())
 }
@@ -30,9 +33,10 @@ function containsEmail(token: string): boolean {
   return local.length > 0 && dot > 0 && /[a-z0-9]/i.test(domain.slice(dot + 1))
 }
 
-/** Argon2 and PBKDF2 hashes are written as `$argon2id$...`. */
+/** Password hashes carry their algorithm as a prefix, `$argon2id$...` here. */
 function isHash(token: string): boolean {
-  return token.startsWith('$') && token.length > 1
+  const lowercase = token.toLowerCase()
+  return HASH_PREFIXES.some((prefix) => lowercase.startsWith(prefix))
 }
 
 function isPath(token: string): boolean {
