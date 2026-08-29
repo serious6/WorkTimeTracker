@@ -78,11 +78,11 @@ the signed-in user in memory only, so a restart returns to the login page.
 
 ```mermaid
 erDiagram
-  USERS ||--o{ PROJECTS : owns
-  USERS ||--o{ TIME_ENTRIES : owns
-  USERS ||--o{ PROJECT_BUDGETS : owns
-  USERS ||--o| WORK_SETTINGS : configures
-  PROJECTS ||--o{ TIME_ENTRIES : "booked on, optional"
+  USERS o|--o{ PROJECTS : owns
+  USERS o|--o{ TIME_ENTRIES : owns
+  USERS o|--o{ PROJECT_BUDGETS : owns
+  USERS o|--o| WORK_SETTINGS : configures
+  PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
 
   USERS {
@@ -220,7 +220,9 @@ Validation, overlap detection, and the security limits are defined once in
 `contract/domain-rules.json` and asserted by `src-tauri/src/contract.rs` and
 `src/features/storage/domain-rules.contract.test.ts`.
 
-- Every query is filtered by the signed-in user, entities of other users stay invisible.
+- User-owned CRUD queries are filtered by the signed-in user, entities of other users stay
+  invisible; account lookup/count queries and `app_metadata` reads are intentionally not
+  user-scoped.
 - Time entries of one user must not overlap. A running entry (`end_time IS NULL`) counts as open
   ended, and switching projects reuses one timestamp so that no gap or overlap appears.
 - `end_time`, when present, must be strictly later than `start_time`.
