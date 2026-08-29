@@ -25,6 +25,9 @@ jobs:
   # always gets full signal.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
       rust: ${{ steps.filter.outputs.rust }}

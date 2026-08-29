@@ -46,6 +46,41 @@ src/            React application (app, components, db, features, lib, pages)
 src-tauri/src/  Rust backend (auth, commands, contract, database, error, window_state)
 ```
 
+## Continuous integration
+
+The `CI` workflow targets a ≤2 minute wall-clock time on pull requests by running independent
+checks as parallel jobs instead of one long sequential job:
+
+| Job                       | What it runs                                    | ~Duration |
+| -------------------------- | ------------------------------------------------ | --------- |
+| `lint-typecheck-build`     | `lint`, `typecheck`, `architecture:check`, `build` | ~10s      |
+| `test`                     | `test:coverage`                                   | ~2min       |
+| `rust`                     | `cargo fmt --check`, `cargo test`                 | ~1min       |
+| `end-to-end`               | Playwright `test:e2e`                             | ~1.3min     |
+| `ci-success`               | Aggregates the results above for branch protection | instant   |
+
+Compared with the previous single `web` job (lint → typecheck → test:coverage →
+architecture:check → build, ~2m20s sequential) and `rust` job (~2m30s, dominated by a full
+`npm run tauri build -- --no-bundle`), the changes are:
+
+- **Parallel jobs instead of one long job**: the fast frontend checks and the slow unit-test run
+  are now separate jobs, so the unit tests (the actual bottleneck, ~110s of jsdom/vitest
+  execution) don't serialize behind lint/typecheck/build.
+- **`npm run tauri build -- --no-bundle` is skipped on pull requests.** It fully recompiles the
+  Rust app and the frontend, duplicating `cargo test` and the web `build` for ~60s of largely
+  redundant signal. It still runs on every push to `main` (keeping `Swatinem/rust-cache` warm) and
+  can be run on a PR on demand via **Actions → CI → Run workflow** (`workflow_dispatch`). Full
+  cross-platform installer bundles are still built by the `Release` workflow.
+- **Cached `node_modules`** via `.github/actions/setup-node` (keyed on `package-lock.json`), so
+  `npm ci` is skipped on a cache hit instead of running in three jobs.
+- **Cached apt packages** (`libayatana-appindicator3-dev`, `librsvg2-dev`,
+  `libwebkit2gtk-4.1-dev`) with `awalsh128/cache-apt-pkgs-action` instead of an uncached
+  `apt-get update && apt-get install` (~30-90s) on every run.
+- **Path-based job skipping**: a `changes` job (`dorny/paths-filter`) skips the `rust` job when a
+  pull request only touches frontend files, and skips the frontend jobs when it only touches
+  `src-tauri/**`. Pushes to `main` and manual runs always run every job. A `ci-success` job
+  aggregates the results so a skipped job doesn't break required status checks.
+
 ## Release
 
 The `Release` workflow runs on manual dispatch. It verifies that `package.json`,
