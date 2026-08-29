@@ -80,7 +80,7 @@ export function WeekPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Week</h1>
           <p className="text-sm text-muted-foreground">
-            {formatWeekSubtitle(weekStart)} · KW {isoWeekNumber(settings.weekStartsOn === 'sunday' ? addDays(weekStart, 1) : weekStart)}
+            {formatWeekSubtitle(weekStart)} · KW {isoWeekNumber(addDays(weekStart, (1 - weekStart.getDay() + 7) % 7))}
           </p>
         </div>
         <div className="flex items-center gap-2">
