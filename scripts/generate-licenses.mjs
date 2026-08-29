@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const output = join(root, 'src/data/licenses.json')
 const missingText = 'License text unavailable in this build environment.'
-const fallbackTexts = new Map()
 const previous = existsSync(output) ? readJson(output) : undefined
 
 function readJson(path) {
@@ -22,7 +21,11 @@ function text(value) {
 
 function repository(value) {
   const url = typeof value === 'string' ? value : value?.url
-  return url?.replace(/^git\+/, '').replace(/^git:\/\//, 'https://') ?? null
+  if (!url) return null
+  const normalized = url.replace(/^git\+/, '').replace(/^git:\/\//, 'https://')
+  const githubShorthand = normalized.match(/^(?:github:)?([^/:]+\/[^/]+(?:\/[^#]+)?)(#.+)?$/)
+  if (githubShorthand) return `https://github.com/${githubShorthand[1]}${githubShorthand[2] ?? ''}`
+  return normalized.replace(/^git@github\.com:/, 'https://github.com/')
 }
 
 function license(metadata) {
@@ -40,53 +43,20 @@ function licenseText(directory, licenseFile) {
     : readdirSync(directory)
         .filter((name) => /^(licen[cs]e|copying|notice|unlicense)([._-]|$)/i.test(name))
         .sort()
+  const contents = []
   for (const candidate of candidates) {
     const file = join(directory, candidate)
     try {
-      return readFileSync(file, 'utf8')
+      contents.push(readFileSync(file, 'utf8'))
     } catch {
       // A metadata license file may point outside the package directory.
     }
   }
-  return missingText
-}
-
-function fallbackLicenseText(identifier) {
-  if (fallbackTexts.has(identifier)) return fallbackTexts.get(identifier)
-  const candidates = [join(root, 'LICENSE')]
-  const registrySources = join(process.env.CARGO_HOME ?? join(process.env.HOME ?? '', '.cargo'), 'registry/src')
-  if (existsSync(registrySources)) {
-    for (const registry of readdirSync(registrySources)) {
-      for (const crate of readdirSync(join(registrySources, registry))) {
-        const crateDirectory = join(registrySources, registry, crate)
-        for (const file of readdirSync(crateDirectory)) {
-          if (/^(licen[cs]e|copying)([._-]|$)/i.test(file)) candidates.push(join(crateDirectory, file))
-        }
-      }
-    }
-  }
-  for (const candidate of candidates) {
-    try {
-      const content = readFileSync(candidate, 'utf8')
-      if (
-        (identifier.includes('Apache-2.0') && content.includes('Apache License, Version 2.0')) ||
-        (identifier.includes('MIT') && content.includes('Permission is hereby granted')) ||
-        (identifier.includes('BSD') && content.includes('Redistribution and use in source'))
-      ) {
-        fallbackTexts.set(identifier, content)
-        return content
-      }
-    } catch {
-      // Ignore unreadable candidate files.
-    }
-  }
-  fallbackTexts.set(identifier, missingText)
-  return missingText
+  return contents.length ? contents.join('\n\n---\n\n') : missingText
 }
 
 function packageLicenseText(directory, metadata) {
-  const result = licenseText(directory, metadata.licenseFile ?? metadata.license_file)
-  return result === missingText ? fallbackLicenseText(license(metadata)) : result
+  return licenseText(directory, metadata.licenseFile ?? metadata.license_file)
 }
 
 function npmPackages() {
@@ -113,7 +83,7 @@ function cargoMetadata() {
       execFileSync(
         'cargo',
         ['metadata', '--locked', '--format-version', '1', '--manifest-path', 'src-tauri/Cargo.toml'],
-        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+        { cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] },
       ),
     ).packages
   } catch {
@@ -166,7 +136,7 @@ function cargoPackages() {
       const committed = previous?.rust.find(
         (candidate) => candidate.name === item.name && candidate.version === item.version,
       )
-      if (!directory && !metadata && committed) return committed
+      if (!directory && committed) return committed
       return {
         name: item.name,
         version: item.version,

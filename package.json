@@ -7,7 +7,7 @@
     "dev": "vite",
     "licenses:generate": "node scripts/generate-licenses.mjs",
     "licenses:check": "node scripts/generate-licenses.mjs --check",
-    "prebuild": "npm run licenses:generate",
+    "prebuild": "npm run licenses:check",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
