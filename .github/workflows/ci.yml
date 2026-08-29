@@ -55,6 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
+      - run: npm run licenses:check
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run architecture:check
@@ -94,6 +95,7 @@ jobs:
           version: 1.0
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - run: npm run licenses:check
       # Full Tauri compile (release-style, with the frontend bundled in)
       # duplicates cargo test + the web build and takes ~60s on its own, so
       # it is skipped on PRs. It still runs on every push to main (keeping

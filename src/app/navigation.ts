@@ -9,6 +9,7 @@ export type View =
   | 'reports'
   | 'calendar'
   | 'settings'
+  | 'licenses'
 
 type NavigationState = {
   view: View

@@ -1,6 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { renderWithProviders, resetAppState, signIn } from '@/test/harness'
+import { useNavigationStore } from '@/app/navigation'
 import { AppHeader } from './app-header'
 
 beforeEach(async () => {
@@ -46,5 +47,13 @@ describe('AppHeader', () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'Switch User' }))
     })
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  test('navigates to third-party licenses from the account menu', async () => {
+    const user = await signIn('header-licenses@example.com')
+    renderWithProviders(<AppHeader user={user} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Third-Party Licenses' }))
+    expect(useNavigationStore.getState().view).toBe('licenses')
   })
 })

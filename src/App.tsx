@@ -44,6 +44,9 @@ const pages = {
   settings: lazy(() =>
     import('@/pages/settings-page').then((module) => ({ default: module.SettingsPage })),
   ),
+  licenses: lazy(() =>
+    import('@/pages/licenses-page').then((module) => ({ default: module.LicensesPage })),
+  ),
 }
 
 function App() {

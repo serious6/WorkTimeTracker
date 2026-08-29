@@ -84,6 +84,7 @@ jobs:
       - run: npm ci --prefer-offline
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - run: npm run licenses:check
 
   end-to-end:
     runs-on: ubuntu-latest
