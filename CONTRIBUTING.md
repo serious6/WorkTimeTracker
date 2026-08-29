@@ -39,7 +39,7 @@ Run before opening a pull request:
 ```sh
 npm run lint
 npm run typecheck
-npm test
+npm run test:coverage
 npm run test:e2e
 npm run architecture:check
 cargo test --manifest-path src-tauri/Cargo.toml
