@@ -5,13 +5,17 @@ services:
       dockerfile: Containerfile
     ports:
       - "1420:1420"
+    environment:
+      XDG_DATA_HOME: /root/.local/share
     volumes:
       - .:/workspace
       - node_modules:/workspace/node_modules
       - cargo_registry:/root/.cargo/registry
       - cargo_target:/workspace/src-tauri/target
+      - app_data:/root/.local/share
 
 volumes:
+  app_data:
   node_modules:
   cargo_registry:
   cargo_target:
