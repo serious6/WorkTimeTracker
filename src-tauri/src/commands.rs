@@ -398,6 +398,11 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
         .chars()
         .take(logging::MAX_MESSAGE_CHARS)
         .collect();
-    logging::error(&format!("ui/{source}"), message.trim());
+    let message: String = message
+        .trim()
+        .chars()
+        .take(logging::MAX_MESSAGE_CHARS)
+        .collect();
+    logging::error(&format!("ui/{source}"), &message);
     Ok(())
 }
