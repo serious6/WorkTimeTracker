@@ -70,6 +70,13 @@ describe('logError', () => {
     )
   })
 
+  test('falls back for values that stringify to undefined', async () => {
+    await logError('data', undefined)
+
+    const { message } = mockInvoke.mock.calls[0]![1] as { message: string }
+    expect(message).toBe('undefined')
+  })
+
   test('never throws when the value cannot be serialized', async () => {
     const circular: Record<string, unknown> = {}
     circular.self = circular

@@ -393,6 +393,11 @@ pub fn get_app_version(database: State<'_, Database>) -> AppResult<Option<String
 /// redacted by the logger, so client-side data cannot leak into the log either.
 #[tauri::command]
 pub fn log_client_error(source: String, message: String) -> AppResult<()> {
-    logging::error(&format!("ui/{}", source.trim()), message.trim());
+    let source: String = source
+        .trim()
+        .chars()
+        .take(logging::MAX_MESSAGE_CHARS)
+        .collect();
+    logging::error(&format!("ui/{source}"), message.trim());
     Ok(())
 }

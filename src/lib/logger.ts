@@ -9,7 +9,8 @@ function describe(error: unknown): string {
       return `${error.name}: ${error.message}${stack}`
     }
     if (typeof error === 'string') return error
-    return JSON.stringify(error) ?? String(error)
+    const serialized = JSON.stringify(error)
+    return serialized === undefined ? String(error) : serialized
   } catch {
     return 'Unknown error'
   }

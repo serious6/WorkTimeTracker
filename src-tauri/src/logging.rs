@@ -12,7 +12,7 @@ const FILE_NAME: &str = "work-time-tracker.log";
 const ROTATED_FILE_NAME: &str = "work-time-tracker.log.1";
 /// Above this size the log is rotated once, so the file cannot grow forever.
 const MAX_BYTES: u64 = 512 * 1024;
-const MAX_MESSAGE_CHARS: usize = 2_000;
+pub(crate) const MAX_MESSAGE_CHARS: usize = 2_000;
 const REDACTED: &str = "[redacted]";
 const REDACTED_PATH: &str = "[redacted path]";
 
