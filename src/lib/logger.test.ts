@@ -76,4 +76,20 @@ describe('logError', () => {
 
     await expect(logError('data', circular)).resolves.toBeUndefined()
   })
+
+  test('never throws when the final fallback cannot be serialized', async () => {
+    const unsafe = {
+      toJSON() {
+        throw new Error('json failed')
+      },
+      toString() {
+        throw new Error('string failed')
+      },
+    }
+
+    await expect(logError('data', unsafe)).resolves.toBeUndefined()
+
+    const { message } = mockInvoke.mock.calls[0]![1] as { message: string }
+    expect(message).toBe('Unknown error')
+  })
 })

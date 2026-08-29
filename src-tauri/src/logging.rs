@@ -100,7 +100,9 @@ fn rotate(path: &Path) {
         return;
     }
     if let Some(parent) = path.parent() {
-        let _ = fs::rename(path, parent.join(ROTATED_FILE_NAME));
+        let rotated = parent.join(ROTATED_FILE_NAME);
+        let _ = fs::remove_file(&rotated);
+        let _ = fs::rename(path, rotated);
     }
 }
 
@@ -123,23 +125,10 @@ fn clamp(message: &str) -> String {
 /// message. Both backends redact, so a log line is safe wherever it originates.
 pub fn redact(message: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
-    let mut redact_next = false;
 
+    let message = redact_sensitive_values(message);
     for token in message.split_whitespace() {
-        if redact_next {
-            redact_next = false;
-            parts.push(REDACTED.to_owned());
-            continue;
-        }
         match split_pair(token) {
-            Some((key, separator, value)) if is_sensitive_key(key) => {
-                if value.is_empty() {
-                    redact_next = true;
-                    parts.push(format!("{key}{separator}"));
-                } else {
-                    parts.push(format!("{key}{separator}{REDACTED}"));
-                }
-            }
             Some((key, separator, value)) if !is_path(token) && needs_redaction(value) => {
                 parts.push(format!("{key}{separator}{}", replacement(value)));
             }
@@ -163,17 +152,160 @@ fn needs_redaction(token: &str) -> bool {
     contains_email(token) || is_hash(token) || is_path(token)
 }
 
+fn redact_sensitive_values(message: &str) -> String {
+    let mut redacted = String::new();
+    let mut index = 0;
+
+    while index < message.len() {
+        if let Some((replacement, end)) = redact_sensitive_at(message, index) {
+            redacted.push_str(&replacement);
+            index = end;
+        } else if let Some(character) = message[index..].chars().next() {
+            redacted.push(character);
+            index += character.len_utf8();
+        } else {
+            break;
+        }
+    }
+
+    redacted
+}
+
+fn redact_sensitive_at(message: &str, index: usize) -> Option<(String, usize)> {
+    if !is_boundary(message, index) {
+        return None;
+    }
+
+    let (key, key_end) = match_sensitive_key(message, index)?;
+    let separator_index = skip_spaces(message, key_end);
+    let separator = message[separator_index..].chars().next()?;
+    if separator != ':' && separator != '=' {
+        return None;
+    }
+
+    let value_start = skip_spaces(message, separator_index + separator.len_utf8());
+    if value_start >= message.len() {
+        return None;
+    }
+
+    let prefix = &message[index..value_start];
+    let value = message[value_start..].chars().next()?;
+    if value == '"' || value == '\'' {
+        return Some((
+            format!("{prefix}{value}{REDACTED}{value}"),
+            quoted_value_end(message, value_start, value),
+        ));
+    }
+
+    let value_end = if key == "authorization" {
+        authorization_value_end(message, value_start)
+            .unwrap_or_else(|| unquoted_value_end(message, value_start))
+    } else {
+        unquoted_value_end(message, value_start)
+    };
+    if value_end == value_start {
+        return None;
+    }
+
+    Some((format!("{prefix}{REDACTED}"), value_end))
+}
+
+fn is_boundary(message: &str, index: usize) -> bool {
+    if index == 0 {
+        return true;
+    }
+    message[..index]
+        .chars()
+        .next_back()
+        .is_none_or(|character| !is_key_character(character))
+}
+
+fn match_sensitive_key(message: &str, index: usize) -> Option<(&'static str, usize)> {
+    let quote = match message[index..].chars().next()? {
+        '"' => Some('"'),
+        '\'' => Some('\''),
+        _ => None,
+    };
+    let key_start = index + quote.map_or(0, char::len_utf8);
+
+    SENSITIVE_KEYS.iter().find_map(|key| {
+        let key_end = key_start + key.len();
+        if key_end > message.len() || !message[key_start..key_end].eq_ignore_ascii_case(key) {
+            return None;
+        }
+
+        if let Some(quote) = quote {
+            return (message[key_end..].starts_with(quote)).then_some((*key, key_end + 1));
+        }
+
+        message[key_end..]
+            .chars()
+            .next()
+            .is_none_or(|character| !is_key_character(character))
+            .then_some((*key, key_end))
+    })
+}
+
+fn is_key_character(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
+}
+
+fn skip_spaces(message: &str, mut index: usize) -> usize {
+    while let Some(character) = message[index..].chars().next() {
+        if !character.is_whitespace() {
+            break;
+        }
+        index += character.len_utf8();
+    }
+    index
+}
+
+fn quoted_value_end(message: &str, index: usize, quote: char) -> usize {
+    let mut escaped = false;
+    for (offset, character) in message[index + quote.len_utf8()..].char_indices() {
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if character == quote {
+            return index + quote.len_utf8() + offset + quote.len_utf8();
+        }
+    }
+    message.len()
+}
+
+fn unquoted_value_end(message: &str, index: usize) -> usize {
+    for (offset, character) in message[index..].char_indices() {
+        if character.is_whitespace() || matches!(character, ',' | '}' | ']') {
+            return index + offset;
+        }
+    }
+    message.len()
+}
+
+fn authorization_value_end(message: &str, index: usize) -> Option<usize> {
+    const SCHEMES: [&str; 4] = ["bearer", "basic", "digest", "negotiate"];
+
+    SCHEMES.iter().find_map(|scheme| {
+        let scheme_end = index + scheme.len();
+        if scheme_end > message.len() || !message[index..scheme_end].eq_ignore_ascii_case(scheme) {
+            return None;
+        }
+
+        let credential_start = skip_spaces(message, scheme_end);
+        if credential_start == scheme_end {
+            return None;
+        }
+
+        let credential_end = unquoted_value_end(message, credential_start);
+        (credential_end > credential_start).then_some(credential_end)
+    })
+}
+
 fn split_pair(token: &str) -> Option<(&str, char, &str)> {
     let index = token.find(['=', ':'])?;
     let separator = token[index..].chars().next()?;
     Some((&token[..index], separator, &token[index + 1..]))
-}
-
-fn is_sensitive_key(key: &str) -> bool {
-    let key = key
-        .trim_matches(|character: char| !character.is_ascii_alphanumeric() && character != '_')
-        .to_ascii_lowercase();
-    SENSITIVE_KEYS.contains(&key.as_str())
 }
 
 fn contains_email(token: &str) -> bool {
@@ -234,6 +366,17 @@ mod tests {
     fn removes_values_of_sensitive_keys() {
         assert_eq!(redact("token: abc123"), "token: [redacted]");
         assert_eq!(redact("Authorization=Bearer"), "Authorization=[redacted]");
+        assert_eq!(
+            redact(&format!(
+                "Authorization: {}",
+                ["Bearer", "opaque-token"].join(" ")
+            )),
+            "Authorization: [redacted]"
+        );
+        assert_eq!(
+            redact(r#"{"password":"top secret"}"#),
+            r#"{"password":"[redacted]"}"#
+        );
     }
 
     #[test]
@@ -319,6 +462,29 @@ mod tests {
 
         assert!(!path.exists());
         assert!(directory.join(ROTATED_FILE_NAME).exists());
+        let _ = fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn rotates_over_an_existing_rotated_log() {
+        let directory = std::env::temp_dir().join(format!(
+            "work-time-tracker-rotate-existing-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(FILE_NAME);
+        let rotated = directory.join(ROTATED_FILE_NAME);
+        fs::write(&path, "x".repeat(MAX_BYTES as usize + 1)).unwrap();
+        fs::write(&rotated, "old").unwrap();
+
+        rotate(&path);
+
+        assert!(!path.exists());
+        assert_eq!(
+            fs::read_to_string(directory.join(ROTATED_FILE_NAME)).unwrap(),
+            "x".repeat(MAX_BYTES as usize + 1)
+        );
         let _ = fs::remove_dir_all(&directory);
     }
 }

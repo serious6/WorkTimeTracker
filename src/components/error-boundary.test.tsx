@@ -41,6 +41,7 @@ describe('ErrorBoundary', () => {
     )
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByText('The error was reported. Reload the application to continue.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
     expect(mockReportError).toHaveBeenCalledWith('render', expect.any(Error))
   })

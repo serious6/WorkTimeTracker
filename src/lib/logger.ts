@@ -3,15 +3,15 @@ import { clamp, redact } from './redact'
 
 /** Turns any thrown value into a single, readable line. */
 function describe(error: unknown): string {
-  if (error instanceof Error) {
-    const stack = error.stack ? ` ${error.stack}` : ''
-    return `${error.name}: ${error.message}${stack}`
-  }
-  if (typeof error === 'string') return error
   try {
+    if (error instanceof Error) {
+      const stack = error.stack ? ` ${error.stack}` : ''
+      return `${error.name}: ${error.message}${stack}`
+    }
+    if (typeof error === 'string') return error
     return JSON.stringify(error) ?? String(error)
   } catch {
-    return String(error)
+    return 'Unknown error'
   }
 }
 

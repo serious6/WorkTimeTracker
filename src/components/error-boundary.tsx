@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<PropsWithChildren, State> {
         <div>
           <h1 className="text-lg font-semibold">Something went wrong</h1>
           <p className="text-sm text-muted-foreground">
-            The error was written to the log file. Reload the application to continue.
+            The error was reported. Reload the application to continue.
           </p>
         </div>
         <Button onClick={() => window.location.reload()}>Reload</Button>

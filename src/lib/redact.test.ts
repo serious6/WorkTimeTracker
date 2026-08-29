@@ -18,6 +18,10 @@ describe('redact', () => {
   it('removes values of sensitive keys', () => {
     expect(redact('token: abc123')).toBe('token: [redacted]')
     expect(redact('Authorization=Bearer')).toBe('Authorization=[redacted]')
+    expect(redact(`Authorization: ${['Bearer', 'opaque-token'].join(' ')}`)).toBe(
+      'Authorization: [redacted]',
+    )
+    expect(redact('{"password":"top secret"}')).toBe('{"password":"[redacted]"}')
   })
 
   it('removes password hashes', () => {
