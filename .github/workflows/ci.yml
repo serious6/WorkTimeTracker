@@ -80,7 +80,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Node is only needed for the npm steps below, which are all skipped on
+      # pull requests, so the dependency install is skipped there too.
       - uses: ./.github/actions/setup-node
+        if: github.event_name != 'pull_request'
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: stable
@@ -89,13 +92,16 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Install Linux dependencies
-        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
-        with:
-          packages: libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
-          version: 1.0
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      # Runs in the lint/build job for any change that can affect licenses
+      # (package-lock.json is not under src-tauri/), so it is skipped here on
+      # pull requests together with the Tauri build below.
       - run: npm run licenses:check
+        if: github.event_name != 'pull_request'
       # Full Tauri compile (release-style, with the frontend bundled in)
       # duplicates cargo test + the web build and takes ~60s on its own, so
       # it is skipped on PRs. It still runs on every push to main (keeping
