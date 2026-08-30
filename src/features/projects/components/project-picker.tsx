@@ -24,8 +24,11 @@ export function ProjectPicker({
   const [wasOpen, setWasOpen] = useState(open)
   const container = useRef<HTMLDivElement>(null)
   const openChangeRef = useRef(onOpenChange)
-  openChangeRef.current = onOpenChange
   const selected = projects.find((project) => project.id === value)
+
+  useEffect(() => {
+    openChangeRef.current = onOpenChange
+  }, [onOpenChange])
 
   if (open !== wasOpen) {
     setWasOpen(open)
