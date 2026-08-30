@@ -65,7 +65,9 @@ export const appMetadata = sqliteTable('app_metadata', {
 /** Append-only history of every change to a time entry. */
 export const auditLog = sqliteTable('audit_log', {
   id: integer().primaryKey({ autoIncrement: true }),
-  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  userId: integer('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   entity: text().notNull(),
   entityId: integer('entity_id').notNull(),
   action: text().notNull(),

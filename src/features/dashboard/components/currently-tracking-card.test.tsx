@@ -267,15 +267,18 @@ describe('CurrentlyTrackingCard – start correction', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Correct start time' }))
+    const dateField = screen.getByLabelText('Start date') as HTMLInputElement
     const field = screen.getByLabelText('Start time') as HTMLInputElement
+    expect(dateField.value).toBe(toDateKey(new Date(entry.startTime)))
     expect(field.value).toBe(toTimeKey(new Date(entry.startTime)))
 
+    fireEvent.change(dateField, { target: { value: '2026-05-03' } })
     fireEvent.change(field, { target: { value: '08:00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save start time' }))
 
     await waitFor(() => expect(correctStart).toHaveBeenCalledOnce())
     expect(correctStart.mock.calls[0][0]).toEqual(
-      combineDateAndTime(toDateKey(new Date(entry.startTime)), '08:00'),
+      combineDateAndTime('2026-05-03', '08:00'),
     )
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Save start time' })).not.toBeInTheDocument(),

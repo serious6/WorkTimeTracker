@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { localRepository } from '@/features/storage/local-repository'
 import { atTime, renderWithProviders, resetAppState, seedProject, seedTimeEntry, signIn } from '@/test/harness'
 import { AuditTrailCard } from './audit-trail-card'
@@ -13,6 +13,15 @@ describe('AuditTrailCard', () => {
   it('shows an empty state without recorded changes', async () => {
     renderWithProviders(<AuditTrailCard />)
     expect(await screen.findByText(/no changes recorded yet/i)).toBeInTheDocument()
+  })
+
+  it('shows a load error instead of the empty state', async () => {
+    vi.spyOn(localRepository, 'listAuditLog').mockRejectedValueOnce(new Error('unavailable'))
+
+    renderWithProviders(<AuditTrailCard />)
+
+    expect(await screen.findByText(/change history could not be loaded/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no changes recorded yet/i)).not.toBeInTheDocument()
   })
 
   it('shows the actor, the action and the changed fields', async () => {

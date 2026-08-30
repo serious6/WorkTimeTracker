@@ -233,6 +233,10 @@ describe('local repository projects', () => {
     expect(await localRepository.listProjects()).toEqual([])
     expect(await localRepository.listProjectBudgets()).toEqual([])
     expect((await localRepository.listTimeEntries())[0].projectId).toBeNull()
+    expect((await localRepository.listAuditLog())[0]).toMatchObject({
+      action: 'update',
+      entityId: 1,
+    })
   })
 })
 
@@ -699,5 +703,19 @@ describe('local repository audit trail', () => {
     await register('second@example.com')
 
     expect(await localRepository.listAuditLog()).toEqual([])
+  })
+
+  it('retains audit records beyond the query limit', async () => {
+    for (let day = 1; day <= 201; day += 1) {
+      const date = new Date(Date.UTC(2026, 0, day))
+      const start = date.toISOString()
+      date.setUTCHours(1)
+      await createEntry(start, date.toISOString())
+    }
+
+    expect(await localRepository.listAuditLog()).toHaveLength(200)
+    expect(JSON.parse(globalThis.localStorage?.getItem('work-time-tracker.1.audit-log') ?? '[]')).toHaveLength(
+      201,
+    )
   })
 })

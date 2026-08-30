@@ -23,16 +23,18 @@ export function StartCorrectionDialog({
   onClose: () => void
 }) {
   const started = new Date(running.startTime)
+  const [dateKey, setDateKey] = useState(() => toDateKey(started))
   const [timeKey, setTimeKey] = useState(() => toTimeKey(started))
 
   const [openedFor, setOpenedFor] = useState<string | null>(null)
   if (open && openedFor !== running.startTime) {
     setOpenedFor(running.startTime)
+    setDateKey(toDateKey(started))
     setTimeKey(toTimeKey(started))
   }
   if (!open && openedFor !== null) setOpenedFor(null)
 
-  const corrected = timeKey ? combineDateAndTime(toDateKey(started), timeKey) : null
+  const corrected = dateKey && timeKey ? combineDateAndTime(dateKey, timeKey) : null
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -48,6 +50,15 @@ export function StartCorrectionDialog({
       title="Correct start time"
     >
       <form className="space-y-4" onSubmit={submit}>
+        <label className="block space-y-1 text-sm font-medium">
+          Start date
+          <Input
+            name="startDate"
+            onChange={(event) => setDateKey(event.target.value)}
+            type="date"
+            value={dateKey}
+          />
+        </label>
         <label className="block space-y-1 text-sm font-medium">
           Start time
           <Input
@@ -68,7 +79,7 @@ export function StartCorrectionDialog({
           <Button onClick={onClose} type="button" variant="outline">
             Cancel
           </Button>
-          <Button disabled={!timeKey} type="submit">
+          <Button disabled={!dateKey || !timeKey} type="submit">
             Save start time
           </Button>
         </div>

@@ -160,10 +160,27 @@ pub fn update_project(
 }
 
 pub fn delete_project(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let affected: Vec<TimeEntry> = list_time_entries(&transaction, user_id)?
+        .into_iter()
+        .filter(|entry| entry.project_id == Some(id))
+        .collect();
+    transaction.execute(
         "DELETE FROM projects WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
+    for current in affected {
+        let updated = read_entry(&transaction, current.id, user_id)?;
+        record_audit(
+            &transaction,
+            user_id,
+            current.id,
+            "update",
+            Some(&current),
+            Some(&updated),
+        )?;
+    }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -269,7 +286,7 @@ pub fn list_audit_log(connection: &Connection, user_id: i64) -> Result<Vec<Audit
     records.collect()
 }
 
-pub fn insert_time_entry(
+fn insert_time_entry_with_audit(
     connection: &Connection,
     user_id: i64,
     input: &SaveTimeEntry,
@@ -291,15 +308,27 @@ pub fn insert_time_entry(
     Ok(entry)
 }
 
+pub fn insert_time_entry(
+    connection: &Connection,
+    user_id: i64,
+    input: &SaveTimeEntry,
+) -> Result<TimeEntry> {
+    let transaction = connection.unchecked_transaction()?;
+    let entry = insert_time_entry_with_audit(&transaction, user_id, input)?;
+    transaction.commit()?;
+    Ok(entry)
+}
+
 pub fn update_time_entry(
     connection: &Connection,
     id: i64,
     user_id: i64,
     input: &SaveTimeEntry,
 ) -> Result<TimeEntry> {
-    assert_owns_project(connection, user_id, input.project_id)?;
-    let current = read_entry(connection, id, user_id)?;
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    assert_owns_project(&transaction, user_id, input.project_id)?;
+    let current = read_entry(&transaction, id, user_id)?;
+    transaction.execute(
         "UPDATE time_entries
      SET project_id = ?3, start_time = ?4, end_time = ?5, note = ?6,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -313,15 +342,16 @@ pub fn update_time_entry(
             input.note
         ],
     )?;
-    let updated = read_entry(connection, id, user_id)?;
+    let updated = read_entry(&transaction, id, user_id)?;
     record_audit(
-        connection,
+        &transaction,
         user_id,
         id,
         "update",
         Some(&current),
         Some(&updated),
     )?;
+    transaction.commit()?;
     Ok(updated)
 }
 
@@ -331,22 +361,24 @@ pub fn update_time_entry_note(
     user_id: i64,
     note: Option<&str>,
 ) -> Result<TimeEntry> {
-    let current = read_entry(connection, id, user_id)?;
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let current = read_entry(&transaction, id, user_id)?;
+    transaction.execute(
         "UPDATE time_entries
      SET note = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ?1 AND user_id = ?2",
         params![id, user_id, note],
     )?;
-    let updated = read_entry(connection, id, user_id)?;
+    let updated = read_entry(&transaction, id, user_id)?;
     record_audit(
-        connection,
+        &transaction,
         user_id,
         id,
         "update",
         Some(&current),
         Some(&updated),
     )?;
+    transaction.commit()?;
     Ok(updated)
 }
 
@@ -399,7 +431,7 @@ pub fn switch_running_time_entry(
         Some(&closed),
     )
     .map_err(SwitchRunningTimeEntryError::Database)?;
-    let created = insert_time_entry(&transaction, user_id, input)
+    let created = insert_time_entry_with_audit(&transaction, user_id, input)
         .map_err(SwitchRunningTimeEntryError::Database)?;
     transaction
         .commit()
@@ -408,14 +440,16 @@ pub fn switch_running_time_entry(
 }
 
 pub fn delete_time_entry(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
-    let current = read_entry(connection, id, user_id).optional()?;
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let current = read_entry(&transaction, id, user_id).optional()?;
+    transaction.execute(
         "DELETE FROM time_entries WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
     if let Some(current) = current {
-        record_audit(connection, user_id, id, "delete", Some(&current), None)?;
+        record_audit(&transaction, user_id, id, "delete", Some(&current), None)?;
     }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -863,6 +897,18 @@ mod tests {
         let entries = list_time_entries(&connection, user_id).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].project_id, None);
+        let records = list_audit_log(&connection, user_id).unwrap();
+        assert_eq!(records[0].action, "update");
+        assert!(records[0]
+            .old_value
+            .as_deref()
+            .unwrap()
+            .contains(&format!("\"projectId\":{}", project.id)));
+        assert!(records[0]
+            .new_value
+            .as_deref()
+            .unwrap()
+            .contains("\"projectId\":null"));
     }
 
     #[test]
@@ -1027,6 +1073,69 @@ mod tests {
             .contains("2026-08-27T10:00:00.000Z"));
         assert_eq!(records[0].new_value, None);
         assert!(!records[0].created_at.is_empty());
+    }
+
+    #[test]
+    fn rolls_back_time_entry_changes_when_audit_writing_fails() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        connection
+            .execute_batch(
+                "CREATE TRIGGER reject_audit BEFORE INSERT ON audit_log
+                 BEGIN SELECT RAISE(FAIL, 'audit failed'); END;",
+            )
+            .unwrap();
+
+        assert!(insert_time_entry(
+            &connection,
+            user_id,
+            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
+        )
+        .is_err());
+        assert!(list_time_entries(&connection, user_id).unwrap().is_empty());
+
+        connection
+            .execute_batch("DROP TRIGGER reject_audit;")
+            .unwrap();
+        let created = insert_time_entry(
+            &connection,
+            user_id,
+            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
+        )
+        .unwrap();
+        connection
+            .execute_batch(
+                "CREATE TRIGGER reject_audit BEFORE INSERT ON audit_log
+                 BEGIN SELECT RAISE(FAIL, 'audit failed'); END;",
+            )
+            .unwrap();
+
+        assert!(update_time_entry(
+            &connection,
+            created.id,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T09:00:00.000Z"),
+            ),
+        )
+        .is_err());
+        assert_eq!(
+            read_entry(&connection, created.id, user_id)
+                .unwrap()
+                .end_time,
+            None
+        );
+
+        assert!(update_time_entry_note(&connection, created.id, user_id, Some("lost")).is_err());
+        assert_eq!(
+            read_entry(&connection, created.id, user_id).unwrap().note,
+            None
+        );
+
+        assert!(delete_time_entry(&connection, created.id, user_id).is_err());
+        assert!(read_entry(&connection, created.id, user_id).is_ok());
     }
 
     #[test]

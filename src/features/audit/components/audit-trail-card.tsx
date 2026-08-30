@@ -10,7 +10,7 @@ const VISIBLE_RECORDS = 20
 
 /** Who changed what and when, as required for the compliance evidence. */
 export function AuditTrailCard({ projectId = null }: { projectId?: number | null }) {
-  const { data: records = [] } = useAuditLog()
+  const { data: records = [], isError } = useAuditLog()
   const { data: projects = [] } = useProjects()
   const { data: user } = useSession()
 
@@ -41,7 +41,9 @@ export function AuditTrailCard({ projectId = null }: { projectId?: number | null
         </p>
       </CardHeader>
       <CardContent>
-        {visible.length === 0 ? (
+        {isError ? (
+          <p className="text-sm text-destructive">The change history could not be loaded.</p>
+        ) : visible.length === 0 ? (
           <p className="text-sm text-muted-foreground">No changes recorded yet.</p>
         ) : (
           <ul className="divide-y divide-border">

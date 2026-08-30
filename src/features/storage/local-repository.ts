@@ -192,7 +192,7 @@ function recordAudit(
     newValue: newValue ? JSON.stringify(toSnapshot(newValue)) : null,
     createdAt: new Date().toISOString(),
   })
-  write(scopedKey('audit-log'), [...records, record].slice(-AUDIT_LOG_LIMIT))
+  write(scopedKey('audit-log'), [...records, record])
 }
 
 const PBKDF2_ITERATIONS = 210_000
@@ -331,6 +331,8 @@ export const localRepository: Repository = {
     return updated
   },
   deleteProject: async (id) => {
+    const entries = readEntries()
+    const affected = entries.filter((entry) => entry.projectId === id)
     write(
       scopedKey('projects'),
       readProjects().filter((project) => project.id !== id),
@@ -341,8 +343,9 @@ export const localRepository: Repository = {
     )
     write(
       scopedKey('time-entries'),
-      readEntries().map((entry) => (entry.projectId === id ? { ...entry, projectId: null } : entry)),
+      entries.map((entry) => (entry.projectId === id ? { ...entry, projectId: null } : entry)),
     )
+    affected.forEach((entry) => recordAudit(entry.id, 'update', entry, { ...entry, projectId: null }))
   },
   listTimeEntries: async () =>
     readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
@@ -428,7 +431,10 @@ export const localRepository: Repository = {
     )
     if (current) recordAudit(id, 'delete', current, null)
   },
-  listAuditLog: async () => readAuditLog().sort((left, right) => right.id - left.id),
+  listAuditLog: async () =>
+    readAuditLog()
+      .sort((left, right) => right.id - left.id)
+      .slice(0, AUDIT_LOG_LIMIT),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {
