@@ -23,7 +23,12 @@ export function ProjectPicker({
   const [search, setSearch] = useState('')
   const [wasOpen, setWasOpen] = useState(open)
   const container = useRef<HTMLDivElement>(null)
+  const openChangeRef = useRef(onOpenChange)
   const selected = projects.find((project) => project.id === value)
+
+  useEffect(() => {
+    openChangeRef.current = onOpenChange
+  }, [onOpenChange])
 
   if (open !== wasOpen) {
     setWasOpen(open)
@@ -34,10 +39,10 @@ export function ProjectPicker({
     if (!open) return
     container.current?.querySelector<HTMLInputElement>('input')?.focus()
     function onPointerDown(event: MouseEvent) {
-      if (!container.current?.contains(event.target as Node)) onOpenChange(false)
+      if (!container.current?.contains(event.target as Node)) openChangeRef.current(false)
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onOpenChange(false)
+      if (event.key === 'Escape') openChangeRef.current(false)
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -45,7 +50,7 @@ export function ProjectPicker({
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, onOpenChange])
+  }, [open])
 
   const matches = projects.filter(
     (project) => project.active && project.name.toLowerCase().includes(search.trim().toLowerCase()),

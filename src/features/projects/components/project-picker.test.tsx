@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   renderWithProviders,
@@ -68,6 +69,40 @@ describe('ProjectPicker – open state', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /search/i }), { target: { value: 'alph' } })
     expect(screen.queryByText('Beta')).not.toBeInTheDocument()
     expect(screen.getByText('Alpha')).toBeInTheDocument()
+  })
+
+  it('keeps search focused and filters while the parent rerenders', async () => {
+    await seedProject('Alpha')
+    await seedProject('Beta')
+    function Wrapper() {
+      const [, setRenders] = useState(0)
+      return (
+        <div onChange={() => setRenders((count) => count + 1)}>
+          <ProjectPicker
+            value={null}
+            open
+            onOpenChange={() => {}}
+            onSelect={() => {}}
+            onCreate={() => {}}
+          />
+        </div>
+      )
+    }
+    renderWithProviders(<Wrapper />)
+    await waitFor(() => screen.getByRole('option', { name: /alpha/i }))
+    const search = screen.getByRole('textbox', { name: /search projects/i })
+    const focus = vi.spyOn(search, 'focus')
+
+    for (const value of ['a', 'al', 'alp', 'alph']) {
+      expect(search).toHaveFocus()
+      fireEvent.change(search, { target: { value } })
+    }
+
+    expect(search).toHaveFocus()
+    expect(search).toHaveValue('alph')
+    expect(focus).not.toHaveBeenCalled()
+    expect(screen.getByRole('option', { name: 'Alpha' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Beta' })).not.toBeInTheDocument()
   })
 
   it('shows "No projects found" when search has no match', async () => {

@@ -2,6 +2,28 @@ import { useEffect, useId, useRef, type PropsWithChildren } from 'react'
 import { X } from 'lucide-react'
 import { Button } from './button'
 
+function isVisible(element: HTMLElement, root: HTMLElement) {
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    if (current.hidden || current.getAttribute('aria-hidden') === 'true' || current.hasAttribute('inert')) {
+      return false
+    }
+
+    const style = window.getComputedStyle(current)
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') {
+      return false
+    }
+
+    if (current === root) return true
+  }
+
+  return false
+}
+
+function tryFocus(element: HTMLElement) {
+  element.focus()
+  return document.activeElement === element
+}
+
 export function Dialog({
   open,
   title,
@@ -16,25 +38,32 @@ export function Dialog({
 }>) {
   const panel = useRef<HTMLDivElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
+  const closeRef = useRef(onClose)
   const titleId = useId()
   const descriptionId = useId()
 
   useEffect(() => {
+    closeRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
     if (!open) return
+    const panelEl = panel.current
+    if (!panelEl) return
     previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusable = () =>
       Array.from(
-        panel.current?.querySelectorAll<HTMLElement>(
+        panelEl.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((element) => !element.hasAttribute('aria-hidden'))
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+        ),
+      ).filter((element) => isVisible(element, panelEl))
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeRef.current()
       if (event.key !== 'Tab') return
       const elements = focusable()
       if (elements.length === 0) {
         event.preventDefault()
-        panel.current?.focus()
+        panelEl.focus()
         return
       }
       const first = elements[0]
@@ -49,12 +78,22 @@ export function Dialog({
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    ;(focusable()[0] ?? panel.current)?.focus()
+    const autofocusCandidates = Array.from(new Set([
+      ...Array.from(
+        panelEl.querySelectorAll<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
+        ),
+      ),
+      ...focusable(),
+      panelEl,
+    ]))
+
+    autofocusCandidates.find((element) => isVisible(element, panelEl) && tryFocus(element))
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       previousFocus.current?.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
