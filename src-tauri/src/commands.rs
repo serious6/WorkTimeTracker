@@ -1,7 +1,7 @@
 use tauri::State;
 
 use crate::{
-    auth::{self, LoginAttempts, Session},
+    auth::{self, LoginAttempts, SessionId, Sessions},
     error::{AppError, AppResult},
     logging,
     models::{
@@ -41,17 +41,30 @@ fn verify_credentials(record: Option<(i64, String)>, password: &str) -> Option<i
     }
 }
 
-/// Every command works on the data of the signed in user only.
-fn current_user(session: &State<'_, Session>) -> AppResult<i64> {
-    session.user_id()?.ok_or_else(AppError::not_signed_in)
+/// Every command works on the data of the signed in user only. The session is
+/// named by the command instead of read from an ambient singleton, so a command
+/// without an identity cannot compile.
+fn current_user(sessions: &State<'_, Sessions>, session_id: &SessionId) -> AppResult<i64> {
+    sessions
+        .user_id(session_id)?
+        .ok_or_else(AppError::not_signed_in)
+}
+
+/// Answer of `register` and `login`: the account plus the id of the started
+/// session, which the caller repeats with every following command.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedIn {
+    user: User,
+    session_id: SessionId,
 }
 
 #[tauri::command]
 pub fn register(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
     mut credentials: Credentials,
-) -> AppResult<User> {
+) -> AppResult<SignedIn> {
     logging::logged("register", || {
         credentials.validate_registration()?;
         let password_hash = auth::hash_password(&credentials.password)?;
@@ -59,17 +72,17 @@ pub fn register(
             .0
             .register_user(&credentials.email, &password_hash)
             .map_err(unique_error(DUPLICATE_EMAIL))?;
-        session.set(Some(user.id))?;
-        Ok(user)
+        let session_id = sessions.start(user.id)?;
+        Ok(SignedIn { user, session_id })
     })
 }
 
 #[tauri::command]
 pub fn login(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
     mut credentials: Credentials,
-) -> AppResult<User> {
+) -> AppResult<SignedIn> {
     logging::logged("login", || {
         let attempts = LoginAttempts::new(database.0.as_ref());
         credentials
@@ -89,23 +102,24 @@ pub fn login(
             .read_user(user)?
             .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
         attempts.record_success(&credentials.email)?;
-        session.set(Some(user.id))?;
-        Ok(user)
+        let session_id = sessions.start(user.id)?;
+        Ok(SignedIn { user, session_id })
     })
 }
 
 #[tauri::command]
-pub fn logout(session: State<'_, Session>) -> AppResult<()> {
-    logging::logged("logout", || session.set(None))
+pub fn logout(sessions: State<'_, Sessions>, session_id: String) -> AppResult<()> {
+    logging::logged("logout", || sessions.end(&SessionId::from(session_id)))
 }
 
 #[tauri::command]
 pub fn current_session(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Option<User>> {
     logging::logged("current_session", || {
-        let Some(user_id) = session.user_id()? else {
+        let Some(user_id) = sessions.user_id(&SessionId::from(session_id))? else {
             return Ok(None);
         };
         Ok(database.0.read_user(user_id)?)
@@ -115,10 +129,11 @@ pub fn current_session(
 #[tauri::command]
 pub fn list_projects(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<Project>> {
     logging::logged("list_projects", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_projects(user_id)?)
     })
 }
@@ -126,12 +141,13 @@ pub fn list_projects(
 #[tauri::command]
 pub fn create_project(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     mut input: SaveProject,
 ) -> AppResult<Project> {
     logging::logged("create_project", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.insert_project(user_id, &input)?)
     })
 }
@@ -139,13 +155,14 @@ pub fn create_project(
 #[tauri::command]
 pub fn update_project(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
     mut input: SaveProject,
 ) -> AppResult<Project> {
     logging::logged("update_project", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.update_project(id, user_id, &input)?)
     })
 }
@@ -153,11 +170,12 @@ pub fn update_project(
 #[tauri::command]
 pub fn delete_project(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_project", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.delete_project(id, user_id)?)
     })
 }
@@ -165,10 +183,11 @@ pub fn delete_project(
 #[tauri::command]
 pub fn list_time_entries(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<TimeEntry>> {
     logging::logged("list_time_entries", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_time_entries(user_id)?)
     })
 }
@@ -186,7 +205,8 @@ fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
 #[tauri::command]
 pub fn create_time_entry(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     mut input: SaveTimeEntry,
 ) -> AppResult<TimeEntry> {
     logging::logged("create_time_entry", || {
@@ -194,7 +214,7 @@ pub fn create_time_entry(
         if input.project_id.is_none() && !input.is_break() {
             return Err(AppError::validation("Project is required"));
         }
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .create_time_entry(user_id, &input)
@@ -205,13 +225,14 @@ pub fn create_time_entry(
 #[tauri::command]
 pub fn update_time_entry(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
     mut input: SaveTimeEntry,
 ) -> AppResult<TimeEntry> {
     logging::logged("update_time_entry", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .update_time_entry(id, user_id, &input)
@@ -222,7 +243,8 @@ pub fn update_time_entry(
 #[tauri::command]
 pub fn update_time_entry_note(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
     note: Option<String>,
 ) -> AppResult<TimeEntry> {
@@ -233,7 +255,7 @@ pub fn update_time_entry_note(
         if note.as_ref().is_some_and(|note| note.chars().count() > 500) {
             return Err(AppError::validation("invalid note"));
         }
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database
             .0
             .update_time_entry_note(id, user_id, note.as_deref())?)
@@ -243,7 +265,8 @@ pub fn update_time_entry_note(
 #[tauri::command]
 pub fn switch_running_time_entry(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
     mut input: SaveTimeEntry,
 ) -> AppResult<TimeEntry> {
@@ -252,7 +275,7 @@ pub fn switch_running_time_entry(
         if input.project_id.is_none() || input.end_time.is_some() {
             return Err(AppError::validation("invalid timer switch"));
         }
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .switch_running_time_entry(id, user_id, &input)
@@ -267,11 +290,12 @@ pub fn switch_running_time_entry(
 #[tauri::command]
 pub fn delete_time_entry(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_time_entry", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.delete_time_entry(id, user_id)?)
     })
 }
@@ -280,10 +304,11 @@ pub fn delete_time_entry(
 #[tauri::command]
 pub fn list_time_entry_audits(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<TimeEntryAudit>> {
     logging::logged("list_time_entry_audits", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_time_entry_audits(user_id)?)
     })
 }
@@ -291,10 +316,11 @@ pub fn list_time_entry_audits(
 #[tauri::command]
 pub fn list_audit_log(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<AuditLogEntry>> {
     logging::logged("list_audit_log", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_audit_log(user_id)?)
     })
 }
@@ -302,10 +328,11 @@ pub fn list_audit_log(
 #[tauri::command]
 pub fn list_project_budgets(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<ProjectBudget>> {
     logging::logged("list_project_budgets", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_project_budgets(user_id)?)
     })
 }
@@ -313,12 +340,13 @@ pub fn list_project_budgets(
 #[tauri::command]
 pub fn create_project_budget(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     mut input: SaveProjectBudget,
 ) -> AppResult<ProjectBudget> {
     logging::logged("create_project_budget", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .insert_project_budget(user_id, &input)
@@ -329,13 +357,14 @@ pub fn create_project_budget(
 #[tauri::command]
 pub fn update_project_budget(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
     mut input: SaveProjectBudget,
 ) -> AppResult<ProjectBudget> {
     logging::logged("update_project_budget", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .update_project_budget(id, user_id, &input)
@@ -346,11 +375,12 @@ pub fn update_project_budget(
 #[tauri::command]
 pub fn delete_project_budget(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_project_budget", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.delete_project_budget(id, user_id)?)
     })
 }
@@ -358,10 +388,11 @@ pub fn delete_project_budget(
 #[tauri::command]
 pub fn list_absences(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<Absence>> {
     logging::logged("list_absences", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_absences(user_id)?)
     })
 }
@@ -369,12 +400,13 @@ pub fn list_absences(
 #[tauri::command]
 pub fn create_absence(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     mut input: SaveAbsence,
 ) -> AppResult<Absence> {
     logging::logged("create_absence", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .insert_absence(user_id, &input)
@@ -385,13 +417,14 @@ pub fn create_absence(
 #[tauri::command]
 pub fn update_absence(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
     mut input: SaveAbsence,
 ) -> AppResult<Absence> {
     logging::logged("update_absence", || {
         input.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .update_absence(id, user_id, &input)
@@ -402,7 +435,8 @@ pub fn update_absence(
 #[tauri::command]
 pub fn save_absences(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     mut inputs: Vec<SaveAbsence>,
     replacement_ids: Vec<i64>,
     update_id: Option<i64>,
@@ -419,7 +453,7 @@ pub fn save_absences(
         {
             return Err(AppError::validation("invalid absence range"));
         }
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         database
             .0
             .save_absences(user_id, &inputs, &replacement_ids, update_id)
@@ -430,11 +464,12 @@ pub fn save_absences(
 #[tauri::command]
 pub fn delete_absence(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_absence", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.delete_absence(id, user_id)?)
     })
 }
@@ -442,10 +477,11 @@ pub fn delete_absence(
 #[tauri::command]
 pub fn list_absence_audits(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Vec<AbsenceAudit>> {
     logging::logged("list_absence_audits", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.list_absence_audits(user_id)?)
     })
 }
@@ -453,10 +489,11 @@ pub fn list_absence_audits(
 #[tauri::command]
 pub fn get_work_settings(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<WorkSettings> {
     logging::logged("get_work_settings", || {
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.read_settings(user_id)?)
     })
 }
@@ -464,12 +501,13 @@ pub fn get_work_settings(
 #[tauri::command]
 pub fn update_work_settings(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
     mut settings: WorkSettings,
 ) -> AppResult<WorkSettings> {
     logging::logged("update_work_settings", || {
         settings.validate()?;
-        let user_id = current_user(&session)?;
+        let user_id = current_user(&sessions, &SessionId::from(session_id))?;
         Ok(database.0.write_settings(user_id, &settings)?)
     })
 }

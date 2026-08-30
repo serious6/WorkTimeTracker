@@ -19,15 +19,23 @@ const ABSENCE = { id: 1, type: 'vacation', date: '2026-09-01', createdAt: '2026-
 const ABSENCE_AUDIT = { id: 1, absenceId: 1, action: 'created', actor: 'user@example.com', oldValue: null, newValue: '{}', recordedAt: '2026-08-01T00:00:00Z' }
 const SETTINGS = { weeklyTargetMinutes: 2400, workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], weekStartsOn: 'monday' }
 
+const SESSION_ID = 'a'.repeat(64)
+
+/** Every command carries the id of the session it acts for. */
+function invokedWith(command: string, args: Record<string, unknown> = {}) {
+  expect(mockInvoke).toHaveBeenCalledWith(command, { sessionId: expect.any(String), ...args })
+}
+
 beforeEach(() => {
   mockInvoke.mockReset()
+  globalThis.sessionStorage?.clear()
 })
 
 describe('tauriRepository – auth', () => {
   test('currentSession invokes current_session with empty args', async () => {
     mockInvoke.mockResolvedValue(USER)
     const result = await tauriRepository.currentSession()
-    expect(mockInvoke).toHaveBeenCalledWith('current_session', {})
+    invokedWith('current_session', {})
     expect(result?.email).toBe('user@example.com')
   })
 
@@ -38,23 +46,40 @@ describe('tauriRepository – auth', () => {
   })
 
   test('register invokes register with credentials', async () => {
-    mockInvoke.mockResolvedValue(USER)
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
     const creds = { email: 'user@example.com', password: 'pw' }
-    await tauriRepository.register(creds)
-    expect(mockInvoke).toHaveBeenCalledWith('register', { credentials: creds })
+    const user = await tauriRepository.register(creds)
+    invokedWith('register', { credentials: creds })
+    expect(user.email).toBe('user@example.com')
   })
 
   test('login invokes login with credentials', async () => {
-    mockInvoke.mockResolvedValue(USER)
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
     const creds = { email: 'user@example.com', password: 'pw' }
     await tauriRepository.login(creds)
-    expect(mockInvoke).toHaveBeenCalledWith('login', { credentials: creds })
+    invokedWith('login', { credentials: creds })
   })
 
-  test('logout invokes logout', async () => {
+  test('login keeps the session id and sends it with the next command', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
+    mockInvoke.mockResolvedValue([PROJECT])
+
+    await tauriRepository.listProjects()
+
+    expect(mockInvoke).toHaveBeenLastCalledWith('list_projects', { sessionId: SESSION_ID })
+  })
+
+  test('logout invokes logout and forgets the session id', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
     mockInvoke.mockResolvedValue(undefined)
+
     await tauriRepository.logout()
-    expect(mockInvoke).toHaveBeenCalledWith('logout', {})
+    invokedWith('logout', {})
+    await tauriRepository.deleteProject(1)
+
+    expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })
   })
 })
 
@@ -62,7 +87,7 @@ describe('tauriRepository – projects', () => {
   test('listProjects invokes list_projects', async () => {
     mockInvoke.mockResolvedValue([PROJECT])
     const result = await tauriRepository.listProjects()
-    expect(mockInvoke).toHaveBeenCalledWith('list_projects', {})
+    invokedWith('list_projects', {})
     expect(result).toHaveLength(1)
   })
 
@@ -70,20 +95,20 @@ describe('tauriRepository – projects', () => {
     mockInvoke.mockResolvedValue(PROJECT)
     const input = { name: 'Test', description: null, color: '#22c55e', active: true }
     await tauriRepository.createProject(input)
-    expect(mockInvoke).toHaveBeenCalledWith('create_project', { input })
+    invokedWith('create_project', { input })
   })
 
   test('updateProject invokes update_project with id and input', async () => {
     mockInvoke.mockResolvedValue(PROJECT)
     const input = { name: 'Updated', description: null, color: '#22c55e', active: true }
     await tauriRepository.updateProject(1, input)
-    expect(mockInvoke).toHaveBeenCalledWith('update_project', { id: 1, input })
+    invokedWith('update_project', { id: 1, input })
   })
 
   test('deleteProject invokes delete_project', async () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteProject(1)
-    expect(mockInvoke).toHaveBeenCalledWith('delete_project', { id: 1 })
+    invokedWith('delete_project', { id: 1 })
   })
 })
 
@@ -91,47 +116,47 @@ describe('tauriRepository – time entries', () => {
   test('listTimeEntries invokes list_time_entries', async () => {
     mockInvoke.mockResolvedValue([TIME_ENTRY])
     await tauriRepository.listTimeEntries()
-    expect(mockInvoke).toHaveBeenCalledWith('list_time_entries', {})
+    invokedWith('list_time_entries', {})
   })
 
   test('createTimeEntry invokes create_time_entry', async () => {
     mockInvoke.mockResolvedValue(TIME_ENTRY)
     const input = { projectId: 1, startTime: '2024-01-01T09:00:00Z', endTime: null, note: null }
     await tauriRepository.createTimeEntry(input)
-    expect(mockInvoke).toHaveBeenCalledWith('create_time_entry', { input })
+    invokedWith('create_time_entry', { input })
   })
 
   test('updateTimeEntry invokes update_time_entry', async () => {
     mockInvoke.mockResolvedValue(TIME_ENTRY)
     const input = { projectId: 1, startTime: '2024-01-01T09:00:00Z', endTime: '2024-01-01T10:00:00Z', note: null }
     await tauriRepository.updateTimeEntry(1, input)
-    expect(mockInvoke).toHaveBeenCalledWith('update_time_entry', { id: 1, input })
+    invokedWith('update_time_entry', { id: 1, input })
   })
 
   test('listAuditLog invokes list_audit_log', async () => {
     mockInvoke.mockResolvedValue([AUDIT_RECORD])
     const result = await tauriRepository.listAuditLog()
-    expect(mockInvoke).toHaveBeenCalledWith('list_audit_log', {})
+    invokedWith('list_audit_log', {})
     expect(result[0].action).toBe('update')
   })
 
   test('deleteTimeEntry invokes delete_time_entry', async () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteTimeEntry(1)
-    expect(mockInvoke).toHaveBeenCalledWith('delete_time_entry', { id: 1 })
+    invokedWith('delete_time_entry', { id: 1 })
   })
 
   test('updateTimeEntryNote invokes update_time_entry_note', async () => {
     mockInvoke.mockResolvedValue(TIME_ENTRY)
     await tauriRepository.updateTimeEntryNote(1, 'note text')
-    expect(mockInvoke).toHaveBeenCalledWith('update_time_entry_note', { id: 1, note: 'note text' })
+    invokedWith('update_time_entry_note', { id: 1, note: 'note text' })
   })
 
   test('switchRunningTimeEntry invokes switch_running_time_entry', async () => {
     mockInvoke.mockResolvedValue(TIME_ENTRY)
     const input = { projectId: 2, startTime: '2024-01-01T10:00:00Z', endTime: null, note: null }
     await tauriRepository.switchRunningTimeEntry(1, input)
-    expect(mockInvoke).toHaveBeenCalledWith('switch_running_time_entry', { id: 1, input })
+    invokedWith('switch_running_time_entry', { id: 1, input })
   })
 })
 
@@ -139,26 +164,26 @@ describe('tauriRepository – budgets', () => {
   test('listProjectBudgets invokes list_project_budgets', async () => {
     mockInvoke.mockResolvedValue([BUDGET])
     await tauriRepository.listProjectBudgets()
-    expect(mockInvoke).toHaveBeenCalledWith('list_project_budgets', {})
+    invokedWith('list_project_budgets', {})
   })
 
   test('createProjectBudget invokes create_project_budget', async () => {
     mockInvoke.mockResolvedValue(BUDGET)
     const input = { projectId: 1, budgetMinutes: 6000, dueDate: '2024-12-31' }
     await tauriRepository.createProjectBudget(input)
-    expect(mockInvoke).toHaveBeenCalledWith('create_project_budget', { input })
+    invokedWith('create_project_budget', { input })
   })
 
   test('updateProjectBudget invokes update_project_budget', async () => {
     mockInvoke.mockResolvedValue(BUDGET)
     await tauriRepository.updateProjectBudget(1, { projectId: 1, budgetMinutes: 8000, dueDate: '2024-12-31' })
-    expect(mockInvoke).toHaveBeenCalledWith('update_project_budget', { id: 1, input: { projectId: 1, budgetMinutes: 8000, dueDate: '2024-12-31' } })
+    invokedWith('update_project_budget', { id: 1, input: { projectId: 1, budgetMinutes: 8000, dueDate: '2024-12-31' } })
   })
 
   test('deleteProjectBudget invokes delete_project_budget', async () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteProjectBudget(1)
-    expect(mockInvoke).toHaveBeenCalledWith('delete_project_budget', { id: 1 })
+    invokedWith('delete_project_budget', { id: 1 })
   })
 })
 
@@ -166,7 +191,7 @@ describe('tauriRepository – absences', () => {
   test('listAbsences invokes list_absences', async () => {
     mockInvoke.mockResolvedValue([ABSENCE])
     const result = await tauriRepository.listAbsences()
-    expect(mockInvoke).toHaveBeenCalledWith('list_absences', {})
+    invokedWith('list_absences', {})
     expect(result[0].type).toBe('vacation')
   })
 
@@ -174,21 +199,21 @@ describe('tauriRepository – absences', () => {
     mockInvoke.mockResolvedValue(ABSENCE)
     const input = { type: 'vacation', date: '2026-09-01' } as const
     await tauriRepository.createAbsence(input)
-    expect(mockInvoke).toHaveBeenCalledWith('create_absence', { input })
+    invokedWith('create_absence', { input })
   })
 
   test('updateAbsence invokes update_absence', async () => {
     mockInvoke.mockResolvedValue({ ...ABSENCE, type: 'sick' })
     const input = { type: 'sick', date: '2026-09-01' } as const
     await tauriRepository.updateAbsence(1, input)
-    expect(mockInvoke).toHaveBeenCalledWith('update_absence', { id: 1, input })
+    invokedWith('update_absence', { id: 1, input })
   })
 
   test('saveAbsences invokes one bulk command', async () => {
     mockInvoke.mockResolvedValue([ABSENCE])
     const inputs = [{ type: 'vacation', date: '2026-09-01' }] as const
     await tauriRepository.saveAbsences([...inputs], [2], 1)
-    expect(mockInvoke).toHaveBeenCalledWith('save_absences', {
+    invokedWith('save_absences', {
       inputs,
       replacementIds: [2],
       updateId: 1,
@@ -198,13 +223,13 @@ describe('tauriRepository – absences', () => {
   test('deleteAbsence invokes delete_absence', async () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteAbsence(1)
-    expect(mockInvoke).toHaveBeenCalledWith('delete_absence', { id: 1 })
+    invokedWith('delete_absence', { id: 1 })
   })
 
   test('listAbsenceAudits invokes list_absence_audits', async () => {
     mockInvoke.mockResolvedValue([ABSENCE_AUDIT])
     const result = await tauriRepository.listAbsenceAudits()
-    expect(mockInvoke).toHaveBeenCalledWith('list_absence_audits', {})
+    invokedWith('list_absence_audits', {})
     expect(result[0].action).toBe('created')
   })
 })
@@ -213,20 +238,20 @@ describe('tauriRepository – work settings', () => {
   test('getWorkSettings invokes get_work_settings', async () => {
     mockInvoke.mockResolvedValue(SETTINGS)
     const result = await tauriRepository.getWorkSettings()
-    expect(mockInvoke).toHaveBeenCalledWith('get_work_settings', {})
+    invokedWith('get_work_settings', {})
     expect(result.weeklyTargetMinutes).toBe(2400)
   })
 
   test('updateWorkSettings invokes update_work_settings', async () => {
     mockInvoke.mockResolvedValue(SETTINGS)
     await tauriRepository.updateWorkSettings(SETTINGS as Parameters<typeof tauriRepository.updateWorkSettings>[0])
-    expect(mockInvoke).toHaveBeenCalledWith('update_work_settings', { settings: SETTINGS })
+    invokedWith('update_work_settings', { settings: SETTINGS })
   })
 
   test('getAppVersion invokes get_app_version', async () => {
     mockInvoke.mockResolvedValue('1.0.0')
     const version = await tauriRepository.getAppVersion()
-    expect(mockInvoke).toHaveBeenCalledWith('get_app_version', {})
+    invokedWith('get_app_version', {})
     expect(version).toBe('1.0.0')
   })
 })

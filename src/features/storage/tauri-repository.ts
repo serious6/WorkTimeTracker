@@ -12,13 +12,43 @@ import type { Repository } from './repository'
 
 const appVersionSchema = z.string().min(1).nullable()
 
+/** Answer of `register` and `login`: the account and the id of the session. */
+const signedInSchema = z.object({ user: authUserSchema, sessionId: z.string().min(1) })
+
+const SESSION_ID_KEY = 'work-time-tracker.session-id'
+
+/**
+ * The backend keys its sessions by an opaque id instead of holding one ambient
+ * session, so every command names the session it acts for. The id is kept in
+ * `sessionStorage`: a reload of the window keeps the session, a restart of the
+ * application starts at the login page, just like the backend map.
+ */
+function sessionId(): string {
+  return globalThis.sessionStorage?.getItem(SESSION_ID_KEY) ?? ''
+}
+
+function rememberSession(id: string): void {
+  globalThis.sessionStorage?.setItem(SESSION_ID_KEY, id)
+}
+
+function forgetSession(): void {
+  globalThis.sessionStorage?.removeItem(SESSION_ID_KEY)
+}
+
 /** Rejected commands carry a serialized `AppError`, everything else is unexpected. */
 async function run(command: string, args: Record<string, unknown> = {}): Promise<unknown> {
   try {
-    return await invoke(command, args)
+    return await invoke(command, { sessionId: sessionId(), ...args })
   } catch (error) {
     throw toAppError(error) ?? (error instanceof Error ? error : new Error(String(error)))
   }
+}
+
+/** Starts a session and keeps its id for the following commands. */
+async function signIn(command: string, credentials: unknown) {
+  const { user, sessionId: id } = signedInSchema.parse(await run(command, { credentials }))
+  rememberSession(id)
+  return user
 }
 
 async function call<Schema extends z.ZodType>(
@@ -31,10 +61,11 @@ async function call<Schema extends z.ZodType>(
 
 export const tauriRepository: Repository = {
   currentSession: () => call('current_session', {}, authUserSchema.nullable()),
-  register: (credentials) => call('register', { credentials }, authUserSchema),
-  login: (credentials) => call('login', { credentials }, authUserSchema),
+  register: (credentials) => signIn('register', credentials),
+  login: (credentials) => signIn('login', credentials),
   logout: async () => {
     await run('logout')
+    forgetSession()
   },
   listProjects: () => call('list_projects', {}, projectSchema.array()),
   createProject: (input) => call('create_project', { input }, projectSchema),

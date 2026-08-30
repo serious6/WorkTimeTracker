@@ -42,7 +42,13 @@ The file is rotated once it passes 512 KiB, and a failing logger never breaks a 
 ## 4. Sessions and credentials
 
 Native sessions live in memory and end after 480 idle minutes; every command extends them, a
-restart always returns to the login page. Both storage paths lock an email out for 15 minutes after 5
+restart always returns to the login page. `login` and `register` start a session and answer with its
+opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
+map keyed by that id, and every command names the session it acts for instead of reading one ambient
+process-global session, so two windows can hold two identities and a session is distinguishable in
+an audit. Expired sessions are dropped whenever the map is read, so it stays bounded. The frontend
+keeps the id in `sessionStorage` of the webview: reloading the window keeps the session, restarting
+the application starts at the login page because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
 failed logins. The limits are part of the contract file, so both sides stay equal.
 
 The native counters live in the `login_attempts` table, not in the process: restarting the

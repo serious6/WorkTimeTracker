@@ -1,12 +1,18 @@
 use std::{
+    collections::HashMap,
+    fmt::Write as _,
     sync::{LazyLock, Mutex},
     time::{Duration, Instant},
 };
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{
+        rand_core::{OsRng, RngCore},
+        PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+    },
     Algorithm, Argon2, Params, Version,
 };
+use serde::Serialize;
 
 use chrono::{DateTime, Utc};
 
@@ -43,38 +49,78 @@ struct ActiveSession {
     last_seen: Instant,
 }
 
-/// The user of the running application. Sessions are only kept in memory, so a
-/// restart always returns to the login page.
-#[derive(Default)]
-pub struct Session(Mutex<Option<ActiveSession>>);
+/// Opaque identifier of one signed in session. It is generated from the
+/// operating system RNG and never derived from the user, so it identifies a
+/// session in the command layer without carrying any account data.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct SessionId(String);
 
-impl Session {
-    pub fn user_id(&self) -> AppResult<Option<i64>> {
-        self.user_id_at(Instant::now())
+impl SessionId {
+    fn generate() -> Self {
+        let mut bytes = [0_u8; 32];
+        OsRng.fill_bytes(&mut bytes);
+        Self(bytes.iter().fold(String::new(), |mut id, byte| {
+            let _ = write!(id, "{byte:02x}");
+            id
+        }))
     }
 
-    fn user_id_at(&self, now: Instant) -> AppResult<Option<i64>> {
-        let mut session = self.0.lock()?;
-        let Some(active) = session.as_mut() else {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+/// The signed in sessions of the running application, keyed by their id. They
+/// are only kept in memory, so a restart always returns to the login page, and
+/// two windows can hold two different identities instead of sharing one.
+#[derive(Default)]
+pub struct Sessions(Mutex<HashMap<SessionId, ActiveSession>>);
+
+impl Sessions {
+    /// Resolves a session id to its user and extends the session.
+    pub fn user_id(&self, id: &SessionId) -> AppResult<Option<i64>> {
+        self.user_id_at(id, Instant::now())
+    }
+
+    fn user_id_at(&self, id: &SessionId, now: Instant) -> AppResult<Option<i64>> {
+        let mut sessions = self.0.lock()?;
+        // An idle session ends; expired sessions never pile up in the map.
+        sessions
+            .retain(|_, session| now.duration_since(session.last_seen) < minutes(SESSION_TIMEOUT_MINUTES));
+        let Some(active) = sessions.get_mut(id) else {
             return Ok(None);
         };
-        if now.duration_since(active.last_seen) >= minutes(SESSION_TIMEOUT_MINUTES) {
-            *session = None;
-            return Ok(None);
-        }
         active.last_seen = now;
         Ok(Some(active.user_id))
     }
 
-    pub fn set(&self, user_id: Option<i64>) -> AppResult<()> {
-        self.set_at(user_id, Instant::now())
+    /// Starts a session and returns its id. The caller hands the id back with
+    /// every following command.
+    pub fn start(&self, user_id: i64) -> AppResult<SessionId> {
+        self.start_at(user_id, Instant::now())
     }
 
-    fn set_at(&self, user_id: Option<i64>, now: Instant) -> AppResult<()> {
-        *self.0.lock()? = user_id.map(|user_id| ActiveSession {
-            user_id,
-            last_seen: now,
-        });
+    fn start_at(&self, user_id: i64, now: Instant) -> AppResult<SessionId> {
+        let id = SessionId::generate();
+        self.0.lock()?.insert(
+            id.clone(),
+            ActiveSession {
+                user_id,
+                last_seen: now,
+            },
+        );
+        Ok(id)
+    }
+
+    /// Ends one session; the other sessions of the process stay signed in.
+    pub fn end(&self, id: &SessionId) -> AppResult<()> {
+        self.0.lock()?.remove(id);
         Ok(())
     }
 }
@@ -186,8 +232,6 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
     use crate::store::{LoginAttempt, StoreError};
 
@@ -234,15 +278,15 @@ mod tests {
 
     #[test]
     fn keeps_a_used_session_alive() {
-        let session = Session::default();
+        let sessions = Sessions::default();
         let now = Instant::now();
-        session.set_at(Some(7), now).unwrap();
+        let id = sessions.start_at(7, now).unwrap();
         let later = now + minutes(SESSION_TIMEOUT_MINUTES) - Duration::from_secs(1);
 
-        assert_eq!(session.user_id_at(later).unwrap(), Some(7));
+        assert_eq!(sessions.user_id_at(&id, later).unwrap(), Some(7));
         assert_eq!(
-            session
-                .user_id_at(later + minutes(SESSION_TIMEOUT_MINUTES / 2))
+            sessions
+                .user_id_at(&id, later + minutes(SESSION_TIMEOUT_MINUTES / 2))
                 .unwrap(),
             Some(7)
         );
@@ -250,17 +294,56 @@ mod tests {
 
     #[test]
     fn ends_an_idle_session() {
-        let session = Session::default();
+        let sessions = Sessions::default();
         let now = Instant::now();
-        session.set_at(Some(7), now).unwrap();
+        let id = sessions.start_at(7, now).unwrap();
 
         assert_eq!(
-            session
-                .user_id_at(now + minutes(SESSION_TIMEOUT_MINUTES))
+            sessions
+                .user_id_at(&id, now + minutes(SESSION_TIMEOUT_MINUTES))
                 .unwrap(),
             None
         );
-        assert_eq!(session.user_id().unwrap(), None);
+        assert_eq!(sessions.user_id(&id).unwrap(), None);
+    }
+
+    #[test]
+    fn gives_every_session_its_own_identity() {
+        let sessions = Sessions::default();
+        let now = Instant::now();
+        let first = sessions.start_at(7, now).unwrap();
+        let second = sessions.start_at(9, now).unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(sessions.user_id_at(&first, now).unwrap(), Some(7));
+        assert_eq!(sessions.user_id_at(&second, now).unwrap(), Some(9));
+
+        sessions.end(&first).unwrap();
+
+        assert_eq!(sessions.user_id_at(&first, now).unwrap(), None);
+        assert_eq!(sessions.user_id_at(&second, now).unwrap(), Some(9));
+    }
+
+    #[test]
+    fn rejects_an_unknown_session_id() {
+        let sessions = Sessions::default();
+        sessions.start(7).unwrap();
+
+        assert_eq!(
+            sessions
+                .user_id(&SessionId::from("not-a-session".to_owned()))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn generates_an_opaque_random_id() {
+        let id = SessionId::generate();
+
+        assert_eq!(id.as_str().len(), 64);
+        assert!(id.as_str().chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(id, SessionId::generate());
     }
 
     /// In-memory stand-in for the persisted counters.
