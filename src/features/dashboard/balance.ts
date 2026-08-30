@@ -1,6 +1,6 @@
 import { targetMinutesForDay } from '@/features/settings/work-schedule'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
-import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
+import { isBreak, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, startOfDay, toDateKey } from '@/lib/date'
 import { entryMinutesInRange } from './metrics'
 
@@ -30,6 +30,7 @@ const EMPTY_BALANCE: CumulativeBalance = {
 export function trackedMinutesByDay(entries: TimeEntry[], now = Date.now()): Map<string, number> {
   const minutesByDay = new Map<string, number>()
   for (const entry of entries) {
+    if (isBreak(entry)) continue
     const end = entry.endTime ? Date.parse(entry.endTime) : now
     for (let day = startOfDay(new Date(Date.parse(entry.startTime))); day.getTime() < end; day = addDays(day, 1)) {
       const minutes = entryMinutesInRange(entry, { start: day, end: addDays(day, 1) }, now)
@@ -42,6 +43,7 @@ export function trackedMinutesByDay(entries: TimeEntry[], now = Date.now()): Map
 function firstTrackedDay(entries: TimeEntry[]): Date | null {
   let earliest: number | null = null
   for (const entry of entries) {
+    if (isBreak(entry)) continue
     const start = Date.parse(entry.startTime)
     if (earliest === null || start < earliest) earliest = start
   }

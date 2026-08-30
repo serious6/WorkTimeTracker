@@ -16,6 +16,10 @@ function entry(id: number, start: Date, end: Date | null): TimeEntry {
   }
 }
 
+function breakEntry(id: number, start: Date, end: Date): TimeEntry {
+  return { ...entry(id, start, end), projectId: null, entryType: 'break' }
+}
+
 // August 2026: the 17th is a Monday, the 24th the Monday of the following week.
 const at = (day: number, hour: number, minute = 0) => new Date(2026, 7, day, hour, minute)
 const settings = DEFAULT_WORK_SETTINGS
@@ -98,5 +102,14 @@ describe('trackedMinutesByDay', () => {
 
     expect(minutes.get('2026-08-17')).toBe(60)
     expect(minutes.get('2026-08-18')).toBe(60)
+  })
+
+  it('does not include breaks in daily tracked time', () => {
+    const minutes = trackedMinutesByDay(
+      [entry(1, at(17, 8), at(17, 9)), breakEntry(2, at(17, 9), at(17, 10))],
+      at(17, 10).getTime(),
+    )
+
+    expect(minutes.get('2026-08-17')).toBe(60)
   })
 })
