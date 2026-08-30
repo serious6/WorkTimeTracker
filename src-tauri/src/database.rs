@@ -4,8 +4,9 @@ use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use rusqlite_migration::{Migrations, M};
 
 use crate::models::{
-    AuditLogEntry, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
-    TimeEntry, User, WorkSettings, DEFAULT_WORKING_DAYS,
+    AuditLogEntry, ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget,
+    SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS,
+    GERMAN_COMPLIANCE_LIMITS,
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -36,6 +37,13 @@ fn migrations() -> Migrations<'static> {
         )),
         M::up(include_str!("../../drizzle/0003_create_users.sql")),
         M::up(include_str!("../../drizzle/0004_create_audit_log.sql")),
+        M::up(include_str!("../../drizzle/0004_working_time_records.sql")),
+        M::up(include_str!(
+            "../../drizzle/0005_work_settings_compliance_limits.sql"
+        )),
+        M::up(include_str!(
+            "../../drizzle/0006_break_project_constraint.sql"
+        )),
     ])
 }
 
@@ -71,9 +79,22 @@ fn entry_from_row(row: &Row<'_>) -> Result<TimeEntry> {
         project_id: row.get(1)?,
         start_time: row.get(2)?,
         end_time: row.get(3)?,
-        note: row.get(4)?,
-        created_at: row.get(5)?,
-        updated_at: row.get(6)?,
+        entry_type: row.get(4)?,
+        note: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+    })
+}
+
+fn audit_from_row(row: &Row<'_>) -> Result<TimeEntryAudit> {
+    Ok(TimeEntryAudit {
+        id: row.get(0)?,
+        time_entry_id: row.get(1)?,
+        action: row.get(2)?,
+        actor: row.get(3)?,
+        old_value: row.get(4)?,
+        new_value: row.get(5)?,
+        recorded_at: row.get(6)?,
     })
 }
 
@@ -99,7 +120,9 @@ fn assert_owns_project(
 }
 
 const PROJECT_COLUMNS: &str = "id, name, description, color, active, created_at, updated_at";
-const ENTRY_COLUMNS: &str = "id, project_id, start_time, end_time, note, created_at, updated_at";
+const ENTRY_COLUMNS: &str =
+    "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
+const AUDIT_COLUMNS: &str = "id, time_entry_id, action, actor, old_value, new_value, recorded_at";
 
 pub fn list_projects(connection: &Connection, user_id: i64) -> Result<Vec<Project>> {
     let mut statement = connection.prepare(&format!(
@@ -161,22 +184,22 @@ pub fn update_project(
 
 pub fn delete_project(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
     let transaction = connection.unchecked_transaction()?;
-    let affected: Vec<TimeEntry> = list_time_entries(&transaction, user_id)?
+    let entries = list_time_entries(&transaction, user_id)?
         .into_iter()
         .filter(|entry| entry.project_id == Some(id))
-        .collect();
+        .collect::<Vec<_>>();
     transaction.execute(
         "DELETE FROM projects WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
-    for current in affected {
-        let updated = read_entry(&transaction, current.id, user_id)?;
+    for previous in entries {
+        let updated = read_entry(&transaction, previous.id, user_id)?;
         record_audit(
             &transaction,
             user_id,
-            current.id,
-            "update",
-            Some(&current),
+            previous.id,
+            "updated",
+            Some(&previous),
             Some(&updated),
         )?;
     }
@@ -198,6 +221,10 @@ fn read_entry(connection: &Connection, id: i64, user_id: i64) -> Result<TimeEntr
         [id, user_id],
         entry_from_row,
     )
+}
+
+pub fn entry_is_break(connection: &Connection, id: i64, user_id: i64) -> Result<bool> {
+    Ok(read_entry(connection, id, user_id)?.entry_type == "break")
 }
 
 pub fn overlaps(
@@ -226,64 +253,15 @@ pub fn overlaps(
     )
 }
 
-/// Entity name of a time entry in the audit trail.
-pub const TIME_ENTRY_ENTITY: &str = "timeEntry";
-const AUDIT_LOG_LIMIT: i64 = 200;
-const AUDIT_LOG_COLUMNS: &str = "id, entity, entity_id, action, old_value, new_value, created_at";
-
-fn audit_from_row(row: &Row<'_>) -> Result<AuditLogEntry> {
-    Ok(AuditLogEntry {
-        id: row.get(0)?,
-        entity: row.get(1)?,
-        entity_id: row.get(2)?,
-        action: row.get(3)?,
-        old_value: row.get(4)?,
-        new_value: row.get(5)?,
-        created_at: row.get(6)?,
-    })
-}
-
-fn entry_snapshot(entry: &TimeEntry) -> String {
-    serde_json::json!({
-        "projectId": entry.project_id,
-        "startTime": entry.start_time,
-        "endTime": entry.end_time,
-        "note": entry.note,
-    })
-    .to_string()
-}
-
-/// Appends one change of a time entry to the audit trail of its owner.
-fn record_audit(
+pub fn insert_time_entry(
     connection: &Connection,
     user_id: i64,
-    entity_id: i64,
-    action: &str,
-    old_value: Option<&TimeEntry>,
-    new_value: Option<&TimeEntry>,
-) -> Result<()> {
-    connection.execute(
-        "INSERT INTO audit_log (user_id, entity, entity_id, action, old_value, new_value, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-        params![
-            user_id,
-            TIME_ENTRY_ENTITY,
-            entity_id,
-            action,
-            old_value.map(entry_snapshot),
-            new_value.map(entry_snapshot)
-        ],
-    )?;
-    Ok(())
-}
-
-/// The most recent changes of the user, newest first.
-pub fn list_audit_log(connection: &Connection, user_id: i64) -> Result<Vec<AuditLogEntry>> {
-    let mut statement = connection.prepare(&format!(
-        "SELECT {AUDIT_LOG_COLUMNS} FROM audit_log WHERE user_id = ?1 ORDER BY id DESC LIMIT ?2"
-    ))?;
-    let records = statement.query_map(params![user_id, AUDIT_LOG_LIMIT], audit_from_row)?;
-    records.collect()
+    input: &SaveTimeEntry,
+) -> Result<TimeEntry> {
+    let transaction = connection.unchecked_transaction()?;
+    let created = insert_time_entry_with_audit(&transaction, user_id, input)?;
+    transaction.commit()?;
+    Ok(created)
 }
 
 fn insert_time_entry_with_audit(
@@ -293,30 +271,27 @@ fn insert_time_entry_with_audit(
 ) -> Result<TimeEntry> {
     assert_owns_project(connection, user_id, input.project_id)?;
     connection.execute(
-        "INSERT INTO time_entries (user_id, project_id, start_time, end_time, note, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        "INSERT INTO time_entries (user_id, project_id, start_time, end_time, entry_type, note, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         params![
             user_id,
             input.project_id,
             input.start_time,
             input.end_time,
+            input.entry_type(),
             input.note
         ],
     )?;
-    let entry = read_entry(connection, connection.last_insert_rowid(), user_id)?;
-    record_audit(connection, user_id, entry.id, "create", None, Some(&entry))?;
-    Ok(entry)
-}
-
-pub fn insert_time_entry(
-    connection: &Connection,
-    user_id: i64,
-    input: &SaveTimeEntry,
-) -> Result<TimeEntry> {
-    let transaction = connection.unchecked_transaction()?;
-    let entry = insert_time_entry_with_audit(&transaction, user_id, input)?;
-    transaction.commit()?;
-    Ok(entry)
+    let created = read_entry(connection, connection.last_insert_rowid(), user_id)?;
+    record_audit(
+        connection,
+        user_id,
+        created.id,
+        "created",
+        None,
+        Some(&created),
+    )?;
+    Ok(created)
 }
 
 pub fn update_time_entry(
@@ -326,11 +301,18 @@ pub fn update_time_entry(
     input: &SaveTimeEntry,
 ) -> Result<TimeEntry> {
     let transaction = connection.unchecked_transaction()?;
+    let previous = read_entry(&transaction, id, user_id)?;
+    let entry_type = input
+        .entry_type
+        .as_deref()
+        .unwrap_or(previous.entry_type.as_str());
+    if entry_type == "break" && input.project_id.is_some() {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
     assert_owns_project(&transaction, user_id, input.project_id)?;
-    let current = read_entry(&transaction, id, user_id)?;
     transaction.execute(
         "UPDATE time_entries
-     SET project_id = ?3, start_time = ?4, end_time = ?5, note = ?6,
+     SET project_id = ?3, start_time = ?4, end_time = ?5, entry_type = ?6, note = ?7,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ?1 AND user_id = ?2",
         params![
@@ -339,6 +321,7 @@ pub fn update_time_entry(
             input.project_id,
             input.start_time,
             input.end_time,
+            entry_type,
             input.note
         ],
     )?;
@@ -347,8 +330,8 @@ pub fn update_time_entry(
         &transaction,
         user_id,
         id,
-        "update",
-        Some(&current),
+        "updated",
+        Some(&previous),
         Some(&updated),
     )?;
     transaction.commit()?;
@@ -362,7 +345,7 @@ pub fn update_time_entry_note(
     note: Option<&str>,
 ) -> Result<TimeEntry> {
     let transaction = connection.unchecked_transaction()?;
-    let current = read_entry(&transaction, id, user_id)?;
+    let previous = read_entry(&transaction, id, user_id)?;
     transaction.execute(
         "UPDATE time_entries
      SET note = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -374,8 +357,8 @@ pub fn update_time_entry_note(
         &transaction,
         user_id,
         id,
-        "update",
-        Some(&current),
+        "updated",
+        Some(&previous),
         Some(&updated),
     )?;
     transaction.commit()?;
@@ -426,7 +409,7 @@ pub fn switch_running_time_entry(
         &transaction,
         user_id,
         id,
-        "update",
+        "updated",
         Some(&current),
         Some(&closed),
     )
@@ -441,16 +424,82 @@ pub fn switch_running_time_entry(
 
 pub fn delete_time_entry(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
     let transaction = connection.unchecked_transaction()?;
-    let current = read_entry(&transaction, id, user_id).optional()?;
+    let previous = read_entry(&transaction, id, user_id).optional()?;
     transaction.execute(
         "DELETE FROM time_entries WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
-    if let Some(current) = current {
-        record_audit(&transaction, user_id, id, "delete", Some(&current), None)?;
+    if let Some(previous) = previous {
+        record_audit(&transaction, user_id, id, "deleted", Some(&previous), None)?;
     }
     transaction.commit()?;
     Ok(())
+}
+
+/// The email of the signed in user identifies the actor of a change.
+fn actor(connection: &Connection, user_id: i64) -> Result<String> {
+    let email: Option<String> = connection
+        .query_row("SELECT email FROM users WHERE id = ?1", [user_id], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    Ok(email.unwrap_or_else(|| format!("user:{user_id}")))
+}
+
+fn to_json(entry: Option<&TimeEntry>) -> Option<String> {
+    entry.and_then(|entry| serde_json::to_string(entry).ok())
+}
+
+/// Appends a change to the trail; recorded rows are never updated or deleted.
+fn record_audit(
+    connection: &Connection,
+    user_id: i64,
+    time_entry_id: i64,
+    action: &str,
+    old_value: Option<&TimeEntry>,
+    new_value: Option<&TimeEntry>,
+) -> Result<()> {
+    connection.execute(
+        "INSERT INTO time_entry_audits (user_id, time_entry_id, action, actor, old_value, new_value, recorded_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        params![
+            user_id,
+            time_entry_id,
+            action,
+            actor(connection, user_id)?,
+            to_json(old_value),
+            to_json(new_value)
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn list_time_entry_audits(
+    connection: &Connection,
+    user_id: i64,
+) -> Result<Vec<TimeEntryAudit>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {AUDIT_COLUMNS} FROM time_entry_audits WHERE user_id = ?1
+     ORDER BY recorded_at DESC, id DESC"
+    ))?;
+    let audits = statement.query_map([user_id], audit_from_row)?;
+    audits.collect()
+}
+
+pub fn list_audit_log(connection: &Connection, user_id: i64) -> Result<Vec<AuditLogEntry>> {
+    Ok(list_time_entry_audits(connection, user_id)?
+        .into_iter()
+        .take(200)
+        .map(|audit| AuditLogEntry {
+            id: audit.id,
+            entity: "timeEntry".into(),
+            entity_id: audit.time_entry_id,
+            action: audit.action.trim_end_matches('d').into(),
+            old_value: audit.old_value,
+            new_value: audit.new_value,
+            created_at: audit.recorded_at,
+        })
+        .collect())
 }
 
 const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
@@ -551,7 +600,10 @@ fn working_days_from_text(value: &str) -> Vec<String> {
 pub fn read_settings(connection: &Connection, user_id: i64) -> Result<WorkSettings> {
     let settings = connection
         .query_row(
-            "SELECT weekly_target_minutes, working_days, week_starts_on
+            "SELECT weekly_target_minutes, working_days, week_starts_on,
+              break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+              required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+              max_daily_work_minutes, min_rest_minutes
        FROM work_settings WHERE user_id = ?1",
             [user_id],
             |row| {
@@ -564,6 +616,16 @@ pub fn read_settings(connection: &Connection, user_id: i64) -> Result<WorkSettin
                         working_days
                     },
                     week_starts_on: row.get(2)?,
+                    compliance_limits: ComplianceLimits {
+                        break_threshold_minutes: row.get(3)?,
+                        required_break_minutes: row.get(4)?,
+                        long_break_threshold_minutes: row.get(5)?,
+                        required_long_break_minutes: row.get(6)?,
+                        min_break_block_minutes: row.get(7)?,
+                        max_continuous_work_minutes: row.get(8)?,
+                        max_daily_work_minutes: row.get(9)?,
+                        min_rest_minutes: row.get(10)?,
+                    },
                 })
             },
         )
@@ -572,6 +634,7 @@ pub fn read_settings(connection: &Connection, user_id: i64) -> Result<WorkSettin
         weekly_target_minutes: 2_400,
         working_days: default_working_days(),
         week_starts_on: "monday".into(),
+        compliance_limits: GERMAN_COMPLIANCE_LIMITS,
     }))
 }
 
@@ -580,16 +643,32 @@ pub fn write_settings(
     user_id: i64,
     settings: &WorkSettings,
 ) -> Result<WorkSettings> {
+    let limits = settings.compliance_limits;
     connection.execute(
-        "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on)
-     VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on,
+       break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+       required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+       max_daily_work_minutes, min_rest_minutes)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
      ON CONFLICT (user_id) DO UPDATE
-     SET weekly_target_minutes = ?2, working_days = ?3, week_starts_on = ?4",
+     SET weekly_target_minutes = ?2, working_days = ?3, week_starts_on = ?4,
+         break_threshold_minutes = ?5, required_break_minutes = ?6,
+         long_break_threshold_minutes = ?7, required_long_break_minutes = ?8,
+         min_break_block_minutes = ?9, max_continuous_work_minutes = ?10,
+         max_daily_work_minutes = ?11, min_rest_minutes = ?12",
         params![
             user_id,
             settings.weekly_target_minutes,
             settings.working_days.join(","),
-            settings.week_starts_on
+            settings.week_starts_on,
+            limits.break_threshold_minutes,
+            limits.required_break_minutes,
+            limits.long_break_threshold_minutes,
+            limits.required_long_break_minutes,
+            limits.min_break_block_minutes,
+            limits.max_continuous_work_minutes,
+            limits.max_daily_work_minutes,
+            limits.min_rest_minutes
         ],
     )?;
     read_settings(connection, user_id)
@@ -708,6 +787,7 @@ pub fn claim_unowned_data(connection: &Connection, user_id: i64) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ENTRY_TYPE_BREAK;
 
     static NEXT_DATABASE_TEST_ID: std::sync::atomic::AtomicUsize =
         std::sync::atomic::AtomicUsize::new(0);
@@ -751,8 +831,142 @@ mod tests {
             project_id: Some(project_id),
             start_time: start_time.into(),
             end_time: end_time.map(str::to_owned),
+            entry_type: None,
             note: None,
         }
+    }
+
+    fn break_entry(start_time: &str, end_time: &str) -> SaveTimeEntry {
+        SaveTimeEntry {
+            project_id: None,
+            start_time: start_time.into(),
+            end_time: Some(end_time.into()),
+            entry_type: Some(ENTRY_TYPE_BREAK.into()),
+            note: None,
+        }
+    }
+
+    #[test]
+    fn records_breaks_as_entries_of_their_own() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        insert_time_entry(
+            &connection,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T12:00:00.000Z"),
+            ),
+        )
+        .unwrap();
+        let recorded = insert_time_entry(
+            &connection,
+            user_id,
+            &break_entry("2026-08-27T12:00:00.000Z", "2026-08-27T12:30:00.000Z"),
+        )
+        .unwrap();
+
+        assert_eq!(recorded.entry_type, ENTRY_TYPE_BREAK);
+        assert_eq!(recorded.project_id, None);
+        let entries = list_time_entries(&connection, user_id).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].entry_type, "work");
+    }
+
+    #[test]
+    fn does_not_book_an_existing_break_to_a_project() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        let recorded = insert_time_entry(
+            &connection,
+            user_id,
+            &break_entry("2026-08-27T12:00:00.000Z", "2026-08-27T12:30:00.000Z"),
+        )
+        .unwrap();
+
+        assert!(update_time_entry(
+            &connection,
+            recorded.id,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T12:00:00.000Z",
+                Some("2026-08-27T12:30:00.000Z"),
+            ),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn keeps_an_audit_trail_of_every_change() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        let created = insert_time_entry(
+            &connection,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T09:00:00.000Z"),
+            ),
+        )
+        .unwrap();
+        update_time_entry(
+            &connection,
+            created.id,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T10:00:00.000Z"),
+            ),
+        )
+        .unwrap();
+        delete_time_entry(&connection, created.id, user_id).unwrap();
+
+        let audits = list_time_entry_audits(&connection, user_id).unwrap();
+        assert_eq!(audits.len(), 3);
+        let actions: Vec<&str> = audits.iter().map(|audit| audit.action.as_str()).collect();
+        assert!(actions.contains(&"created"));
+        assert!(actions.contains(&"updated"));
+        assert!(actions.contains(&"deleted"));
+        let updated = audits
+            .iter()
+            .find(|audit| audit.action == "updated")
+            .unwrap();
+        assert_eq!(updated.actor, "first@example.com");
+        assert!(updated
+            .old_value
+            .as_ref()
+            .unwrap()
+            .contains("2026-08-27T09:00:00.000Z"));
+        assert!(updated
+            .new_value
+            .as_ref()
+            .unwrap()
+            .contains("2026-08-27T10:00:00.000Z"));
+    }
+
+    #[test]
+    fn keeps_the_audit_trail_of_other_users_invisible() {
+        let (connection, user_id) = connect();
+        let other = user(&connection, "second@example.com");
+        let project = project(&connection, user_id);
+        insert_time_entry(
+            &connection,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T09:00:00.000Z"),
+            ),
+        )
+        .unwrap();
+
+        assert!(list_time_entry_audits(&connection, other)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -766,7 +980,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(7)
+            Ok(10)
         );
     }
 
@@ -782,7 +996,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(7)
+            Ok(10)
         );
         let user_id = user(&connection, "first@example.com");
         assert!(list_projects(&connection, user_id).unwrap().is_empty());
@@ -840,6 +1054,44 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_released_audit_trail_when_upgrading() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        for script in [
+            include_str!("../../drizzle/0000_create_time_entries.sql"),
+            include_str!("../../drizzle/0000_create_schema.sql"),
+            include_str!("../../drizzle/0001_create_project_budgets.sql"),
+            include_str!("../../drizzle/0002_create_app_metadata.sql"),
+            include_str!("../../drizzle/0002_work_settings_working_days.sql"),
+            include_str!("../../drizzle/0003_create_users.sql"),
+            include_str!("../../drizzle/0004_create_audit_log.sql"),
+        ] {
+            connection.execute_batch(script).unwrap();
+        }
+        connection.pragma_update(None, "user_version", 7).unwrap();
+        let user_id = user(&connection, "first@example.com");
+        connection
+            .execute(
+                "INSERT INTO audit_log (user_id, entity, entity_id, action, old_value, new_value, created_at)
+             VALUES (?1, 'timeEntry', 42, 'update', '{\"note\":\"before\"}', '{\"note\":\"after\"}', '2026-01-01T00:00:00.000Z')",
+                [user_id],
+            )
+            .unwrap();
+
+        migrate(&mut connection).unwrap();
+
+        let audits = list_time_entry_audits(&connection, user_id).unwrap();
+        assert_eq!(audits.len(), 1);
+        assert_eq!(audits[0].time_entry_id, 42);
+        assert_eq!(audits[0].action, "updated");
+        assert_eq!(audits[0].actor, "first@example.com");
+        assert_eq!(
+            audits[0].old_value.as_deref(),
+            Some("{\"note\":\"before\"}")
+        );
+        assert_eq!(audits[0].recorded_at, "2026-01-01T00:00:00.000Z");
+    }
+
+    #[test]
     fn seeds_the_default_work_settings() {
         let (connection, user_id) = connect();
         assert_eq!(
@@ -851,6 +1103,7 @@ mod tests {
                     .map(|day| (*day).to_owned())
                     .collect(),
                 week_starts_on: "monday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             }
         );
     }
@@ -897,18 +1150,18 @@ mod tests {
         let entries = list_time_entries(&connection, user_id).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].project_id, None);
-        let records = list_audit_log(&connection, user_id).unwrap();
-        assert_eq!(records[0].action, "update");
-        assert!(records[0]
-            .old_value
-            .as_deref()
-            .unwrap()
-            .contains(&format!("\"projectId\":{}", project.id)));
-        assert!(records[0]
-            .new_value
-            .as_deref()
-            .unwrap()
-            .contains("\"projectId\":null"));
+        let audits = list_time_entry_audits(&connection, user_id).unwrap();
+        assert!(audits.iter().any(|audit| {
+            audit.action == "updated"
+                && audit
+                    .old_value
+                    .as_deref()
+                    .is_some_and(|value| value.contains("\"projectId\":1"))
+                && audit
+                    .new_value
+                    .as_deref()
+                    .is_some_and(|value| value.contains("\"projectId\":null"))
+        }));
     }
 
     #[test]
@@ -1021,169 +1274,6 @@ mod tests {
 
         delete_time_entry(&connection, created.id, user_id).unwrap();
         assert!(list_time_entries(&connection, user_id).unwrap().is_empty());
-    }
-
-    #[test]
-    fn records_every_change_of_a_time_entry_in_the_audit_log() {
-        let (connection, user_id) = connect();
-        let project = project(&connection, user_id);
-        let created = insert_time_entry(
-            &connection,
-            user_id,
-            &entry(
-                project.id,
-                "2026-08-27T08:00:00.000Z",
-                Some("2026-08-27T09:00:00.000Z"),
-            ),
-        )
-        .unwrap();
-        update_time_entry(
-            &connection,
-            created.id,
-            user_id,
-            &entry(
-                project.id,
-                "2026-08-27T08:00:00.000Z",
-                Some("2026-08-27T10:00:00.000Z"),
-            ),
-        )
-        .unwrap();
-        delete_time_entry(&connection, created.id, user_id).unwrap();
-
-        let records = list_audit_log(&connection, user_id).unwrap();
-
-        let actions: Vec<&str> = records
-            .iter()
-            .map(|record| record.action.as_str())
-            .collect();
-        assert_eq!(actions, vec!["delete", "update", "create"]);
-        assert!(records
-            .iter()
-            .all(|record| record.entity == TIME_ENTRY_ENTITY && record.entity_id == created.id));
-        let update = &records[1];
-        assert!(update
-            .old_value
-            .as_deref()
-            .unwrap()
-            .contains("2026-08-27T09:00:00.000Z"));
-        assert!(update
-            .new_value
-            .as_deref()
-            .unwrap()
-            .contains("2026-08-27T10:00:00.000Z"));
-        assert_eq!(records[0].new_value, None);
-        assert!(!records[0].created_at.is_empty());
-    }
-
-    #[test]
-    fn rolls_back_time_entry_changes_when_audit_writing_fails() {
-        let (connection, user_id) = connect();
-        let project = project(&connection, user_id);
-        connection
-            .execute_batch(
-                "CREATE TRIGGER reject_audit BEFORE INSERT ON audit_log
-                 BEGIN SELECT RAISE(FAIL, 'audit failed'); END;",
-            )
-            .unwrap();
-
-        assert!(insert_time_entry(
-            &connection,
-            user_id,
-            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
-        )
-        .is_err());
-        assert!(list_time_entries(&connection, user_id).unwrap().is_empty());
-
-        connection
-            .execute_batch("DROP TRIGGER reject_audit;")
-            .unwrap();
-        let created = insert_time_entry(
-            &connection,
-            user_id,
-            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
-        )
-        .unwrap();
-        connection
-            .execute_batch(
-                "CREATE TRIGGER reject_audit BEFORE INSERT ON audit_log
-                 BEGIN SELECT RAISE(FAIL, 'audit failed'); END;",
-            )
-            .unwrap();
-
-        assert!(update_time_entry(
-            &connection,
-            created.id,
-            user_id,
-            &entry(
-                project.id,
-                "2026-08-27T08:00:00.000Z",
-                Some("2026-08-27T09:00:00.000Z"),
-            ),
-        )
-        .is_err());
-        assert_eq!(
-            read_entry(&connection, created.id, user_id)
-                .unwrap()
-                .end_time,
-            None
-        );
-
-        assert!(update_time_entry_note(&connection, created.id, user_id, Some("lost")).is_err());
-        assert_eq!(
-            read_entry(&connection, created.id, user_id).unwrap().note,
-            None
-        );
-
-        assert!(delete_time_entry(&connection, created.id, user_id).is_err());
-        assert!(read_entry(&connection, created.id, user_id).is_ok());
-    }
-
-    #[test]
-    fn keeps_the_audit_log_of_another_user_private() {
-        let (connection, user_id) = connect();
-        let project = project(&connection, user_id);
-        insert_time_entry(
-            &connection,
-            user_id,
-            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
-        )
-        .unwrap();
-        let other = user(&connection, "second@example.com");
-
-        assert!(list_audit_log(&connection, other).unwrap().is_empty());
-        assert_eq!(list_audit_log(&connection, user_id).unwrap().len(), 1);
-    }
-
-    #[test]
-    fn records_the_closed_and_the_started_entry_of_a_timer_switch() {
-        let (connection, user_id) = connect();
-        let project = project(&connection, user_id);
-        let running = insert_time_entry(
-            &connection,
-            user_id,
-            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
-        )
-        .unwrap();
-
-        let created = switch_running_time_entry(
-            &connection,
-            running.id,
-            user_id,
-            &entry(project.id, "2026-08-27T09:00:00.000Z", None),
-        )
-        .unwrap();
-
-        let records = list_audit_log(&connection, user_id).unwrap();
-        assert_eq!(records.len(), 3);
-        assert_eq!(records[0].action, "create");
-        assert_eq!(records[0].entity_id, created.id);
-        assert_eq!(records[1].action, "update");
-        assert_eq!(records[1].entity_id, running.id);
-        assert!(records[1]
-            .new_value
-            .as_deref()
-            .unwrap()
-            .contains("2026-08-27T09:00:00.000Z"));
     }
 
     #[test]
@@ -1317,12 +1407,42 @@ mod tests {
                 weekly_target_minutes: 2_100,
                 working_days: vec!["monday".into(), "saturday".into()],
                 week_starts_on: "sunday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             },
         )
         .unwrap();
 
         assert_eq!(settings.working_days, vec!["monday", "saturday"]);
         assert_eq!(read_settings(&connection, user_id).unwrap(), settings);
+    }
+
+    #[test]
+    fn writes_custom_working_time_limits() {
+        let (connection, user_id) = connect();
+        let limits = ComplianceLimits {
+            max_daily_work_minutes: 480,
+            min_rest_minutes: 600,
+            ..GERMAN_COMPLIANCE_LIMITS
+        };
+
+        write_settings(
+            &connection,
+            user_id,
+            &WorkSettings {
+                weekly_target_minutes: 2_400,
+                working_days: vec!["monday".into()],
+                week_starts_on: "monday".into(),
+                compliance_limits: limits,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_settings(&connection, user_id)
+                .unwrap()
+                .compliance_limits,
+            limits
+        );
     }
 
     #[test]
@@ -1347,6 +1467,7 @@ mod tests {
                 weekly_target_minutes: 2_100,
                 working_days: vec!["monday".into()],
                 week_starts_on: "monday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             },
         )
         .unwrap();

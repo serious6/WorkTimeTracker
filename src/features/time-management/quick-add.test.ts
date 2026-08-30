@@ -12,6 +12,7 @@ function entry(id: number, start: string, end: string | null): TimeEntry {
     projectId: 1,
     startTime,
     endTime: end ? combineDateAndTime(DAY, end).toISOString() : null,
+    entryType: 'work',
     note: null,
     createdAt: startTime,
     updatedAt: startTime,

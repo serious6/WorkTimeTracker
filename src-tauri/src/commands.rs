@@ -8,7 +8,7 @@ use crate::{
     logging,
     models::{
         AuditLogEntry, Credentials, Project, ProjectBudget, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, TimeEntry, User, WorkSettings,
+        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
     },
 };
 
@@ -198,7 +198,7 @@ pub fn create_time_entry(
 ) -> AppResult<TimeEntry> {
     logging::logged("create_time_entry", || {
         input.validate()?;
-        if input.project_id.is_none() {
+        if input.project_id.is_none() && !input.is_break() {
             return Err(AppError::validation("Project is required"));
         }
         let user_id = current_user(&session)?;
@@ -227,6 +227,12 @@ pub fn update_time_entry(
         input.validate()?;
         let user_id = current_user(&session)?;
         let connection = database.0.lock()?;
+        if input.project_id.is_some()
+            && input.entry_type.is_none()
+            && database::entry_is_break(&connection, id, user_id)?
+        {
+            return Err(AppError::validation("a break is not booked on a project"));
+        }
         if database::overlaps(
             &connection,
             user_id,
@@ -304,7 +310,17 @@ pub fn delete_time_entry(
     })
 }
 
-/// The recorded changes of the time entries of the signed in user.
+/// The audit trail is read only, it has no command that changes or removes it.
+#[tauri::command]
+pub fn list_time_entry_audits(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+) -> AppResult<Vec<TimeEntryAudit>> {
+    logging::logged("list_time_entry_audits", || {
+        with_user(&database, &session, database::list_time_entry_audits)
+    })
+}
+
 #[tauri::command]
 pub fn list_audit_log(
     database: State<'_, Database>,

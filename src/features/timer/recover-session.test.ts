@@ -8,6 +8,7 @@ function running(projectId: number | null): TimeEntry {
     projectId,
     startTime: '2026-08-27T08:00:00.000Z',
     endTime: null,
+    entryType: 'work',
     note: null,
     createdAt: '2026-08-27T08:00:00.000Z',
     updatedAt: '2026-08-27T08:00:00.000Z',

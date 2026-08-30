@@ -9,10 +9,15 @@ function entry(id: number, start: Date, end: Date | null): TimeEntry {
     projectId: 1,
     startTime: start.toISOString(),
     endTime: end?.toISOString() ?? null,
+    entryType: 'work',
     note: null,
     createdAt: start.toISOString(),
     updatedAt: start.toISOString(),
   }
+}
+
+function breakEntry(id: number, start: Date, end: Date): TimeEntry {
+  return { ...entry(id, start, end), projectId: null, entryType: 'break' }
 }
 
 // August 2026: the 17th is a Monday, the 24th the Monday of the following week.
@@ -97,5 +102,14 @@ describe('trackedMinutesByDay', () => {
 
     expect(minutes.get('2026-08-17')).toBe(60)
     expect(minutes.get('2026-08-18')).toBe(60)
+  })
+
+  it('does not include breaks in daily tracked time', () => {
+    const minutes = trackedMinutesByDay(
+      [entry(1, at(17, 8), at(17, 9)), breakEntry(2, at(17, 9), at(17, 10))],
+      at(17, 10).getTime(),
+    )
+
+    expect(minutes.get('2026-08-17')).toBe(60)
   })
 })

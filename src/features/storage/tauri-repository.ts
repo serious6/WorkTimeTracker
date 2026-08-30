@@ -5,6 +5,7 @@ import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
+import { timeEntryAuditSchema } from '@/features/time-entries/audit-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
 import { toAppError } from '@/lib/errors'
 import type { Repository } from './repository'
@@ -50,6 +51,8 @@ export const tauriRepository: Repository = {
   deleteTimeEntry: async (id) => {
     await run('delete_time_entry', { id })
   },
+  listTimeEntryAudits: () =>
+    call('list_time_entry_audits', {}, timeEntryAuditSchema.array()),
   listAuditLog: () => call('list_audit_log', {}, auditLogEntrySchema.array()),
   listProjectBudgets: () => call('list_project_budgets', {}, projectBudgetSchema.array()),
   createProjectBudget: (input) => call('create_project_budget', { input }, projectBudgetSchema),

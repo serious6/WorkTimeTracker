@@ -65,6 +65,7 @@ function entry(id: number, projectId: number | null, startHour: number, endHour:
     projectId,
     startTime: start.toISOString(),
     endTime: end.toISOString(),
+    entryType: 'work',
     note: null,
     createdAt: start.toISOString(),
     updatedAt: end.toISOString(),

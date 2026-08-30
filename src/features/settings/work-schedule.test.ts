@@ -8,6 +8,7 @@ import {
 } from './work-schedule'
 import {
   DEFAULT_WORK_SETTINGS,
+  GERMAN_COMPLIANCE_LIMITS,
   NO_WORKING_DAY_MESSAGE,
   workSettingsSchema,
   type Weekday,
@@ -27,6 +28,7 @@ describe('work settings schema', () => {
       weeklyTargetMinutes: 2_400,
       workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
       weekStartsOn: 'monday',
+      complianceLimits: GERMAN_COMPLIANCE_LIMITS,
     })
     expect(dailyTargetMinutes(DEFAULT_WORK_SETTINGS)).toBe(480)
   })

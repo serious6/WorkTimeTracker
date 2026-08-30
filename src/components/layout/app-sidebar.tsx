@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Settings,
+  ShieldCheck,
   Timer,
   Wallet,
 } from 'lucide-react'
@@ -21,6 +22,7 @@ const items: { view: View; label: string; icon: typeof LayoutDashboard }[] = [
   { view: 'time-management', label: 'Time Management', icon: Timer },
   { view: 'budgets', label: 'Budgets', icon: Wallet },
   { view: 'reports', label: 'Reports', icon: BarChart3 },
+  { view: 'working-time', label: 'Working Time', icon: ShieldCheck },
   { view: 'calendar', label: 'Calendar', icon: CalendarDays },
   { view: 'settings', label: 'Settings', icon: Settings },
 ]

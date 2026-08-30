@@ -374,3 +374,41 @@ test('manages a project budget and reports its consumption and forecast', async 
 test('does not show budgets on the dashboard', async ({ page }) => {
   await expect(page.getByText('Project budget')).toBeHidden()
 })
+
+test('records a break and warns about the working time limits', async ({ page }) => {
+  await createProject(page, 'Compliance')
+  await addEntry(page, 'Compliance', '07:00', '12:00')
+  await expect(dialog(page)).toBeHidden()
+  await addEntry(page, 'Compliance', '12:45', '18:00')
+  await expect(dialog(page)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Working Time' }).click()
+  await expect(page.getByText(/at least 0h 45m are required/)).toBeVisible()
+  await expect(page.getByText(/the daily maximum is 10h 00m/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await page.getByRole('button', { name: 'Add time entry' }).click()
+  await dialog(page).getByLabel('Entry type').selectOption('break')
+  await expect(dialog(page).getByLabel('Project')).toBeDisabled()
+  await dialog(page).getByLabel('Start time').fill('12:00')
+  await dialog(page).getByLabel('End time').fill('12:45')
+  await dialog(page).getByRole('button', { name: 'Add entry' }).click()
+  await expect(dialog(page)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Working Time' }).click()
+  await expect(page.getByText(/at least 0h 45m are required/)).toBeHidden()
+  await expect(page.getByText(/the daily maximum is 10h 00m/)).toBeVisible()
+})
+
+test('restores the German working time limits in the settings', async ({ page }) => {
+  await page.getByRole('button', { name: 'Settings' }).click()
+  const dailyMaximum = page.getByLabel('Maximum daily working time')
+  await dailyMaximum.fill('480')
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByText('Work schedule updated')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Restore German defaults' }).click()
+  await expect(dailyMaximum).toHaveValue('600')
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByRole('button', { name: 'Restore German defaults' })).toBeDisabled()
+})
