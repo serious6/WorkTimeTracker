@@ -7,7 +7,7 @@ let openDialogCount = 0
 const dialogPanels: HTMLElement[] = []
 let bodyOverflow = ''
 let appRoot: HTMLElement | null = null
-let appRootUsesInert = false
+let inertSupported = false
 let appRootAriaHidden: string | null = null
 
 function lockModalEnvironment() {
@@ -18,8 +18,8 @@ function lockModalEnvironment() {
   appRoot = document.getElementById('root')
   if (!appRoot) return
 
-  appRootUsesInert = 'inert' in appRoot
-  if (appRootUsesInert) {
+  inertSupported = 'inert' in appRoot
+  if (inertSupported) {
     appRoot.setAttribute('inert', '')
   } else {
     appRootAriaHidden = appRoot.getAttribute('aria-hidden')
@@ -30,10 +30,9 @@ function lockModalEnvironment() {
 function unlockModalEnvironment() {
   if (--openDialogCount > 0) return
 
-  openDialogCount = 0
   document.body.style.overflow = bodyOverflow
   if (appRoot) {
-    if (appRootUsesInert) {
+    if (inertSupported) {
       appRoot.removeAttribute('inert')
     } else if (appRootAriaHidden === null) {
       appRoot.removeAttribute('aria-hidden')
