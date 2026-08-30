@@ -13,16 +13,12 @@ export function CumulativeBalanceCard({
   balance: CumulativeBalance
   onOpenWeek: () => void
 }) {
-  const tracking = balance.startDate !== null
-
   return (
     <Card>
       <CardHeader>
         <CardTitle>Cumulative Balance</CardTitle>
         <p className="text-xs text-muted-foreground">
-          {tracking && balance.startDate
-            ? `Since ${formatDay(balance.startDate)}`
-            : 'No time tracked yet'}
+          {balance.startDate ? `Since ${formatDay(balance.startDate)}` : 'No time tracked yet'}
         </p>
       </CardHeader>
       <CardContent>
