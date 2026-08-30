@@ -1,5 +1,12 @@
 import { z } from 'zod'
 import {
+  TIME_ENTRY_ENTITY,
+  auditLogEntrySchema,
+  toSnapshot,
+  type AuditAction,
+  type AuditLogEntry,
+} from '@/features/audit/audit-schema'
+import {
   DUPLICATE_EMAIL_MESSAGE,
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
@@ -43,7 +50,16 @@ import { AppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
 const USERS_KEY = 'work-time-tracker.users'
-const SCOPED_KEYS = ['projects', 'time-entries', 'project-budgets', 'work-settings'] as const
+const SCOPED_KEYS = [
+  'projects',
+  'time-entries',
+  'project-budgets',
+  'work-settings',
+  'audit-log',
+] as const
+
+/** Kept in step with the limit of the Rust backend. */
+const AUDIT_LOG_LIMIT = 200
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
 
@@ -151,8 +167,32 @@ function readBudgets(): ProjectBudget[] {
   return read(scopedKey('project-budgets'), [], (value) => projectBudgetSchema.array().parse(value))
 }
 
+function readAuditLog(): AuditLogEntry[] {
+  return read(scopedKey('audit-log'), [], (value) => auditLogEntrySchema.array().parse(value))
+}
+
 function nextId(records: { id: number }[]): number {
   return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
+}
+
+/** Appends one change of a time entry to the audit trail of the owner. */
+function recordAudit(
+  entityId: number,
+  action: AuditAction,
+  oldValue: TimeEntry | null,
+  newValue: TimeEntry | null,
+): void {
+  const records = readAuditLog()
+  const record = auditLogEntrySchema.parse({
+    id: nextId(records),
+    entity: TIME_ENTRY_ENTITY,
+    entityId,
+    action,
+    oldValue: oldValue ? JSON.stringify(toSnapshot(oldValue)) : null,
+    newValue: newValue ? JSON.stringify(toSnapshot(newValue)) : null,
+    createdAt: new Date().toISOString(),
+  })
+  write(scopedKey('audit-log'), [...records, record])
 }
 
 const PBKDF2_ITERATIONS = 210_000
@@ -291,6 +331,8 @@ export const localRepository: Repository = {
     return updated
   },
   deleteProject: async (id) => {
+    const entries = readEntries()
+    const affected = entries.filter((entry) => entry.projectId === id)
     write(
       scopedKey('projects'),
       readProjects().filter((project) => project.id !== id),
@@ -301,8 +343,9 @@ export const localRepository: Repository = {
     )
     write(
       scopedKey('time-entries'),
-      readEntries().map((entry) => (entry.projectId === id ? { ...entry, projectId: null } : entry)),
+      entries.map((entry) => (entry.projectId === id ? { ...entry, projectId: null } : entry)),
     )
+    affected.forEach((entry) => recordAudit(entry.id, 'update', entry, { ...entry, projectId: null }))
   },
   listTimeEntries: async () =>
     readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
@@ -319,6 +362,7 @@ export const localRepository: Repository = {
       updatedAt: now,
     })
     write(scopedKey('time-entries'), [...entries, entry])
+    recordAudit(entry.id, 'create', null, entry)
     return entry
   },
   updateTimeEntry: async (id, input) => {
@@ -332,6 +376,7 @@ export const localRepository: Repository = {
       scopedKey('time-entries'),
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
+    recordAudit(id, 'update', current, updated)
     return updated
   },
   updateTimeEntryNote: async (id, note) => {
@@ -347,6 +392,7 @@ export const localRepository: Repository = {
       scopedKey('time-entries'),
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
+    recordAudit(id, 'update', current, updated)
     return updated
   },
   switchRunningTimeEntry: async (id, input) => {
@@ -372,14 +418,23 @@ export const localRepository: Repository = {
       updatedAt: now,
     })
     write(scopedKey('time-entries'), [...nextEntries, created])
+    recordAudit(id, 'update', current, closed)
+    recordAudit(created.id, 'create', null, created)
     return created
   },
   deleteTimeEntry: async (id) => {
+    const entries = readEntries()
+    const current = entries.find((entry) => entry.id === id)
     write(
       scopedKey('time-entries'),
-      readEntries().filter((entry) => entry.id !== id),
+      entries.filter((entry) => entry.id !== id),
     )
+    if (current) recordAudit(id, 'delete', current, null)
   },
+  listAuditLog: async () =>
+    readAuditLog()
+      .sort((left, right) => right.id - left.id)
+      .slice(0, AUDIT_LOG_LIMIT),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {

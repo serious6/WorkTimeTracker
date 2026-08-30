@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/features/projects/project-schema'
 import type { useTimer } from '@/features/timer/use-timer'
 import { createTestQueryClient, renderWithProviders } from '@/test/harness'
+import { combineDateAndTime, toDateKey, toTimeKey } from '@/lib/date'
 import { CurrentlyTrackingCard } from './currently-tracking-card'
 
 function project(id: number, name: string, color = '#22c55e'): Project {
@@ -18,6 +19,7 @@ function makeTimer(overrides: Partial<ReturnType<typeof useTimer>> = {}): Return
     pause: vi.fn(),
     resume: vi.fn(),
     switchTo: vi.fn(),
+    correctStart: vi.fn(),
     setNote: vi.fn(),
     ...overrides,
   }
@@ -27,6 +29,7 @@ describe('CurrentlyTrackingCard – idle state', () => {
   it('prompts to create a project when no projects exist', () => {
     render(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -42,6 +45,7 @@ describe('CurrentlyTrackingCard – idle state', () => {
     const onCreateProject = vi.fn()
     render(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={onCreateProject}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -56,6 +60,7 @@ describe('CurrentlyTrackingCard – idle state', () => {
   it('shows the project picker and Start timer button when projects exist', () => {
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -85,6 +90,7 @@ describe('CurrentlyTrackingCard – running state', () => {
     const running = makeRunningEntry()
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -101,6 +107,7 @@ describe('CurrentlyTrackingCard – running state', () => {
     const running = makeRunningEntry()
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -117,6 +124,7 @@ describe('CurrentlyTrackingCard – running state', () => {
     const running = makeRunningEntry()
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -134,6 +142,7 @@ describe('CurrentlyTrackingCard – paused state', () => {
     const resume = vi.fn()
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -150,6 +159,7 @@ describe('CurrentlyTrackingCard – paused state', () => {
   it('shows deleted project name when project is not found', () => {
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -179,6 +189,7 @@ describe('CurrentlyTrackingCard – note behaviour', () => {
     const running = makeRunningEntry()
     renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -198,6 +209,7 @@ describe('CurrentlyTrackingCard – note behaviour', () => {
     const qc = createTestQueryClient()
     const { rerender } = renderWithProviders(
       <CurrentlyTrackingCard
+        now={Date.now()}
         onCreateProject={vi.fn()}
         onPickerOpenChange={vi.fn()}
         pickerOpen={false}
@@ -210,6 +222,7 @@ describe('CurrentlyTrackingCard – note behaviour', () => {
     rerender(
       <QueryClientProvider client={qc}>
         <CurrentlyTrackingCard
+          now={Date.now()}
           onCreateProject={vi.fn()}
           onPickerOpenChange={vi.fn()}
           pickerOpen={false}
@@ -219,5 +232,101 @@ describe('CurrentlyTrackingCard – note behaviour', () => {
       </QueryClientProvider>,
     )
     expect((screen.getByLabelText('Add a note') as HTMLInputElement).value).toBe('Updated note')
+  })
+})
+
+describe('CurrentlyTrackingCard – start correction', () => {
+  function running(startTime: Date) {
+    return {
+      id: 7,
+      projectId: 1,
+      startTime: startTime.toISOString(),
+      endTime: null,
+      note: null,
+      createdAt: '',
+      updatedAt: '',
+    }
+  }
+
+  it('corrects the start time of the running entry', async () => {
+    const now = new Date('2026-05-04T10:00:00.000Z')
+    const entry = running(new Date(now.getTime() - 60_000))
+    const correctStart = vi.fn().mockResolvedValue(true)
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={now.getTime()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({
+          correctStart,
+          status: { running: entry, paused: false, projectId: 1, elapsedMs: 60_000 },
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Correct start time' }))
+    const dateField = screen.getByLabelText('Start date') as HTMLInputElement
+    const field = screen.getByLabelText('Start time') as HTMLInputElement
+    expect(dateField.value).toBe(toDateKey(new Date(entry.startTime)))
+    expect(field.value).toBe(toTimeKey(new Date(entry.startTime)))
+
+    fireEvent.change(dateField, { target: { value: '2026-05-03' } })
+    fireEvent.change(field, { target: { value: '08:00' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save start time' }))
+
+    await waitFor(() => expect(correctStart).toHaveBeenCalledOnce())
+    expect(correctStart.mock.calls[0][0]).toEqual(
+      combineDateAndTime('2026-05-03', '08:00'),
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Save start time' })).not.toBeInTheDocument(),
+    )
+  })
+
+  it('keeps the dialog open when the correction is rejected', async () => {
+    const now = new Date('2026-05-04T10:00:00.000Z')
+    const correctStart = vi.fn().mockResolvedValue(false)
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={now.getTime()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({
+          correctStart,
+          status: {
+            running: running(new Date(now.getTime() - 60_000)),
+            paused: false,
+            projectId: 1,
+            elapsedMs: 60_000,
+          },
+        })}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Correct start time' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save start time' }))
+
+    await waitFor(() => expect(correctStart).toHaveBeenCalledOnce())
+    expect(screen.getByRole('button', { name: 'Save start time' })).toBeInTheDocument()
+  })
+
+  it('hides the correction button while paused', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({
+          status: { running: undefined, paused: true, projectId: 1, elapsedMs: 60_000 },
+        })}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Correct start time' })).not.toBeInTheDocument()
   })
 })

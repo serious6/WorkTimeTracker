@@ -34,6 +34,40 @@ describe('useTicker', () => {
     expect(result.current).toBe(initial)
   })
 
+  it('re-reads the clock when the window becomes visible again', () => {
+    const { result } = renderHook(() => useTicker(true))
+    const initial = result.current
+    // The system slept: no interval fired while the app was hidden.
+    vi.setSystemTime(new Date(Date.now() + 3_600_000))
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(result.current).toBeGreaterThanOrEqual(initial + 3_600_000)
+  })
+
+  it('re-reads the clock when the window is focused again', () => {
+    const { result } = renderHook(() => useTicker(true))
+    const initial = result.current
+    vi.setSystemTime(new Date(Date.now() + 60_000))
+    act(() => {
+      globalThis.dispatchEvent(new Event('focus'))
+    })
+    expect(result.current).toBeGreaterThanOrEqual(initial + 60_000)
+  })
+
+  it('ignores wake events after being disabled', () => {
+    const { result, rerender } = renderHook(({ enabled }) => useTicker(enabled), {
+      initialProps: { enabled: true },
+    })
+    const initial = result.current
+    rerender({ enabled: false })
+    vi.setSystemTime(new Date(Date.now() + 60_000))
+    act(() => {
+      globalThis.dispatchEvent(new Event('focus'))
+    })
+    expect(result.current).toBe(initial)
+  })
+
   it('stops ticking after being disabled', () => {
     const { result, rerender } = renderHook(({ enabled }) => useTicker(enabled), {
       initialProps: { enabled: true },

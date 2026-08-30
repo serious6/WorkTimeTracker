@@ -63,6 +63,7 @@ pub fn run() {
             commands::update_time_entry_note,
             commands::switch_running_time_entry,
             commands::delete_time_entry,
+            commands::list_audit_log,
             commands::list_project_budgets,
             commands::create_project_budget,
             commands::update_project_budget,

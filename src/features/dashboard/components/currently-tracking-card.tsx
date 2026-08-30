@@ -1,29 +1,33 @@
 import { useState } from 'react'
-import { Pause, Play, Square, Tag } from 'lucide-react'
+import { Clock, Pause, Play, Square, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { ProjectPicker } from '@/features/projects/components/project-picker'
 import type { Project } from '@/features/projects/project-schema'
 import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
+import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
 
 export function CurrentlyTrackingCard({
   timer,
   projects,
+  now,
   pickerOpen,
   onPickerOpenChange,
   onCreateProject,
 }: {
   timer: ReturnType<typeof useTimer>
   projects: Project[]
+  now: number
   pickerOpen: boolean
   onPickerOpenChange: (open: boolean) => void
   onCreateProject: () => void
 }) {
-  const { status, start, stop, pause, resume, switchTo, setNote } = timer
+  const { status, start, stop, pause, resume, switchTo, correctStart, setNote } = timer
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [correctionOpen, setCorrectionOpen] = useState(false)
   const [note, setNoteValue] = useState('')
   const active = Boolean(status.running) || status.paused
   const project = projects.find((candidate) => candidate.id === status.projectId)
@@ -89,6 +93,15 @@ export function CurrentlyTrackingCard({
           >
             {formatStopwatch(status.elapsedMs)}
           </output>
+          {status.running && (
+            <Button
+              aria-label="Correct start time"
+              onClick={() => setCorrectionOpen(true)}
+              variant="subtle"
+            >
+              <Clock className="size-4" />
+            </Button>
+          )}
           <Button aria-label="Stop timer" onClick={() => void stop()} variant="destructive">
             <Square className="size-4" />
           </Button>
@@ -126,6 +139,16 @@ export function CurrentlyTrackingCard({
           value={status.projectId}
         />
       </div>
+
+      {status.running && (
+        <StartCorrectionDialog
+          now={now}
+          onClose={() => setCorrectionOpen(false)}
+          onCorrect={correctStart}
+          open={correctionOpen}
+          running={status.running}
+        />
+      )}
     </Card>
   )
 }

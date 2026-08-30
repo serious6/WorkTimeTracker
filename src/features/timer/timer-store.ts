@@ -10,7 +10,10 @@ export type TimerSession = {
 
 type TimerState = {
   session: TimerSession | null
+  /** Whether the persisted session has been reconciled with the stored entries. */
+  recovered: boolean
   setSession: (session: TimerSession | null) => void
+  recover: (session: TimerSession | null) => void
 }
 
 /**
@@ -21,8 +24,13 @@ export const useTimerStore = create<TimerState>()(
   persist(
     (set) => ({
       session: null,
+      recovered: false,
       setSession: (session) => set({ session }),
+      recover: (session) => set({ session, recovered: true }),
     }),
-    { name: 'work-time-tracker.timer' },
+    {
+      name: 'work-time-tracker.timer',
+      partialize: ({ session }) => ({ session }),
+    },
   ),
 )
