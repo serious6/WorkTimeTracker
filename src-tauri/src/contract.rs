@@ -137,22 +137,11 @@ fn validates_work_settings_like_the_contract() {
     }
 }
 
-fn insert_unique_email(existing: &mut Vec<String>, candidate: String) -> bool {
-    if existing.iter().any(|email| email == &candidate) {
+fn insert_if_unique<T: PartialEq>(existing: &mut Vec<T>, candidate: T) -> bool {
+    if existing.contains(&candidate) {
         return false;
     }
     existing.push(candidate);
-    true
-}
-
-fn insert_unique_project_budget(
-    existing_project_ids: &mut Vec<i64>,
-    candidate_project_id: i64,
-) -> bool {
-    if existing_project_ids.contains(&candidate_project_id) {
-        return false;
-    }
-    existing_project_ids.push(candidate_project_id);
     true
 }
 
@@ -167,12 +156,12 @@ fn enforces_uniqueness_like_the_contract() {
                 let credentials: Credentials = serde_json::from_value(case.input).unwrap();
                 let mut existing = Vec::new();
                 assert!(
-                    insert_unique_email(&mut existing, credentials.email.clone()),
+                    insert_if_unique(&mut existing, credentials.email.clone()),
                     "{}",
                     case.name
                 );
                 assert!(
-                    !insert_unique_email(&mut existing, credentials.email),
+                    !insert_if_unique(&mut existing, credentials.email),
                     "{}",
                     case.name
                 );
@@ -181,12 +170,12 @@ fn enforces_uniqueness_like_the_contract() {
                 let budget: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
                 let mut existing = Vec::new();
                 assert!(
-                    insert_unique_project_budget(&mut existing, budget.project_id),
+                    insert_if_unique(&mut existing, budget.project_id),
                     "{}",
                     case.name
                 );
                 assert!(
-                    !insert_unique_project_budget(&mut existing, budget.project_id),
+                    !insert_if_unique(&mut existing, budget.project_id),
                     "{}",
                     case.name
                 );

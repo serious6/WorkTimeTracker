@@ -52,9 +52,8 @@ podman compose up -d db   # or: docker compose up -d db
 npm run tauri dev
 ```
 
-`DATABASE_URL` defaults in code and tooling to
-`******localhost:5432/worktimetracker`, matching the
-compose `db` service. Use another Postgres instance by changing `DATABASE_URL`.
+The built-in `DATABASE_URL` default matches the compose `db` service; `.env.example` shows
+the full local connection string. Use another Postgres instance by changing `DATABASE_URL`.
 
 This is a breaking storage change. Earlier local database files are not read or migrated by this
 version; export any data you need before switching to the Postgres-only application.
