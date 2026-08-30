@@ -309,8 +309,8 @@ applied migrations is stored in the SQLite `user_version` pragma by `rusqlite_mi
 | 5 | `0002_work_settings_working_days.sql` | Replaces `daily_target_minutes` with `working_days` |
 | 6 | `0003_create_users.sql` | Adds `users`, the `user_id` columns with indexes, and per-user `work_settings` |
 | 7 | `0004_working_time_records.sql` | Adds `time_entries.entry_type` and `time_entry_audits` |
-| 9 | `0004_create_audit_log.sql` | Adds the generic audit compatibility table |
 | 8 | `0005_work_settings_compliance_limits.sql` | Adds the eight working time limits to `work_settings` |
+| 9 | `0004_create_audit_log.sql` | Adds the generic audit compatibility table |
 
 Rows that predate migration 6 keep `user_id IS NULL` until the first registration claims them
 (`claim_unowned_data` in `src-tauri/src/database.rs`, `claimLegacyData` in the browser fallback).
