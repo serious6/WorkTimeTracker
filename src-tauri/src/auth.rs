@@ -91,8 +91,9 @@ impl Sessions {
     fn user_id_at(&self, id: &SessionId, now: Instant) -> AppResult<Option<i64>> {
         let mut sessions = self.0.lock()?;
         // An idle session ends; expired sessions never pile up in the map.
-        sessions
-            .retain(|_, session| now.duration_since(session.last_seen) < minutes(SESSION_TIMEOUT_MINUTES));
+        sessions.retain(|_, session| {
+            now.duration_since(session.last_seen) < minutes(SESSION_TIMEOUT_MINUTES)
+        });
         let Some(active) = sessions.get_mut(id) else {
             return Ok(None);
         };
@@ -186,8 +187,13 @@ fn timestamp(time: DateTime<Utc>) -> String {
 
 /// Argon2id with the pinned parameters above.
 fn argon2() -> AppResult<Argon2<'static>> {
-    let params = Params::new(ARGON2_MEMORY_KIB, ARGON2_ITERATIONS, ARGON2_PARALLELISM, None)
-        .map_err(|error| AppError::internal(format!("invalid argon2 parameters: {error}")))?;
+    let params = Params::new(
+        ARGON2_MEMORY_KIB,
+        ARGON2_ITERATIONS,
+        ARGON2_PARALLELISM,
+        None,
+    )
+    .map_err(|error| AppError::internal(format!("invalid argon2 parameters: {error}")))?;
     Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
@@ -394,7 +400,9 @@ mod tests {
 
         for _ in 0..MAX_LOGIN_ATTEMPTS {
             attempts.check_at("first@example.com", now).unwrap();
-            attempts.record_failure_at("first@example.com", now).unwrap();
+            attempts
+                .record_failure_at("first@example.com", now)
+                .unwrap();
         }
 
         assert_eq!(
@@ -427,7 +435,9 @@ mod tests {
         let attempts = LoginAttempts::new(&store);
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts.record_failure_at("first@example.com", now).unwrap();
+            attempts
+                .record_failure_at("first@example.com", now)
+                .unwrap();
         }
 
         assert!(attempts.check_at("first@example.com", now).is_err());
@@ -440,7 +450,9 @@ mod tests {
         let store = FakeAttempts::default();
         let attempts = LoginAttempts::new(&store);
         let now = moment();
-        attempts.record_failure_at("first@example.com", now).unwrap();
+        attempts
+            .record_failure_at("first@example.com", now)
+            .unwrap();
 
         let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
         attempts.check_at("second@example.com", later).unwrap();
@@ -454,11 +466,15 @@ mod tests {
         let attempts = LoginAttempts::new(&store);
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts.record_failure_at("first@example.com", now).unwrap();
+            attempts
+                .record_failure_at("first@example.com", now)
+                .unwrap();
         }
 
         let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
-        attempts.record_failure_at("first@example.com", later).unwrap();
+        attempts
+            .record_failure_at("first@example.com", later)
+            .unwrap();
 
         assert_eq!(
             store
@@ -477,7 +493,9 @@ mod tests {
         let attempts = LoginAttempts::new(&store);
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts.record_failure_at("first@example.com", now).unwrap();
+            attempts
+                .record_failure_at("first@example.com", now)
+                .unwrap();
         }
         attempts.record_success("first@example.com").unwrap();
 

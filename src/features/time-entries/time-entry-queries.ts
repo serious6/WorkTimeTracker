@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { auditKeys } from '@/features/audit/audit-queries'
 import { getRepository } from '@/features/storage'
 import { timeEntryKeys } from './time-entry-keys'
-import type { ListRange } from '@/features/storage/list-range'
+import { listAllPages, type ListRange } from '@/features/storage/list-range'
 import type { SaveTimeEntry } from './time-entry-schema'
 
 export { timeEntryKeys }
@@ -16,14 +16,21 @@ async function invalidate(queryClient: QueryClient): Promise<void> {
 }
 
 /**
- * The tracked entries, by default the bounded newest ones. A view that only
- * renders a period passes it as `range`, so the query costs what the view shows
- * instead of the whole account history.
+ * The tracked entries. A view that only renders a period passes it as `range`,
+ * so the query costs what the view shows. Without a range the whole history is
+ * read in bounded pages, so the cumulative calculations (balance, budget,
+ * monthly export) never work on a silently truncated page.
  */
 export function useTimeEntries(range?: ListRange) {
   return useQuery({
     queryKey: timeEntryKeys.range(range),
-    queryFn: () => getRepository().listTimeEntries(range),
+    queryFn: () =>
+      range
+        ? getRepository().listTimeEntries(range)
+        : listAllPages(
+            (page) => getRepository().listTimeEntries(page),
+            (entry) => entry.startTime,
+          ),
   })
 }
 

@@ -21,10 +21,14 @@ export function CalendarPage() {
   const month = monthRange(selectedDate)
   const gridStart = startOfWeek(month.start, settings.weekStartsOn)
   const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
-  // The grid only shows these six weeks, so only they are read.
-  const grid = { from: toDateKey(gridStart), to: toDateKey(addDays(gridStart, 42)) }
-  const { data: entries = [] } = useTimeEntries(grid)
-  const absences = useAbsenceIndex(grid)
+  const gridEnd = addDays(gridStart, 42)
+  // The grid only shows these six weeks, so only they are read. A time entry
+  // carries a UTC timestamp, so its window is sent as instants of the local
+  // grid; an absence is keyed by its local date, so its window stays date keys.
+  const entryWindow = { from: gridStart.toISOString(), to: gridEnd.toISOString() }
+  const absenceWindow = { from: toDateKey(gridStart), to: toDateKey(gridEnd) }
+  const { data: entries = [] } = useTimeEntries(entryWindow)
+  const absences = useAbsenceIndex(absenceWindow)
   const weekdays = Array.from({ length: 7 }, (_, index) =>
     addDays(gridStart, index).toLocaleDateString('en-US', { weekday: 'short' }),
   )

@@ -290,6 +290,19 @@ describe('local repository time entries', () => {
     expect(limited.map(({ startTime }) => startTime)).toEqual(['2026-08-27T08:00:00.000Z'])
   })
 
+  it('rejects a window the native backend would reject too', async () => {
+    const repository = createLocalRepository()
+
+    await expect(repository.listTimeEntries({ limit: -1 })).rejects.toThrow('invalid list range')
+    await expect(repository.listTimeEntries({ limit: 1.5 })).rejects.toThrow('invalid list range')
+    await expect(repository.listTimeEntries({ from: '2026-08-27garbage' })).rejects.toThrow(
+      'invalid list range',
+    )
+    await expect(
+      repository.listTimeEntries({ from: '2026-08-28', to: '2026-08-27' }),
+    ).rejects.toThrow('invalid list range')
+  })
+
   it('requires a project', async () => {
     await expect(
       createLocalRepository().createTimeEntry({

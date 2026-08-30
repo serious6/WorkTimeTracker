@@ -184,11 +184,18 @@ fn assert_entity(name: &str, sample: Value) {
         serde_json::from_value(entities["entities"][name].clone()).expect("the entity is declared");
     let object = sample.as_object().expect("a model serializes to an object");
 
-    let mut declared: Vec<&str> = entity.fields.iter().map(|field| field.name.as_str()).collect();
+    let mut declared: Vec<&str> = entity
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
     let mut serialized: Vec<&str> = object.keys().map(String::as_str).collect();
     declared.sort_unstable();
     serialized.sort_unstable();
-    assert_eq!(declared, serialized, "{name} drifted from contract/entities.json");
+    assert_eq!(
+        declared, serialized,
+        "{name} drifted from contract/entities.json"
+    );
 
     for field in &entity.fields {
         let value = &object[&field.name];
@@ -326,9 +333,12 @@ fn serializes_the_models_of_the_entity_contract() {
             compliance_limits: GERMAN_COMPLIANCE_LIMITS,
         }),
     );
-    assert_entity("complianceLimits", json(&ComplianceLimits {
-        ..GERMAN_COMPLIANCE_LIMITS
-    }));
+    assert_entity(
+        "complianceLimits",
+        json(&ComplianceLimits {
+            ..GERMAN_COMPLIANCE_LIMITS
+        }),
+    );
 }
 
 #[test]
@@ -529,7 +539,10 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .new_value
         .as_deref()
         .is_some_and(|value| value.contains("sick")));
-    assert!(store.list_absences(second_user.id, &ListRange::default()).unwrap().is_empty());
+    assert!(store
+        .list_absences(second_user.id, &ListRange::default())
+        .unwrap()
+        .is_empty());
     assert!(store
         .list_absence_audits(second_user.id)
         .unwrap()

@@ -63,6 +63,7 @@ import {
   limitAscending,
   limitDescending,
   listLimit,
+  validateListRange,
 } from './list-range'
 import { AppError } from '@/lib/errors'
 import type { Repository } from './repository'
@@ -474,15 +475,17 @@ const fallbackRepository: Repository = {
     )
     writeEntryState(updatedEntries, updatedAudits)
   },
-  listTimeEntries: async (range) =>
-    limitAscending(
+  listTimeEntries: async (range) => {
+    const window = validateListRange(range)
+    return limitAscending(
       filterListRange(
         readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
-        range,
+        window,
         (entry) => ({ start: entry.startTime, end: entry.endTime }),
       ),
-      listLimit(range),
-    ),
+      listLimit(window),
+    )
+  },
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
     if (parsed.entryType !== 'break' && parsed.projectId === null) {
@@ -572,20 +575,23 @@ const fallbackRepository: Repository = {
       current ? appendAudit(audits, id, 'deleted', current, null) : audits,
     )
   },
-  listTimeEntryAudits: async (range) =>
-    limitDescending(
+  listTimeEntryAudits: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
       filterPointRange(
         readAudits().sort(
           (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
         ),
-        range,
+        window,
         (audit) => audit.recordedAt,
       ),
-      listLimit(range),
-    ),
-  listAuditLog: async (range) =>
-    limitDescending(
-      filterPointRange(readAudits(), range, (audit) => audit.recordedAt).map((audit): AuditLogEntry => ({
+      listLimit(window),
+    )
+  },
+  listAuditLog: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(readAudits(), window, (audit) => audit.recordedAt).map((audit): AuditLogEntry => ({
         id: audit.id,
         entity: TIME_ENTRY_ENTITY,
         entityId: audit.timeEntryId,
@@ -595,8 +601,9 @@ const fallbackRepository: Repository = {
         createdAt: audit.recordedAt,
       }))
         .sort((left, right) => right.id - left.id),
-      Math.min(listLimit(range, AUDIT_LOG_LIMIT), AUDIT_LOG_LIMIT),
-    ),
+      Math.min(listLimit(window, AUDIT_LOG_LIMIT), AUDIT_LOG_LIMIT),
+    )
+  },
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {
@@ -636,15 +643,17 @@ const fallbackRepository: Repository = {
       readBudgets().filter((budget) => budget.id !== id),
     )
   },
-  listAbsences: async (range) =>
-    limitAscending(
+  listAbsences: async (range) => {
+    const window = validateListRange(range)
+    return limitAscending(
       filterPointRange(
         readAbsenceState().absences.sort((left, right) => left.date.localeCompare(right.date)),
-        range,
+        window,
         (absence) => absence.date,
       ),
-      listLimit(range),
-    ),
+      listLimit(window),
+    )
+  },
   createAbsence: async (input) => {
     const parsed = validate(saveAbsenceSchema, input)
     const { absences, audits } = readAbsenceState()

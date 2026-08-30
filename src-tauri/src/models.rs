@@ -50,8 +50,11 @@ pub struct ListRange {
     pub limit: Option<i64>,
 }
 
+/// A bound is either a whole ISO date or a whole ISO timestamp, checked by the
+/// same strict validators the entities use. A partly parsed value is rejected,
+/// because the bounds are compared against stored timestamps as text.
 fn is_range_bound(value: &str) -> bool {
-    value.len() >= 10 && value.is_char_boundary(10) && is_date(&value[..10])
+    is_date(value) || is_timestamp(value)
 }
 
 impl ListRange {
@@ -742,6 +745,12 @@ mod tests {
         assert!(range(Some("2026-13-01"), None, None).is_err());
         assert!(range(Some("2026-10-01"), Some("2026-09-01"), None).is_err());
         assert!(range(None, None, Some(0)).is_err());
+        assert!(
+            range(Some("2026-09-01garbage"), None, None).is_err(),
+            "a bound is a whole date or timestamp, not a date prefix"
+        );
+        assert!(range(Some("2026-09-01T25:00:00.000Z"), None, None).is_err());
+        assert!(range(Some("2026-09-01T00:00:00Z"), None, None).is_err());
     }
 
     #[test]

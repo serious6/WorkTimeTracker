@@ -17,7 +17,9 @@ use crate::{
         User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK,
         GERMAN_COMPLIANCE_LIMITS,
     },
-    store::{LoginAttempt, LoginAttemptStore, Store, StoreError, SwitchEntryError, TimeEntryWriteError},
+    store::{
+        LoginAttempt, LoginAttemptStore, Store, StoreError, SwitchEntryError, TimeEntryWriteError,
+    },
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -1326,8 +1328,12 @@ mod tests {
         };
         let email = unique_email();
 
-        store.record_login_failure(&email, "2026-08-30T10:00:00.000Z").unwrap();
-        store.record_login_failure(&email, "2026-08-30T10:01:00.000Z").unwrap();
+        store
+            .record_login_failure(&email, "2026-08-30T10:00:00.000Z")
+            .unwrap();
+        store
+            .record_login_failure(&email, "2026-08-30T10:01:00.000Z")
+            .unwrap();
 
         assert_eq!(
             store.read_login_attempt(&email).unwrap(),
@@ -1337,10 +1343,14 @@ mod tests {
             })
         );
 
-        store.purge_login_attempts("2026-08-30T09:00:00.000Z").unwrap();
+        store
+            .purge_login_attempts("2026-08-30T09:00:00.000Z")
+            .unwrap();
         assert!(store.read_login_attempt(&email).unwrap().is_some());
 
-        store.purge_login_attempts("2026-08-30T10:30:00.000Z").unwrap();
+        store
+            .purge_login_attempts("2026-08-30T10:30:00.000Z")
+            .unwrap();
         assert_eq!(store.read_login_attempt(&email).unwrap(), None);
     }
 
@@ -1409,8 +1419,12 @@ mod tests {
         };
         let email = unique_email();
         let other = unique_email();
-        store.record_login_failure(&email, "2026-08-30T10:00:00.000Z").unwrap();
-        store.record_login_failure(&other, "2026-08-30T10:00:00.000Z").unwrap();
+        store
+            .record_login_failure(&email, "2026-08-30T10:00:00.000Z")
+            .unwrap();
+        store
+            .record_login_failure(&other, "2026-08-30T10:00:00.000Z")
+            .unwrap();
 
         store.clear_login_attempts(&email).unwrap();
 

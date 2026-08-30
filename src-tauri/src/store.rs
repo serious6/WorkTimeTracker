@@ -4,7 +4,8 @@ use crate::{
     config::DbConfig,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ListRange, Project, ProjectBudget, SaveAbsence,
-        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
+        WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -87,7 +88,11 @@ pub trait Store: LoginAttemptStore {
     ) -> Result<Project, StoreError>;
     fn delete_project(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
-    fn list_time_entries(&self, user_id: i64, range: &ListRange) -> Result<Vec<TimeEntry>, StoreError>;
+    fn list_time_entries(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<TimeEntry>, StoreError>;
     // Kept for backend parity with the operations named in the design (and
     // exercised directly by Postgres integration tests); overlap checks are
     // performed inline by write methods below to keep them atomic.
@@ -124,8 +129,16 @@ pub trait Store: LoginAttemptStore {
     ) -> Result<TimeEntry, SwitchEntryError>;
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
-    fn list_time_entry_audits(&self, user_id: i64, range: &ListRange) -> Result<Vec<TimeEntryAudit>, StoreError>;
-    fn list_audit_log(&self, user_id: i64, range: &ListRange) -> Result<Vec<AuditLogEntry>, StoreError>;
+    fn list_time_entry_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<TimeEntryAudit>, StoreError>;
+    fn list_audit_log(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<AuditLogEntry>, StoreError>;
 
     fn list_project_budgets(&self, user_id: i64) -> Result<Vec<ProjectBudget>, StoreError>;
     fn insert_project_budget(

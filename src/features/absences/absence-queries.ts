@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
-import type { ListRange } from '@/features/storage/list-range'
+import { listAllPages, type ListRange } from '@/features/storage/list-range'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
 import type { SaveAbsence } from './absence-schema'
 
@@ -19,10 +19,21 @@ async function invalidate(queryClient: QueryClient): Promise<void> {
   ])
 }
 
+/**
+ * The absences of a window, or the whole history in bounded pages when the
+ * caller names none, so a balance that spans the account is never calculated
+ * from a truncated page.
+ */
 export function useAbsences(range?: ListRange) {
   return useQuery({
     queryKey: absenceKeys.range(range),
-    queryFn: () => getRepository().listAbsences(range),
+    queryFn: () =>
+      range
+        ? getRepository().listAbsences(range)
+        : listAllPages(
+            (page) => getRepository().listAbsences(page),
+            (absence) => absence.date,
+          ),
   })
 }
 
