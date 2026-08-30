@@ -441,7 +441,9 @@ export const localRepository: Repository = {
     if (current) recordAudit(id, 'deleted', current, null)
   },
   listTimeEntryAudits: async () =>
-    readAudits().sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)),
+    readAudits().sort(
+      (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+    ),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {

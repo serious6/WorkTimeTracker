@@ -291,6 +291,69 @@ pub const WEEKDAYS: [&str; 7] = [
 pub const DEFAULT_WORKING_DAYS: [&str; 5] =
     ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
+/// Legal limits behind the compliance warnings. The defaults follow the German
+/// ArbZG and are restored from the settings.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComplianceLimits {
+    pub break_threshold_minutes: i64,
+    pub required_break_minutes: i64,
+    pub long_break_threshold_minutes: i64,
+    pub required_long_break_minutes: i64,
+    pub min_break_block_minutes: i64,
+    pub max_continuous_work_minutes: i64,
+    pub max_daily_work_minutes: i64,
+    pub min_rest_minutes: i64,
+}
+
+pub const GERMAN_COMPLIANCE_LIMITS: ComplianceLimits = ComplianceLimits {
+    break_threshold_minutes: 360,
+    required_break_minutes: 30,
+    long_break_threshold_minutes: 540,
+    required_long_break_minutes: 45,
+    min_break_block_minutes: 15,
+    max_continuous_work_minutes: 360,
+    max_daily_work_minutes: 600,
+    min_rest_minutes: 660,
+};
+
+impl Default for ComplianceLimits {
+    fn default() -> Self {
+        GERMAN_COMPLIANCE_LIMITS
+    }
+}
+
+impl ComplianceLimits {
+    fn values(&self) -> [i64; 8] {
+        [
+            self.break_threshold_minutes,
+            self.required_break_minutes,
+            self.long_break_threshold_minutes,
+            self.required_long_break_minutes,
+            self.min_break_block_minutes,
+            self.max_continuous_work_minutes,
+            self.max_daily_work_minutes,
+            self.min_rest_minutes,
+        ]
+    }
+
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self
+            .values()
+            .iter()
+            .any(|value| !(1..=1_440).contains(value))
+        {
+            return Err("invalid working time limit");
+        }
+        if self.long_break_threshold_minutes < self.break_threshold_minutes
+            || self.required_long_break_minutes < self.required_break_minutes
+        {
+            return Err("invalid working time limit order");
+        }
+        Ok(())
+    }
+}
+
 /// General settings of the application, persisted as a single record.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -298,6 +361,8 @@ pub struct WorkSettings {
     pub weekly_target_minutes: i64,
     pub working_days: Vec<String>,
     pub week_starts_on: String,
+    #[serde(default)]
+    pub compliance_limits: ComplianceLimits,
 }
 
 impl WorkSettings {
@@ -326,7 +391,7 @@ impl WorkSettings {
         {
             return Err("invalid work settings");
         }
-        Ok(())
+        self.compliance_limits.validate()
     }
 }
 
@@ -472,7 +537,28 @@ mod tests {
             weekly_target_minutes,
             working_days: working_days.iter().map(|day| (*day).to_owned()).collect(),
             week_starts_on: "monday".into(),
+            compliance_limits: GERMAN_COMPLIANCE_LIMITS,
         }
+    }
+
+    #[test]
+    fn rejects_working_time_limits_outside_the_supported_range() {
+        let mut input = settings(2_400, &DEFAULT_WORKING_DAYS);
+        input.compliance_limits.max_daily_work_minutes = 0;
+        assert_eq!(input.validate(), Err("invalid working time limit"));
+    }
+
+    #[test]
+    fn rejects_a_long_break_below_the_short_break() {
+        let mut input = settings(2_400, &DEFAULT_WORKING_DAYS);
+        input.compliance_limits.required_long_break_minutes = 15;
+        assert_eq!(input.validate(), Err("invalid working time limit order"));
+    }
+
+    #[test]
+    fn defaults_the_working_time_limits_to_german_law() {
+        assert_eq!(ComplianceLimits::default(), GERMAN_COMPLIANCE_LIMITS);
+        assert_eq!(GERMAN_COMPLIANCE_LIMITS.validate(), Ok(()));
     }
 
     #[test]

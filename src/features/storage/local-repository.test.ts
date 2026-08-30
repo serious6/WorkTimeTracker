@@ -10,7 +10,12 @@ import {
   DEFAULT_WORK_SETTINGS,
   NO_WORKING_DAY_MESSAGE,
 } from '@/features/settings/work-settings-schema'
-import { ORDER_MESSAGE, OVERLAP_MESSAGE } from '@/features/time-entries/time-entry-schema'
+import { auditChanges } from '@/features/time-entries/audit-schema'
+import {
+  BREAK_PROJECT_MESSAGE,
+  ORDER_MESSAGE,
+  OVERLAP_MESSAGE,
+} from '@/features/time-entries/time-entry-schema'
 import { localRepository, NOT_SIGNED_IN_MESSAGE } from './local-repository'
 
 const PASSWORD = 'Str0ng-Passphrase!!x'
@@ -393,6 +398,57 @@ describe('local repository time entries', () => {
     await localRepository.deleteTimeEntry(404)
 
     expect(await localRepository.listTimeEntries()).toEqual([])
+  })
+
+  it('records a break without a project and rejects a break on a project', async () => {
+    const entry = await localRepository.createTimeEntry({
+      projectId: null,
+      startTime: '2026-08-27T12:00:00.000Z',
+      endTime: '2026-08-27T12:30:00.000Z',
+      entryType: 'break',
+      note: null,
+    })
+
+    expect(entry.entryType).toBe('break')
+    await expect(
+      localRepository.createTimeEntry({
+        projectId,
+        startTime: '2026-08-27T13:00:00.000Z',
+        endTime: '2026-08-27T13:30:00.000Z',
+        entryType: 'break',
+        note: null,
+      }),
+    ).rejects.toThrow(BREAK_PROJECT_MESSAGE)
+  })
+
+  it('keeps an audit trail with actor and old and new values', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.updateTimeEntry(entry.id, {
+      projectId,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T10:00:00.000Z',
+      note: null,
+    })
+    await localRepository.deleteTimeEntry(entry.id)
+
+    const audits = await localRepository.listTimeEntryAudits()
+
+    expect(audits.map(({ action }) => action)).toEqual(['deleted', 'updated', 'created'])
+    expect(audits.every(({ actor }) => actor === 'first@example.com')).toBe(true)
+    expect(audits.every(({ timeEntryId }) => timeEntryId === entry.id)).toBe(true)
+    expect(audits[0].newValue).toBeNull()
+    expect(auditChanges(audits[1])).toEqual([
+      { field: 'endTime', from: '2026-08-27T09:00:00.000Z', to: '2026-08-27T10:00:00.000Z' },
+    ])
+    expect(audits[2].oldValue).toBeNull()
+  })
+
+  it('keeps the audit trail after the entry is gone', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.deleteTimeEntry(entry.id)
+
+    expect(await localRepository.listTimeEntries()).toEqual([])
+    expect(await localRepository.listTimeEntryAudits()).toHaveLength(2)
   })
 })
 

@@ -4,8 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use rusqlite_migration::{Migrations, M};
 
 use crate::models::{
-    Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry,
-    TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS,
+    ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
+    TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS, GERMAN_COMPLIANCE_LIMITS,
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -35,8 +35,9 @@ fn migrations() -> Migrations<'static> {
             "../../drizzle/0002_work_settings_working_days.sql"
         )),
         M::up(include_str!("../../drizzle/0003_create_users.sql")),
+        M::up(include_str!("../../drizzle/0004_working_time_records.sql")),
         M::up(include_str!(
-            "../../drizzle/0004_working_time_records.sql"
+            "../../drizzle/0005_work_settings_compliance_limits.sql"
         )),
     ])
 }
@@ -116,8 +117,7 @@ fn assert_owns_project(
 const PROJECT_COLUMNS: &str = "id, name, description, color, active, created_at, updated_at";
 const ENTRY_COLUMNS: &str =
     "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
-const AUDIT_COLUMNS: &str =
-    "id, time_entry_id, action, actor, old_value, new_value, recorded_at";
+const AUDIT_COLUMNS: &str = "id, time_entry_id, action, actor, old_value, new_value, recorded_at";
 
 pub fn list_projects(connection: &Connection, user_id: i64) -> Result<Vec<Project>> {
     let mut statement = connection.prepare(&format!(
@@ -246,7 +246,14 @@ pub fn insert_time_entry(
         ],
     )?;
     let created = read_entry(connection, connection.last_insert_rowid(), user_id)?;
-    record_audit(connection, user_id, created.id, "created", None, Some(&created))?;
+    record_audit(
+        connection,
+        user_id,
+        created.id,
+        "created",
+        None,
+        Some(&created),
+    )?;
     Ok(created)
 }
 
@@ -420,7 +427,10 @@ fn record_audit(
     Ok(())
 }
 
-pub fn list_time_entry_audits(connection: &Connection, user_id: i64) -> Result<Vec<TimeEntryAudit>> {
+pub fn list_time_entry_audits(
+    connection: &Connection,
+    user_id: i64,
+) -> Result<Vec<TimeEntryAudit>> {
     let mut statement = connection.prepare(&format!(
         "SELECT {AUDIT_COLUMNS} FROM time_entry_audits WHERE user_id = ?1
      ORDER BY recorded_at DESC, id DESC"
@@ -527,7 +537,10 @@ fn working_days_from_text(value: &str) -> Vec<String> {
 pub fn read_settings(connection: &Connection, user_id: i64) -> Result<WorkSettings> {
     let settings = connection
         .query_row(
-            "SELECT weekly_target_minutes, working_days, week_starts_on
+            "SELECT weekly_target_minutes, working_days, week_starts_on,
+              break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+              required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+              max_daily_work_minutes, min_rest_minutes
        FROM work_settings WHERE user_id = ?1",
             [user_id],
             |row| {
@@ -540,6 +553,16 @@ pub fn read_settings(connection: &Connection, user_id: i64) -> Result<WorkSettin
                         working_days
                     },
                     week_starts_on: row.get(2)?,
+                    compliance_limits: ComplianceLimits {
+                        break_threshold_minutes: row.get(3)?,
+                        required_break_minutes: row.get(4)?,
+                        long_break_threshold_minutes: row.get(5)?,
+                        required_long_break_minutes: row.get(6)?,
+                        min_break_block_minutes: row.get(7)?,
+                        max_continuous_work_minutes: row.get(8)?,
+                        max_daily_work_minutes: row.get(9)?,
+                        min_rest_minutes: row.get(10)?,
+                    },
                 })
             },
         )
@@ -548,6 +571,7 @@ pub fn read_settings(connection: &Connection, user_id: i64) -> Result<WorkSettin
         weekly_target_minutes: 2_400,
         working_days: default_working_days(),
         week_starts_on: "monday".into(),
+        compliance_limits: GERMAN_COMPLIANCE_LIMITS,
     }))
 }
 
@@ -556,16 +580,32 @@ pub fn write_settings(
     user_id: i64,
     settings: &WorkSettings,
 ) -> Result<WorkSettings> {
+    let limits = settings.compliance_limits;
     connection.execute(
-        "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on)
-     VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on,
+       break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+       required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+       max_daily_work_minutes, min_rest_minutes)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
      ON CONFLICT (user_id) DO UPDATE
-     SET weekly_target_minutes = ?2, working_days = ?3, week_starts_on = ?4",
+     SET weekly_target_minutes = ?2, working_days = ?3, week_starts_on = ?4,
+         break_threshold_minutes = ?5, required_break_minutes = ?6,
+         long_break_threshold_minutes = ?7, required_long_break_minutes = ?8,
+         min_break_block_minutes = ?9, max_continuous_work_minutes = ?10,
+         max_daily_work_minutes = ?11, min_rest_minutes = ?12",
         params![
             user_id,
             settings.weekly_target_minutes,
             settings.working_days.join(","),
-            settings.week_starts_on
+            settings.week_starts_on,
+            limits.break_threshold_minutes,
+            limits.required_break_minutes,
+            limits.long_break_threshold_minutes,
+            limits.required_long_break_minutes,
+            limits.min_break_block_minutes,
+            limits.max_continuous_work_minutes,
+            limits.max_daily_work_minutes,
+            limits.min_rest_minutes
         ],
     )?;
     read_settings(connection, user_id)
@@ -837,7 +877,9 @@ mod tests {
         )
         .unwrap();
 
-        assert!(list_time_entry_audits(&connection, other).unwrap().is_empty());
+        assert!(list_time_entry_audits(&connection, other)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -851,7 +893,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(7)
+            Ok(8)
         );
     }
 
@@ -867,7 +909,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(7)
+            Ok(8)
         );
         let user_id = user(&connection, "first@example.com");
         assert!(list_projects(&connection, user_id).unwrap().is_empty());
@@ -936,6 +978,7 @@ mod tests {
                     .map(|day| (*day).to_owned())
                     .collect(),
                 week_starts_on: "monday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             }
         );
     }
@@ -1227,12 +1270,42 @@ mod tests {
                 weekly_target_minutes: 2_100,
                 working_days: vec!["monday".into(), "saturday".into()],
                 week_starts_on: "sunday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             },
         )
         .unwrap();
 
         assert_eq!(settings.working_days, vec!["monday", "saturday"]);
         assert_eq!(read_settings(&connection, user_id).unwrap(), settings);
+    }
+
+    #[test]
+    fn writes_custom_working_time_limits() {
+        let (connection, user_id) = connect();
+        let limits = ComplianceLimits {
+            max_daily_work_minutes: 480,
+            min_rest_minutes: 600,
+            ..GERMAN_COMPLIANCE_LIMITS
+        };
+
+        write_settings(
+            &connection,
+            user_id,
+            &WorkSettings {
+                weekly_target_minutes: 2_400,
+                working_days: vec!["monday".into()],
+                week_starts_on: "monday".into(),
+                compliance_limits: limits,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_settings(&connection, user_id)
+                .unwrap()
+                .compliance_limits,
+            limits
+        );
     }
 
     #[test]
@@ -1257,6 +1330,7 @@ mod tests {
                 weekly_target_minutes: 2_100,
                 working_days: vec!["monday".into()],
                 week_starts_on: "monday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             },
         )
         .unwrap();

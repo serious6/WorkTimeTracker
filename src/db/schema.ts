@@ -70,6 +70,14 @@ export const workSettings = sqliteTable('work_settings', {
   weeklyTargetMinutes: integer('weekly_target_minutes').notNull(),
   workingDays: text('working_days').notNull(),
   weekStartsOn: text('week_starts_on').notNull(),
+  breakThresholdMinutes: integer('break_threshold_minutes').notNull().default(360),
+  requiredBreakMinutes: integer('required_break_minutes').notNull().default(30),
+  longBreakThresholdMinutes: integer('long_break_threshold_minutes').notNull().default(540),
+  requiredLongBreakMinutes: integer('required_long_break_minutes').notNull().default(45),
+  minBreakBlockMinutes: integer('min_break_block_minutes').notNull().default(15),
+  maxContinuousWorkMinutes: integer('max_continuous_work_minutes').notNull().default(360),
+  maxDailyWorkMinutes: integer('max_daily_work_minutes').notNull().default(600),
+  minRestMinutes: integer('min_rest_minutes').notNull().default(660),
 })
 
 export const appMetadata = sqliteTable('app_metadata', {

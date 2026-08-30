@@ -9,10 +9,14 @@ import {
   useWorkSettingsQuery,
 } from '@/features/settings/work-settings-queries'
 import {
+  BREAK_ORDER_MESSAGE,
+  GERMAN_COMPLIANCE_LIMITS,
+  INVALID_LIMIT_MESSAGE,
   NO_WORKING_DAY_MESSAGE,
   WEEKDAYS,
   WEEKDAY_LABELS,
   workSettingsSchema,
+  type ComplianceLimits,
   type Weekday,
   type WorkSettings,
 } from '@/features/settings/work-settings-schema'
@@ -20,6 +24,23 @@ import { formatDuration } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 
 const INVALID_WEEKLY_TARGET_MESSAGE = 'Enter a weekly working time between 1 minute and 168 hours'
+
+const LIMIT_FIELDS: { field: keyof ComplianceLimits; label: string; hint: string }[] = [
+  { field: 'breakThresholdMinutes', label: 'Break required after', hint: 'ArbZG § 4' },
+  { field: 'requiredBreakMinutes', label: 'Required break', hint: 'ArbZG § 4' },
+  { field: 'longBreakThresholdMinutes', label: 'Longer break required after', hint: 'ArbZG § 4' },
+  { field: 'requiredLongBreakMinutes', label: 'Required longer break', hint: 'ArbZG § 4' },
+  { field: 'minBreakBlockMinutes', label: 'Shortest counting break block', hint: 'ArbZG § 4' },
+  { field: 'maxContinuousWorkMinutes', label: 'Maximum work without a break', hint: 'ArbZG § 4' },
+  { field: 'maxDailyWorkMinutes', label: 'Maximum daily working time', hint: 'ArbZG § 3' },
+  { field: 'minRestMinutes', label: 'Minimum rest between working days', hint: 'ArbZG § 5' },
+]
+
+function limitErrorMessage(path: PropertyKey | undefined): string {
+  if (path === 'workingDays') return NO_WORKING_DAY_MESSAGE
+  if (path === 'complianceLimits') return INVALID_LIMIT_MESSAGE
+  return INVALID_WEEKLY_TARGET_MESSAGE
+}
 
 /**
  * Form over all general settings. Further settings are added as fields of the
@@ -31,13 +52,29 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
   const [weeklyHours, setWeeklyHours] = useState(`${settings.weeklyTargetMinutes / 60}`)
   const [workingDays, setWorkingDays] = useState<Weekday[]>(settings.workingDays)
   const [weekStartsOn, setWeekStartsOn] = useState(settings.weekStartsOn)
+  const [limits, setLimits] = useState<Record<keyof ComplianceLimits, string>>(() =>
+    Object.fromEntries(
+      LIMIT_FIELDS.map(({ field }) => [field, `${settings.complianceLimits[field]}`]),
+    ) as Record<keyof ComplianceLimits, string>,
+  )
   const [error, setError] = useState<string>()
 
   const dailyTarget = dailyTargetMinutes({
     weeklyTargetMinutes: Math.round(Number(weeklyHours) * 60),
     workingDays,
-    weekStartsOn,
   })
+
+  const isGermanDefault = LIMIT_FIELDS.every(
+    ({ field }) => Number(limits[field]) === GERMAN_COMPLIANCE_LIMITS[field],
+  )
+
+  function restoreGermanLimits() {
+    setLimits(
+      Object.fromEntries(
+        LIMIT_FIELDS.map(({ field }) => [field, `${GERMAN_COMPLIANCE_LIMITS[field]}`]),
+      ) as Record<keyof ComplianceLimits, string>,
+    )
+  }
 
   function toggleWorkingDay(day: Weekday, selected: boolean) {
     setWorkingDays((current) =>
@@ -53,10 +90,15 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
       weeklyTargetMinutes: Math.round(Number(weeklyHours) * 60),
       workingDays,
       weekStartsOn,
+      complianceLimits: limits,
     })
     if (!result.success) {
       const issue = result.error.issues[0]
-      setError(issue?.path[0] === 'workingDays' ? NO_WORKING_DAY_MESSAGE : INVALID_WEEKLY_TARGET_MESSAGE)
+      setError(
+        issue?.message === BREAK_ORDER_MESSAGE
+          ? BREAK_ORDER_MESSAGE
+          : limitErrorMessage(issue?.path[0]),
+      )
       return
     }
     setError(undefined)
@@ -123,6 +165,42 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
               <option value="sunday">Sunday</option>
             </Select>
           </label>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Working time limits</CardTitle>
+          <Button
+            disabled={isGermanDefault}
+            onClick={restoreGermanLimits}
+            type="button"
+            variant="outline"
+          >
+            Restore German defaults
+          </Button>
+        </CardHeader>
+        <CardContent className="max-w-md space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Limits behind the compliance warnings, in minutes. The defaults follow the German
+            Arbeitszeitgesetz.
+          </p>
+          {LIMIT_FIELDS.map(({ field, label, hint }) => (
+            <label className="block space-y-1 text-sm font-medium" key={field}>
+              {label} <span className="font-normal text-muted-foreground">({hint})</span>
+              <Input
+                max="1440"
+                min="1"
+                name={field}
+                onChange={(event) =>
+                  setLimits((current) => ({ ...current, [field]: event.target.value }))
+                }
+                step="1"
+                type="number"
+                value={limits[field]}
+              />
+            </label>
+          ))}
         </CardContent>
       </Card>
 

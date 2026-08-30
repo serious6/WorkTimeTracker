@@ -8,7 +8,7 @@ import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
 import type { Project } from '@/features/projects/project-schema'
 import { localRepository } from '@/features/storage/local-repository'
-import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
+import type { EntryType, TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { useTimerStore } from '@/features/timer/timer-store'
 import { toDateKey } from '@/lib/date'
 
@@ -59,17 +59,27 @@ export async function seedProject(
 }
 
 export async function seedTimeEntry(input: {
-  projectId: number
+  projectId: number | null
   startTime: Date | string
   endTime: Date | string | null
+  entryType?: EntryType
   note?: string | null
 }): Promise<TimeEntry> {
   return localRepository.createTimeEntry({
     projectId: input.projectId,
     startTime: toIsoString(input.startTime),
     endTime: input.endTime === null ? null : toIsoString(input.endTime),
+    entryType: input.entryType,
     note: input.note ?? null,
   })
+}
+
+/** A break entry, which is never booked on a project. */
+export async function seedBreak(input: {
+  startTime: Date | string
+  endTime: Date | string
+}): Promise<TimeEntry> {
+  return seedTimeEntry({ ...input, projectId: null, entryType: 'break' })
 }
 
 export async function seedBudget(input: SaveProjectBudget) {

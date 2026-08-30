@@ -36,7 +36,7 @@ export function WorkingTimePage() {
 
   const selectedMonth = fromDateKey(`${month}-01`)
   const report = monthlyExport(entries, settings, selectedMonth, user?.email ?? '', now)
-  const warnings = complianceWarningsForEntries(entries, now).filter((warning) =>
+  const warnings = complianceWarningsForEntries(entries, settings.complianceLimits, now).filter((warning) =>
     warning.dateKey.startsWith(month),
   )
 

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import {
+  BREAK_ORDER_MESSAGE,
   DEFAULT_WORK_SETTINGS,
+  GERMAN_COMPLIANCE_LIMITS,
   NO_WORKING_DAY_MESSAGE,
   WEEKDAY_LABELS,
   WEEKDAYS,
@@ -58,5 +60,39 @@ describe('workSettingsSchema', () => {
   test('DEFAULT_WORK_SETTINGS is valid', () => {
     const result = workSettingsSchema.safeParse(DEFAULT_WORK_SETTINGS)
     expect(result.success).toBe(true)
+  })
+
+  test('falls back to the German limits when none are stored', () => {
+    const result = workSettingsSchema.parse({
+      weeklyTargetMinutes: 2_400,
+      workingDays: ['monday'],
+      weekStartsOn: 'monday',
+    })
+    expect(result.complianceLimits).toEqual(GERMAN_COMPLIANCE_LIMITS)
+  })
+
+  test('accepts limits of another jurisdiction', () => {
+    const result = workSettingsSchema.safeParse({
+      ...DEFAULT_WORK_SETTINGS,
+      complianceLimits: { ...GERMAN_COMPLIANCE_LIMITS, maxDailyWorkMinutes: 480 },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  test('rejects a limit outside of a day', () => {
+    const result = workSettingsSchema.safeParse({
+      ...DEFAULT_WORK_SETTINGS,
+      complianceLimits: { ...GERMAN_COMPLIANCE_LIMITS, minRestMinutes: 0 },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  test('rejects a longer break that is shorter than the short one', () => {
+    const result = workSettingsSchema.safeParse({
+      ...DEFAULT_WORK_SETTINGS,
+      complianceLimits: { ...GERMAN_COMPLIANCE_LIMITS, requiredLongBreakMinutes: 15 },
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(BREAK_ORDER_MESSAGE)
   })
 })

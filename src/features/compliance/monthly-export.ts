@@ -65,7 +65,9 @@ export function monthlyExport(
   now = Date.now(),
 ): MonthlyExport {
   const range = monthRange(month)
-  const days = workingDays(entries, now).filter((day) => inRange(day, range))
+  const days = workingDays(entries, settings.complianceLimits, now).filter((day) =>
+    inRange(day, range),
+  )
   let balanceMinutes = 0
   const rows = days.map((day) => {
     const targetMinutes = targetMinutesForDay(settings, fromDateKey(day.dateKey))
