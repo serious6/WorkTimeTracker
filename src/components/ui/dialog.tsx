@@ -76,7 +76,7 @@ export function Dialog({
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    const autofocusCandidates = [
+    const autofocusCandidates = Array.from(new Set([
       ...Array.from(
         panel.current?.querySelectorAll<HTMLElement>(
           'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
@@ -84,7 +84,7 @@ export function Dialog({
       ),
       ...focusable(),
       ...(panel.current ? [panel.current] : []),
-    ].filter((element, index, elements) => elements.indexOf(element) === index)
+    ]))
 
     for (const element of autofocusCandidates) {
       if ((panel.current && !isVisible(element, panel.current)) || !tryFocus(element)) continue
