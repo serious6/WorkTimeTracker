@@ -34,7 +34,6 @@ export function CurrentlyTrackingCard({
   const project = projects.find((candidate) => candidate.id === status.projectId)
   /** The running state is named, not only coloured, so it does not rely on colour alone. */
   const state = status.paused ? 'Paused' : 'Running'
-  const statusLabel = project?.description ? `${state} · ${project.description}` : state
 
   const [noteSource, setNoteSource] = useState(status.running?.note ?? null)
   if (noteSource !== (status.running?.note ?? null)) {
@@ -89,7 +88,10 @@ export function CurrentlyTrackingCard({
           />
           <div className="min-w-0">
             <p className="truncate text-xl font-semibold">{project?.name ?? DELETED_PROJECT_NAME}</p>
-            <p className="text-sm text-muted-foreground">{statusLabel}</p>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium">{state}</span>
+              {project?.description ? <span> · {project.description}</span> : null}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">

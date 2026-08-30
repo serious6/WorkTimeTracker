@@ -14,8 +14,9 @@ const buttonVariants = cva(
         destructive: 'bg-destructive-strong text-primary-foreground hover:bg-destructive-strong/90',
         link: 'bg-transparent text-primary hover:underline',
       },
-      // Every size keeps a 40px minimum hit area (Fitts's Law); `sm` and `link`
-      // extend it past their visual box with a transparent pseudo element.
+      // Every size keeps a 40px minimum hit area (Fitts's Law). `sm` and `inline`
+      // are shorter than that, so a transparent pseudo element extends their hit
+      // area vertically; their width already exceeds 40px through padding and label.
       size: {
         default: 'h-10 px-4',
         sm: "relative h-8 px-3 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",

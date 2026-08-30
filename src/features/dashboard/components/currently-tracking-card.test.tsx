@@ -118,6 +118,22 @@ describe('CurrentlyTrackingCard – running state', () => {
     expect(screen.getByText('Running')).toBeInTheDocument()
   })
 
+  it('keeps the state readable next to a project description', () => {
+    const running = makeRunningEntry()
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[{ ...project(1, 'Website'), description: 'Relaunch' }]}
+        timer={makeTimer({ status: { running, paused: false, projectId: 1, elapsedMs: 0 } })}
+      />,
+    )
+    expect(screen.getByText('Running')).toBeInTheDocument()
+    expect(screen.getByText('· Relaunch')).toBeInTheDocument()
+  })
+
   it('calls stop when Stop timer is clicked', () => {
     const stop = vi.fn()
     const running = makeRunningEntry()
