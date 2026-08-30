@@ -45,6 +45,9 @@ Native sessions live in memory and end after 480 idle minutes; every command ext
 restart always returns to the login page. Both storage paths lock an email out for 15 minutes after 5
 failed logins, in memory only. The limits are part of the contract file, so both sides stay equal.
 
+A login with an unknown email verifies a fixed dummy hash instead of returning early, so both paths
+spend the same Argon2 work and the response time does not reveal whether an account exists.
+
 The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
 session record with an expiry. Client-side storage stays fully readable and writable, therefore the
 fallback is a development and test tool only, not a security boundary. It is never shipped as the

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::Mutex,
+    sync::{LazyLock, Mutex},
     time::{Duration, Instant},
 };
 
@@ -144,6 +144,26 @@ pub fn hash_password(password: &str) -> AppResult<String> {
         .map_err(|error| AppError::internal(format!("password hashing failed: {error}")))
 }
 
+/// Hash of a random password, verified when no user row exists. It is derived
+/// once with the same parameters as a real credential, so the work of a login
+/// with an unknown email matches the work of a login with a known one.
+static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
+    let secret = SaltString::generate(&mut OsRng);
+    hash_password(secret.as_str()).unwrap_or_default()
+});
+
+#[cfg(test)]
+pub static DUMMY_VERIFICATIONS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Spends the work of a verification without a stored hash. Always false, the
+/// dummy password is never known to a caller.
+pub fn verify_dummy_password(password: &str) -> bool {
+    #[cfg(test)]
+    DUMMY_VERIFICATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    verify_password(password, &DUMMY_HASH)
+}
+
 /// Verification reads the cost parameters from the stored hash, so hashes
 /// written with earlier parameters keep working.
 pub fn verify_password(password: &str, hash: &str) -> bool {
@@ -186,6 +206,12 @@ mod tests {
             hash_password("Str0ng-Passphrase!!x").unwrap(),
             hash_password("Str0ng-Passphrase!!x").unwrap()
         );
+    }
+
+    #[test]
+    fn spends_a_verification_on_an_unknown_email() {
+        assert!(DUMMY_HASH.starts_with("$argon2id$v=19$"), "{}", *DUMMY_HASH);
+        assert!(!verify_dummy_password("Str0ng-Passphrase!!x"));
     }
 
     #[test]

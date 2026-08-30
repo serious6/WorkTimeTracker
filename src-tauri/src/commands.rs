@@ -28,6 +28,19 @@ fn unique_error(message: &'static str) -> impl Fn(StoreError) -> AppError {
     }
 }
 
+/// Verifies a password against the stored hash of the email. An unknown email
+/// verifies a dummy hash instead of returning early, so both paths cost the
+/// same Argon2 verification and cannot be told apart by their timing.
+fn verify_credentials(record: Option<(i64, String)>, password: &str) -> Option<i64> {
+    match record {
+        Some((user_id, hash)) => auth::verify_password(password, &hash).then_some(user_id),
+        None => {
+            auth::verify_dummy_password(password);
+            None
+        }
+    }
+}
+
 /// Every command works on the data of the signed in user only.
 fn current_user(session: &State<'_, Session>) -> AppResult<i64> {
     session.user_id()?.ok_or_else(AppError::not_signed_in)
@@ -63,12 +76,8 @@ pub fn login(
             .validate()
             .map_err(|_| AppError::validation(INVALID_CREDENTIALS))?;
         attempts.check(&credentials.email)?;
-        let user = database
-            .0
-            .read_password_hash(&credentials.email)?
-            .filter(|(_, hash)| auth::verify_password(&credentials.password, hash))
-            .map(|(id, _)| id);
-        let user = match user {
+        let record = database.0.read_password_hash(&credentials.email)?;
+        let user = match verify_credentials(record, &credentials.password) {
             Some(user) => user,
             None => {
                 attempts.record_failure(&credentials.email)?;
@@ -486,4 +495,37 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
         .collect();
     logging::error(&format!("ui/{source}"), &message);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn verifies_a_dummy_hash_when_the_email_is_unknown() {
+        let before = auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst);
+
+        assert_eq!(verify_credentials(None, "Str0ng-Passphrase!!x"), None);
+
+        assert_eq!(
+            auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst),
+            before + 1,
+            "an unknown email must still verify a password"
+        );
+    }
+
+    #[test]
+    fn verifies_the_stored_hash_of_a_known_email() {
+        let hash = auth::hash_password("Str0ng-Passphrase!!x").unwrap();
+        let before = auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst);
+
+        assert_eq!(
+            verify_credentials(Some((7, hash.clone())), "Str0ng-Passphrase!!x"),
+            Some(7)
+        );
+        assert_eq!(verify_credentials(Some((7, hash)), "wrong-password"), None);
+
+        assert_eq!(auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst), before);
+    }
 }
