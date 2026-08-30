@@ -36,6 +36,7 @@ fn migrations() -> Migrations<'static> {
             "../../drizzle/0002_work_settings_working_days.sql"
         )),
         M::up(include_str!("../../drizzle/0003_create_users.sql")),
+        M::up(include_str!("../../drizzle/0004_create_audit_log.sql")),
         M::up(include_str!("../../drizzle/0004_working_time_records.sql")),
         M::up(include_str!(
             "../../drizzle/0005_work_settings_compliance_limits.sql"
@@ -43,7 +44,6 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../drizzle/0006_break_project_constraint.sql"
         )),
-        M::up(include_str!("../../drizzle/0004_create_audit_log.sql")),
     ])
 }
 
@@ -980,7 +980,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(9)
+            Ok(10)
         );
     }
 
@@ -996,7 +996,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(9)
+            Ok(10)
         );
         let user_id = user(&connection, "first@example.com");
         assert!(list_projects(&connection, user_id).unwrap().is_empty());
@@ -1051,6 +1051,44 @@ mod tests {
         assert_eq!(settings.weekly_target_minutes, 1_800);
         assert_eq!(settings.working_days, DEFAULT_WORKING_DAYS.to_vec());
         assert_eq!(list_projects(&connection, user_id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn keeps_the_released_audit_trail_when_upgrading() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        for script in [
+            include_str!("../../drizzle/0000_create_time_entries.sql"),
+            include_str!("../../drizzle/0000_create_schema.sql"),
+            include_str!("../../drizzle/0001_create_project_budgets.sql"),
+            include_str!("../../drizzle/0002_create_app_metadata.sql"),
+            include_str!("../../drizzle/0002_work_settings_working_days.sql"),
+            include_str!("../../drizzle/0003_create_users.sql"),
+            include_str!("../../drizzle/0004_create_audit_log.sql"),
+        ] {
+            connection.execute_batch(script).unwrap();
+        }
+        connection.pragma_update(None, "user_version", 7).unwrap();
+        let user_id = user(&connection, "first@example.com");
+        connection
+            .execute(
+                "INSERT INTO audit_log (user_id, entity, entity_id, action, old_value, new_value, created_at)
+             VALUES (?1, 'timeEntry', 42, 'update', '{\"note\":\"before\"}', '{\"note\":\"after\"}', '2026-01-01T00:00:00.000Z')",
+                [user_id],
+            )
+            .unwrap();
+
+        migrate(&mut connection).unwrap();
+
+        let audits = list_time_entry_audits(&connection, user_id).unwrap();
+        assert_eq!(audits.len(), 1);
+        assert_eq!(audits[0].time_entry_id, 42);
+        assert_eq!(audits[0].action, "updated");
+        assert_eq!(audits[0].actor, "first@example.com");
+        assert_eq!(
+            audits[0].old_value.as_deref(),
+            Some("{\"note\":\"before\"}")
+        );
+        assert_eq!(audits[0].recorded_at, "2026-01-01T00:00:00.000Z");
     }
 
     #[test]

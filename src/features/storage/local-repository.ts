@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { TIME_ENTRY_ENTITY, type AuditLogEntry } from '@/features/audit/audit-schema'
+import {
+  TIME_ENTRY_ENTITY,
+  auditLogEntrySchema,
+  type AuditLogEntry,
+} from '@/features/audit/audit-schema'
 import {
   DUPLICATE_EMAIL_MESSAGE,
   INVALID_CREDENTIALS_MESSAGE,
@@ -56,6 +60,7 @@ const SCOPED_KEYS = [
   'work-settings',
   'time-entry-audits',
   'time-entry-state',
+  'audit-log',
 ] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
@@ -173,16 +178,53 @@ function entryStateKey(): string {
   return scopedKey('time-entry-state')
 }
 
+/** Records of the released `audit-log` key, kept when the trail moved. */
+function legacyAudits(): TimeEntryAudit[] {
+  const actor = currentActor()
+  return read(scopedKey('audit-log'), [], (value) => auditLogEntrySchema.array().parse(value))
+    .filter((record) => record.entity === TIME_ENTRY_ENTITY)
+    .map((record) =>
+      timeEntryAuditSchema.parse({
+        id: record.id,
+        timeEntryId: record.entityId,
+        action: `${record.action}d`,
+        actor,
+        oldValue: record.oldValue,
+        newValue: record.newValue,
+        recordedAt: record.createdAt,
+      }),
+    )
+}
+
+/** Reads the state of the keys that were written before both were stored together. */
+function migratedEntryState(): EntryState {
+  const audits = [
+    ...legacyAudits(),
+    ...read(scopedKey('time-entry-audits'), [], (value) =>
+      timeEntryAuditSchema.array().parse(value),
+    ),
+  ]
+  return {
+    entries: read(scopedKey('time-entries'), [], (value) => timeEntrySchema.array().parse(value)),
+    audits: audits.map((audit, index) => ({ ...audit, id: index + 1 })),
+  }
+}
+
 function readEntryState(): EntryState {
   const key = entryStateKey()
   if (globalThis.localStorage?.getItem(key) !== null) {
     return read(key, { entries: [], audits: [] }, (value) => entryStateSchema.parse(value))
   }
-  return { entries: read(scopedKey('time-entries'), [], (value) => timeEntrySchema.array().parse(value)), audits: read(scopedKey('time-entry-audits'), [], (value) => timeEntryAuditSchema.array().parse(value)) }
+  return migratedEntryState()
 }
 
 function writeEntryState(entries: TimeEntry[], audits: TimeEntryAudit[]): void {
   write(entryStateKey(), { entries, audits })
+}
+
+function currentActor(): string {
+  const userId = requireUserId()
+  return readUsers().find((user) => user.id === userId)?.email ?? `user:${userId}`
 }
 
 /** Appends to the trail; recorded values are never modified or removed. */
@@ -193,15 +235,13 @@ function appendAudit(
   oldValue: TimeEntry | null,
   newValue: TimeEntry | null,
 ): TimeEntryAudit[] {
-  const userId = requireUserId()
-  const actor = readUsers().find((user) => user.id === userId)?.email ?? `user:${userId}`
   return [
     ...audits,
     timeEntryAuditSchema.parse({
       id: nextId(audits),
       timeEntryId,
       action,
-      actor,
+      actor: currentActor(),
       oldValue: oldValue ? JSON.stringify(oldValue) : null,
       newValue: newValue ? JSON.stringify(newValue) : null,
       recordedAt: new Date().toISOString(),

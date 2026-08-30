@@ -482,6 +482,36 @@ describe('local repository time entries', () => {
 
     expect(replacement.id).toBeGreaterThan(entry.id)
   })
+
+  it('keeps the trail that was recorded under the released audit key', async () => {
+    const user = await localRepository.currentSession()
+    globalThis.localStorage?.setItem(
+      `work-time-tracker.${user?.id}.audit-log`,
+      JSON.stringify([
+        {
+          id: 1,
+          entity: 'timeEntry',
+          entityId: 42,
+          action: 'update',
+          oldValue: '{"note":"before"}',
+          newValue: '{"note":"after"}',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]),
+    )
+
+    expect(await localRepository.listTimeEntryAudits()).toEqual([
+      {
+        id: 1,
+        timeEntryId: 42,
+        action: 'updated',
+        actor: 'first@example.com',
+        oldValue: '{"note":"before"}',
+        newValue: '{"note":"after"}',
+        recordedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ])
+  })
 })
 
 describe('local repository budgets and settings', () => {

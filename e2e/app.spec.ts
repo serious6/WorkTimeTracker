@@ -377,7 +377,9 @@ test('does not show budgets on the dashboard', async ({ page }) => {
 
 test('records a break and warns about the working time limits', async ({ page }) => {
   await createProject(page, 'Compliance')
-  await addEntry(page, 'Compliance', '07:00', '18:00')
+  await addEntry(page, 'Compliance', '07:00', '12:00')
+  await expect(dialog(page)).toBeHidden()
+  await addEntry(page, 'Compliance', '12:45', '18:00')
   await expect(dialog(page)).toBeHidden()
 
   await page.getByRole('button', { name: 'Working Time' }).click()
@@ -388,8 +390,8 @@ test('records a break and warns about the working time limits', async ({ page })
   await page.getByRole('button', { name: 'Add time entry' }).click()
   await dialog(page).getByLabel('Entry type').selectOption('break')
   await expect(dialog(page).getByLabel('Project')).toBeDisabled()
-  await dialog(page).getByLabel('Start time').fill('18:00')
-  await dialog(page).getByLabel('End time').fill('18:45')
+  await dialog(page).getByLabel('Start time').fill('12:00')
+  await dialog(page).getByLabel('End time').fill('12:45')
   await dialog(page).getByRole('button', { name: 'Add entry' }).click()
   await expect(dialog(page)).toBeHidden()
 
