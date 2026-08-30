@@ -68,7 +68,7 @@ export function cumulativeBalance({
 }): CumulativeBalance {
   const today = startOfDay(new Date(now))
   const selected = startOfDay(throughDate)
-  const endDate = selected > today ? today : selected
+  const endDate = selected.getTime() > today.getTime() ? today : selected
   const startDate = firstTrackedDay(entries)
   if (!startDate || startDate > endDate) return EMPTY_BALANCE
 
