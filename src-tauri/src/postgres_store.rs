@@ -30,6 +30,9 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// existing database is upgraded instead of silently kept on a stale schema.
 const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
 
+/// Arbitrary but stable key for the advisory lock that serializes `migrate`.
+const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
+
 type Manager = PostgresConnectionManager<NoTls>;
 
 pub struct PostgresStore {
@@ -169,19 +172,23 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
     Ok(email.unwrap_or_else(|| format!("user:{user_id}")))
 }
 
-/// Applies every not yet recorded migration in order, each in its own
-/// transaction. The exclusive lock serializes concurrent starts, so a second
-/// process waits and then sees the already recorded version.
+/// Applies every not yet recorded migration in order, all within one
+/// transaction that first takes a transaction-scoped advisory lock. The lock
+/// serializes concurrent starts before any DDL runs, because
+/// `CREATE TABLE IF NOT EXISTS` is not race free in Postgres: two sessions
+/// creating the same table at once make one of them fail with a duplicate key
+/// on `pg_type`. A second process therefore waits and then sees the already
+/// recorded versions.
 fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
-    client.batch_execute(
+    let mut transaction = client.transaction()?;
+    transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
+    transaction.batch_execute(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
            version TEXT PRIMARY KEY,
            applied_at TEXT NOT NULL
          )",
     )?;
     for (version, sql) in MIGRATIONS {
-        let mut transaction = client.transaction()?;
-        transaction.batch_execute("LOCK TABLE schema_migrations IN EXCLUSIVE MODE")?;
         let applied: bool = transaction
             .query_one(
                 "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
@@ -195,8 +202,8 @@ fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
                 &[version, &now_iso()],
             )?;
         }
-        transaction.commit()?;
     }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -892,7 +899,7 @@ mod tests {
     use super::*;
     use crate::{
         models::{SaveProject, SaveTimeEntry},
-        test_support::{test_store, unique_email},
+        test_support::{fresh_database, test_store, unique_email},
     };
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
@@ -921,6 +928,37 @@ mod tests {
                 .chain(timestamp[20..23].chars())
                 .all(|c| c.is_ascii_digit()),
             "expected only digits in the numeric fields of {timestamp}"
+        );
+    }
+
+    /// `CREATE TABLE IF NOT EXISTS` is not race free in Postgres, so several
+    /// app instances starting against a fresh database at the same time used
+    /// to fail with a duplicate key on `pg_type`.
+    #[test]
+    fn migrates_concurrent_connections_to_a_fresh_database() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let url = database.url();
+        let failures: Vec<String> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        PostgresStore::connect(url)
+                            .err()
+                            .map(|error| error.to_string())
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .filter_map(|handle| handle.join().unwrap())
+                .collect()
+        });
+
+        assert!(
+            failures.is_empty(),
+            "concurrent migrations failed: {failures:?}"
         );
     }
 

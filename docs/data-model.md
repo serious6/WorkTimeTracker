@@ -283,9 +283,10 @@ Enums: `week_starts_on` is `monday` or `sunday`; `working_days` is a subset of `
 
 Because WorkTimeTracker has not been released yet, the native database starts from the single
 baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies every migration listed
-in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, each in its own transaction and
-recorded in the `schema_migrations` table, so an existing database is upgraded exactly once instead
-of re-running the baseline. Later schema changes therefore get a new numbered file in `drizzle/`
+in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, in a single transaction that is
+guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
+an existing database is upgraded exactly once instead of re-running the baseline and concurrent
+starts do not collide. Later schema changes therefore get a new numbered file in `drizzle/`
 rather than an edit of the baseline. `drizzle.config.ts` points Drizzle at the same migration
 directory. Existing pre-release local database files are not migrated by this version.
 

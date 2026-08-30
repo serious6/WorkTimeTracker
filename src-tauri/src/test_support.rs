@@ -26,7 +26,7 @@ pub fn test_store() -> Option<PostgresStore> {
         Ok(url) => match PostgresStore::connect(&url) {
             Ok(store) => return Some(store),
             Err(error) => format!(
-                "{} is not reachable: {error}",
+                "{} could not be opened: {error}",
                 crate::config::redact_database_url(&url)
             ),
         },
@@ -49,4 +49,62 @@ pub fn unique_tag() -> String {
 /// Address that is unused for the same reason.
 pub fn unique_email() -> String {
     format!("postgres-test-{}@example.com", unique_tag())
+}
+
+/// An empty database created on the configured server, so a test can exercise
+/// a first-time migration. Dropped again when the guard goes out of scope, so
+/// repeated local runs do not pile up databases.
+pub struct FreshDatabase {
+    name: String,
+    url: String,
+}
+
+impl FreshDatabase {
+    /// Connection string of the freshly created database.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+}
+
+impl Drop for FreshDatabase {
+    fn drop(&mut self) {
+        let Ok(url) = std::env::var("DATABASE_URL") else {
+            return;
+        };
+        if let Ok(mut client) = postgres::Client::connect(&url, postgres::NoTls) {
+            let _ = client.batch_execute(&format!("DROP DATABASE IF EXISTS {} (FORCE)", self.name));
+        }
+    }
+}
+
+/// Creates an empty database on the configured server. Returns `None` under
+/// the same conditions as `test_store`.
+pub fn fresh_database() -> Option<FreshDatabase> {
+    // Proves the server is reachable and applies the required/skip policy.
+    test_store()?;
+    let url = std::env::var("DATABASE_URL").expect("test_store checked DATABASE_URL");
+    let mut client = postgres::Client::connect(&url, postgres::NoTls)
+        .expect("test_store already connected to this server");
+    // The generated name only contains digits and underscores.
+    let name = format!("wtt_test_{}", unique_tag().replace('-', "_"));
+    client
+        .batch_execute(&format!("CREATE DATABASE {name}"))
+        .expect("the test database can be created");
+    let url = replace_dbname(&url, &name);
+    Some(FreshDatabase { name, url })
+}
+
+/// Swaps the database of a `key=value` or URL connection string.
+fn replace_dbname(url: &str, name: &str) -> String {
+    if url.contains("://") {
+        let (base, _) = url.rsplit_once('/').expect("the URL names a database");
+        return format!("{base}/{name}");
+    }
+    let mut parts: Vec<String> = url
+        .split_whitespace()
+        .filter(|part| !part.starts_with("dbname="))
+        .map(str::to_owned)
+        .collect();
+    parts.push(format!("dbname={name}"));
+    parts.join(" ")
 }
