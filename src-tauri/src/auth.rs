@@ -126,9 +126,9 @@ impl Sessions {
     }
 }
 
-/// Counts failed logins per email to slow down password guessing. The counters
-/// are persisted, so restarting the application does not clear a lockout, and
-/// expired counters are removed on every check.
+/// Counts the login attempts per email to slow down password guessing. The
+/// counters are persisted, so restarting the application does not clear a
+/// lockout, and expired counters are evicted with every attempt.
 pub struct LoginAttempts<'store>(&'store dyn LoginAttemptStore);
 
 impl<'store> LoginAttempts<'store> {
@@ -136,35 +136,25 @@ impl<'store> LoginAttempts<'store> {
         Self(store)
     }
 
-    /// Rejects further attempts while an email is locked out.
-    pub fn check(&self, email: &str) -> AppResult<()> {
-        self.check_at(email, Utc::now())
+    /// Counts this attempt and rejects it while the email is locked out.
+    /// Counting before the password is verified is what makes the limit hold:
+    /// a separate check would let concurrent logins all read the same count and
+    /// verify a password together. A successful login clears the counter again.
+    pub fn begin(&self, email: &str) -> AppResult<()> {
+        self.begin_at(email, Utc::now())
     }
 
-    fn check_at(&self, email: &str, now: DateTime<Utc>) -> AppResult<()> {
-        let expired = self.expired_before(now);
-        self.0.purge_login_attempts(&expired)?;
-        let Some(attempt) = self.0.read_login_attempt(email)? else {
-            return Ok(());
-        };
-        if attempt.last_failure <= expired {
-            self.0.clear_login_attempts(email)?;
-            return Ok(());
-        }
-        if attempt.failures >= i64::from(MAX_LOGIN_ATTEMPTS) {
+    fn begin_at(&self, email: &str, now: DateTime<Utc>) -> AppResult<()> {
+        let limit = i64::from(MAX_LOGIN_ATTEMPTS);
+        let counted = self.0.reserve_login_attempt(
+            email,
+            &timestamp(now),
+            &self.expired_before(now),
+            limit,
+        )?;
+        if counted > limit {
             return Err(AppError::RateLimited(LOCKED_OUT.to_owned()));
         }
-        Ok(())
-    }
-
-    pub fn record_failure(&self, email: &str) -> AppResult<()> {
-        self.record_failure_at(email, Utc::now())
-    }
-
-    fn record_failure_at(&self, email: &str, now: DateTime<Utc>) -> AppResult<()> {
-        // The expired counters go first, so a new lockout starts from one.
-        self.0.purge_login_attempts(&self.expired_before(now))?;
-        self.0.record_login_failure(email, &timestamp(now))?;
         Ok(())
     }
 
@@ -357,31 +347,32 @@ mod tests {
     struct FakeAttempts(Mutex<HashMap<String, LoginAttempt>>);
 
     impl LoginAttemptStore for FakeAttempts {
-        fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError> {
-            Ok(self.0.lock().unwrap().get(email).cloned())
-        }
-
-        fn record_login_failure(&self, email: &str, now: &str) -> Result<(), StoreError> {
+        fn reserve_login_attempt(
+            &self,
+            email: &str,
+            now: &str,
+            expired_before: &str,
+            limit: i64,
+        ) -> Result<i64, StoreError> {
             let mut attempts = self.0.lock().unwrap();
+            attempts.retain(|_, attempt| attempt.last_failure.as_str() > expired_before);
             let attempt = attempts.entry(email.to_owned()).or_insert(LoginAttempt {
                 failures: 0,
                 last_failure: now.to_owned(),
             });
-            attempt.failures += 1;
-            attempt.last_failure = now.to_owned();
-            Ok(())
+            if attempt.failures <= limit {
+                attempt.failures += 1;
+                attempt.last_failure = now.to_owned();
+            }
+            Ok(attempt.failures)
+        }
+
+        fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError> {
+            Ok(self.0.lock().unwrap().get(email).cloned())
         }
 
         fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError> {
             self.0.lock().unwrap().remove(email);
-            Ok(())
-        }
-
-        fn purge_login_attempts(&self, before: &str) -> Result<(), StoreError> {
-            self.0
-                .lock()
-                .unwrap()
-                .retain(|_, attempt| attempt.last_failure.as_str() > before);
             Ok(())
         }
     }
@@ -393,23 +384,40 @@ mod tests {
     }
 
     #[test]
-    fn locks_out_an_email_after_too_many_failures() {
+    fn locks_out_an_email_after_too_many_attempts() {
         let store = FakeAttempts::default();
         let attempts = LoginAttempts::new(&store);
         let now = moment();
 
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts.check_at("first@example.com", now).unwrap();
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
         }
 
         assert_eq!(
-            attempts.check_at("first@example.com", now),
+            attempts.begin_at("first@example.com", now),
             Err(AppError::RateLimited(LOCKED_OUT.to_owned()))
         );
-        attempts.check_at("second@example.com", now).unwrap();
+        attempts.begin_at("second@example.com", now).unwrap();
+    }
+
+    #[test]
+    fn counts_every_attempt_before_the_password_is_verified() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+
+        attempts.begin_at("first@example.com", now).unwrap();
+
+        // The attempt is counted by the store operation itself, so a second
+        // login cannot read a count that does not contain it yet.
+        assert_eq!(
+            store
+                .read_login_attempt("first@example.com")
+                .unwrap()
+                .unwrap()
+                .failures,
+            1
+        );
     }
 
     #[test]
@@ -418,14 +426,14 @@ mod tests {
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
             LoginAttempts::new(&store)
-                .record_failure_at("first@example.com", now)
+                .begin_at("first@example.com", now)
                 .unwrap();
         }
 
         // A new instance stands for the restarted process; the counters live
         // in the store, not in the instance.
         assert!(LoginAttempts::new(&store)
-            .check_at("first@example.com", now)
+            .begin_at("first@example.com", now)
             .is_err());
     }
 
@@ -435,14 +443,35 @@ mod tests {
         let attempts = LoginAttempts::new(&store);
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
         }
 
-        assert!(attempts.check_at("first@example.com", now).is_err());
+        assert!(attempts.begin_at("first@example.com", now).is_err());
         let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64);
-        attempts.check_at("first@example.com", later).unwrap();
+        attempts.begin_at("first@example.com", later).unwrap();
+    }
+
+    #[test]
+    fn does_not_let_a_locked_out_email_extend_its_own_lockout() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            attempts.begin_at("first@example.com", now).unwrap();
+        }
+
+        let blocked = now + chrono::Duration::minutes(1);
+        assert!(attempts.begin_at("first@example.com", blocked).is_err());
+        // The rejected attempt froze the counter instead of moving it on.
+        let attempt = store
+            .read_login_attempt("first@example.com")
+            .unwrap()
+            .unwrap();
+        assert_eq!(attempt.failures, i64::from(MAX_LOGIN_ATTEMPTS) + 1);
+        assert_eq!(attempt.last_failure, timestamp(blocked));
+
+        let later = blocked + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64);
+        attempts.begin_at("first@example.com", later).unwrap();
     }
 
     #[test]
@@ -450,12 +479,10 @@ mod tests {
         let store = FakeAttempts::default();
         let attempts = LoginAttempts::new(&store);
         let now = moment();
-        attempts
-            .record_failure_at("first@example.com", now)
-            .unwrap();
+        attempts.begin_at("first@example.com", now).unwrap();
 
         let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
-        attempts.check_at("second@example.com", later).unwrap();
+        attempts.begin_at("second@example.com", later).unwrap();
 
         assert_eq!(store.read_login_attempt("first@example.com").unwrap(), None);
     }
@@ -466,15 +493,11 @@ mod tests {
         let attempts = LoginAttempts::new(&store);
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
         }
 
         let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
-        attempts
-            .record_failure_at("first@example.com", later)
-            .unwrap();
+        attempts.begin_at("first@example.com", later).unwrap();
 
         assert_eq!(
             store
@@ -484,21 +507,18 @@ mod tests {
                 .failures,
             1
         );
-        attempts.check_at("first@example.com", later).unwrap();
     }
 
     #[test]
-    fn forgets_the_failures_after_a_successful_login() {
+    fn forgets_the_attempts_after_a_successful_login() {
         let store = FakeAttempts::default();
         let attempts = LoginAttempts::new(&store);
         let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
         }
         attempts.record_success("first@example.com").unwrap();
 
-        attempts.check_at("first@example.com", now).unwrap();
+        attempts.begin_at("first@example.com", now).unwrap();
     }
 }

@@ -413,29 +413,43 @@ impl LoginAttemptStore for PostgresStore {
             }))
     }
 
-    fn record_login_failure(&self, email: &str, now: &str) -> Result<(), StoreError> {
+    fn reserve_login_attempt(
+        &self,
+        email: &str,
+        now: &str,
+        expired_before: &str,
+        limit: i64,
+    ) -> Result<i64, StoreError> {
         let mut client = self.conn()?;
-        client.execute(
-            "INSERT INTO login_attempts (email, failures, last_failure) VALUES ($1, 1, $2)
-             ON CONFLICT (email)
-             DO UPDATE SET failures = login_attempts.failures + 1, last_failure = EXCLUDED.last_failure",
-            &[&email, &now],
+        // One transaction, so the counter another login reads already contains
+        // this attempt. The upsert takes the row lock of the email, which
+        // serializes the concurrent attempts of one account.
+        let mut transaction = client.transaction()?;
+        transaction.execute(
+            "DELETE FROM login_attempts WHERE last_failure <= $1",
+            &[&expired_before],
         )?;
-        Ok(())
+        let row = transaction.query_one(
+            "INSERT INTO login_attempts (email, failures, last_failure) VALUES ($1, 1, $2)
+             ON CONFLICT (email) DO UPDATE SET
+               failures = CASE
+                 WHEN login_attempts.failures > $3 THEN login_attempts.failures
+                 ELSE login_attempts.failures + 1
+               END,
+               last_failure = CASE
+                 WHEN login_attempts.failures > $3 THEN login_attempts.last_failure
+                 ELSE EXCLUDED.last_failure
+               END
+             RETURNING failures",
+            &[&email, &now, &limit],
+        )?;
+        transaction.commit()?;
+        Ok(row.get(0))
     }
 
     fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         client.execute("DELETE FROM login_attempts WHERE email = $1", &[&email])?;
-        Ok(())
-    }
-
-    fn purge_login_attempts(&self, before: &str) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
-        client.execute(
-            "DELETE FROM login_attempts WHERE last_failure <= $1",
-            &[&before],
-        )?;
         Ok(())
     }
 }
@@ -1320,38 +1334,84 @@ mod tests {
 
     /// The counters behind the login lockout survive a restart of the process,
     /// so they must be readable through a second connection and disappear once
-    /// their lockout has been served.
+    /// their lockout has been served. The timestamps lie before every other
+    /// test of this file, so the eviction cannot reach their rows.
     #[test]
     fn counts_and_evicts_login_attempts_in_postgres() {
         let Some(store) = test_store() else {
             return;
         };
         let email = unique_email();
+        let kept = "1971-01-01T09:00:00.000Z";
 
-        store
-            .record_login_failure(&email, "2026-08-30T10:00:00.000Z")
-            .unwrap();
-        store
-            .record_login_failure(&email, "2026-08-30T10:01:00.000Z")
-            .unwrap();
+        assert_eq!(
+            store
+                .reserve_login_attempt(&email, "1971-01-01T10:00:00.000Z", kept, 5)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store
+                .reserve_login_attempt(&email, "1971-01-01T10:01:00.000Z", kept, 5)
+                .unwrap(),
+            2
+        );
 
         assert_eq!(
             store.read_login_attempt(&email).unwrap(),
             Some(LoginAttempt {
                 failures: 2,
-                last_failure: "2026-08-30T10:01:00.000Z".to_owned(),
+                last_failure: "1971-01-01T10:01:00.000Z".to_owned(),
             })
         );
 
+        // An attempt of another email evicts the counters that served their
+        // lockout, so the table cannot grow without bound.
         store
-            .purge_login_attempts("2026-08-30T09:00:00.000Z")
-            .unwrap();
-        assert!(store.read_login_attempt(&email).unwrap().is_some());
-
-        store
-            .purge_login_attempts("2026-08-30T10:30:00.000Z")
+            .reserve_login_attempt(
+                &unique_email(),
+                "1971-01-01T10:31:00.000Z",
+                "1971-01-01T10:30:00.000Z",
+                5,
+            )
             .unwrap();
         assert_eq!(store.read_login_attempt(&email).unwrap(), None);
+    }
+
+    /// The check and the count are one operation, so parallel logins of one
+    /// email cannot pass the limit together.
+    #[test]
+    fn counts_concurrent_login_attempts_exactly_once_each() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let store = &store;
+        let email = &email;
+
+        let mut counted: Vec<i64> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        store
+                            .reserve_login_attempt(
+                                email,
+                                "1971-01-01T10:00:00.000Z",
+                                "1971-01-01T09:00:00.000Z",
+                                1000,
+                            )
+                            .unwrap()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        counted.sort_unstable();
+
+        assert_eq!(counted, (1..=8).collect::<Vec<i64>>());
     }
 
     /// A list command must not answer with the whole table: the window is
@@ -1419,11 +1479,12 @@ mod tests {
         };
         let email = unique_email();
         let other = unique_email();
+        let kept = "1971-01-01T00:00:00.000Z";
         store
-            .record_login_failure(&email, "2026-08-30T10:00:00.000Z")
+            .reserve_login_attempt(&email, "2026-08-30T10:00:00.000Z", kept, 5)
             .unwrap();
         store
-            .record_login_failure(&other, "2026-08-30T10:00:00.000Z")
+            .reserve_login_attempt(&other, "2026-08-30T10:00:00.000Z", kept, 5)
             .unwrap();
 
         store.clear_login_attempts(&email).unwrap();
