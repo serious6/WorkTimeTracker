@@ -294,6 +294,9 @@ pub struct ProjectBudget {
 pub const ABSENCE_TYPES: [&str; 4] = ["vacation", "sick", "unpaid", "halfDay"];
 
 /// The only absence type that keeps part of the target.
+// The Rust target adjustment mirrors the TypeScript rule for contract tests;
+// the app currently computes scheduled targets in the browser.
+#[allow(dead_code)]
 pub const HALF_DAY_ABSENCE: &str = "halfDay";
 
 /// Target of a day after an absence: a full-day absence neutralises it, a half
@@ -302,6 +305,7 @@ pub const HALF_DAY_ABSENCE: &str = "halfDay";
 ///
 /// `adjustedDailyTarget` in `src/features/settings/work-schedule.ts` implements
 /// the same rule; both sides are driven by `contract/domain-rules.json`.
+#[allow(dead_code)]
 pub fn adjusted_daily_target(daily_target: f64, working_day: bool, absence: Option<&str>) -> f64 {
     if !working_day {
         return 0.0;
