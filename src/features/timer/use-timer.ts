@@ -11,10 +11,11 @@ import {
 } from '@/features/time-entries/time-entry-queries'
 import {
   DELETED_PROJECT_NAME,
+  FUTURE_START_MESSAGE,
   TIMER_ERROR_MESSAGE,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
-import { formatDuration } from '@/lib/date'
+import { formatDuration, formatTimeOfDay } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { reconcileSession } from './recover-session'
 import { useTimerStore } from './timer-store'
@@ -169,6 +170,41 @@ export function useTimer(now: number) {
     [createEntry, projectName, running, setSession, switchEntry],
   )
 
+  /**
+   * Moves the start of the running timer, so a timer that was started too late
+   * still records the time that was actually worked. Every derived figure reads
+   * the entry, so the metrics follow the correction.
+   */
+  const correctStart = useCallback(
+    async (startTime: Date) => {
+      if (!running) return false
+      if (startTime.getTime() > Date.now()) {
+        errorToast('The start time was not changed', FUTURE_START_MESSAGE)
+        return false
+      }
+      try {
+        await updateEntry.mutateAsync({
+          id: running.id,
+          input: {
+            projectId: running.projectId,
+            startTime: startTime.toISOString(),
+            endTime: null,
+            note: running.note,
+          },
+        })
+        toast(
+          'Start time updated',
+          `${projectName(running.projectId)} now starts at ${formatTimeOfDay(startTime)}`,
+        )
+        return true
+      } catch (error) {
+        errorToast('The start time was not changed', errorMessage(error, 'Please try again'))
+        return false
+      }
+    },
+    [projectName, running, updateEntry],
+  )
+
   const setNote = useCallback(
     async (note: string) => {
       if (!running) return
@@ -177,5 +213,5 @@ export function useTimer(now: number) {
     [running, updateNote],
   )
 
-  return { status, start, stop, pause, resume, switchTo, setNote }
+  return { status, start, stop, pause, resume, switchTo, correctStart, setNote }
 }

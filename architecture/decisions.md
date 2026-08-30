@@ -58,3 +58,16 @@ parallel, so a slow query blocks the whole application.
 Revisit the decision when any of these becomes true: commands run long enough to be noticed,
 background jobs write while the user works, or reports read large ranges. A connection pool with
 SQLite in WAL mode, or a reader connection next to a single writer, is the expected next step.
+
+## 6. Audit trail and timer recovery
+
+Every write of a time entry appends one `audit_log` row with the actor (`user_id`), the timestamp,
+and JSON snapshots of the old and the new value. The rows are written inside the same connection as
+the change, so a rejected write records nothing, and they are never updated or deleted. Both
+backends implement it, so the browser fallback keeps the same evidence.
+
+The running timer is the time entry without an end time, never a client-side clock. On start the
+stored entries decide what is running (`reconcileSession`), so a restart, a crash or a system sleep
+cannot lose tracked time; the persisted session only carries the closed segments of a paused timer.
+A running timer can be moved to the time work actually started (`correctStart`); the entry itself is
+rewritten, so every derived figure and the audit trail follow.

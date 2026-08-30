@@ -39,12 +39,13 @@ flowchart TB
     budgets_t["project_budgets"]
     settings_t["work_settings"]
     meta_t["app_metadata"]
+    audit_t["audit_log"]
     version_t["user_version pragma<br/>rusqlite_migration"]
   end
 
   subgraph browser["Browser storage (fallback)"]
     ls_users["localStorage: work-time-tracker.users"]
-    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entries, .project-budgets, .work-settings"]
+    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entries, .project-budgets, .work-settings, .audit-log"]
     ls_sessions["localStorage: work-time-tracker.sessions"]
     ss_session["sessionStorage: work-time-tracker.session"]
   end
@@ -62,10 +63,11 @@ flowchart TB
 | Container | Holds | Source |
 | --- | --- | --- |
 | `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_create_schema.sql`, `drizzle/0001_create_project_budgets.sql`, `drizzle/0003_create_users.sql` |
+| `audit_log` | Append-only history of every created, edited and deleted time entry | `drizzle/0004_create_audit_log.sql`, `src-tauri/src/database.rs` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0002_create_app_metadata.sql`, `src-tauri/src/database.rs` |
 | SQLite `user_version` | Number of applied migrations, managed by `rusqlite_migration` | `src-tauri/src/database.rs` (`migrations`) |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
-| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings | `src/features/storage/local-repository.ts` (`scopedKey`) |
+| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, audit trail | `src/features/storage/local-repository.ts` (`scopedKey`) |
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.timer` | Timer session bookkeeping: project, carried milliseconds, paused | `src/features/timer/timer-store.ts` |
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
@@ -82,6 +84,7 @@ erDiagram
   USERS o|--o{ TIME_ENTRIES : owns
   USERS o|--o{ PROJECT_BUDGETS : owns
   USERS o|--o| WORK_SETTINGS : configures
+  USERS o|--o{ AUDIT_LOG : "changes recorded for"
   PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
 
@@ -126,6 +129,16 @@ erDiagram
     integer weekly_target_minutes
     text working_days
     text week_starts_on
+  }
+  AUDIT_LOG {
+    integer id PK
+    integer user_id FK
+    text entity
+    integer entity_id
+    text action
+    text old_value "nullable, JSON snapshot"
+    text new_value "nullable, JSON snapshot"
+    text created_at
   }
   APP_METADATA {
     text key PK
@@ -204,6 +217,23 @@ erDiagram
 
 A user without a row reads `DEFAULT_WORK_SETTINGS`, the row is written on the first save
 (`read_settings` and `write_settings` in `src-tauri/src/database.rs`).
+
+### audit_log
+
+`drizzle/0004_create_audit_log.sql`, `src/features/audit/audit-schema.ts`
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | yes | Surrogate key | PK, autoincrement |
+| `user_id` | INTEGER | nullable | Actor and owner of the change | FK to `users.id` ON DELETE CASCADE, index `audit_log_user_id` |
+| `entity` | TEXT | yes | Only `timeEntry` today | — |
+| `entity_id` | INTEGER | yes | Id of the changed record; kept after the record is deleted | — |
+| `action` | TEXT | yes | `create`, `update` or `delete` | — |
+| `old_value`, `new_value` | TEXT | no | JSON snapshot with `projectId`, `startTime`, `endTime`, `note`; `NULL` for the missing side of a create or delete | — |
+| `created_at` | TEXT | yes | ISO 8601 UTC | — |
+
+The trail is append-only: no command updates or deletes a row, and the last 200 records of the
+signed-in user are read by `list_audit_log`.
 
 ### app_metadata
 

@@ -353,3 +353,94 @@ describe('useTimer – error paths', () => {
     vi.restoreAllMocks()
   })
 })
+
+describe('useTimer – retroactive start correction', () => {
+  it('moves the start of the running entry and grows the elapsed time', async () => {
+    const project = await seedProject('Website')
+    const now = new Date()
+    const startedLate = new Date(now.getTime() - 60_000)
+    await seedTimeEntry({ projectId: project.id, startTime: startedLate, endTime: null })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(now.getTime()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    expect(result.current.status.elapsedMs).toBe(60_000)
+
+    const actualStart = new Date(now.getTime() - 3 * 60 * 60_000)
+    let corrected = false
+    await act(async () => {
+      corrected = await result.current.correctStart(actualStart)
+    })
+
+    expect(corrected).toBe(true)
+    await waitFor(() =>
+      expect(result.current.status.running?.startTime).toBe(actualStart.toISOString()),
+    )
+    expect(result.current.status.running?.endTime).toBeNull()
+    expect(result.current.status.elapsedMs).toBe(3 * 60 * 60_000)
+  })
+
+  it('rejects a start time in the future', async () => {
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    const now = new Date()
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now.getTime() - 60_000),
+      endTime: null,
+    })
+
+    const { result } = renderHook(() => useTimer(now.getTime()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    let corrected = true
+    await act(async () => {
+      corrected = await result.current.correctStart(new Date(Date.now() + 60 * 60_000))
+    })
+
+    expect(corrected).toBe(false)
+    expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(result.current.status.elapsedMs).toBe(60_000)
+  })
+
+  it('reports a conflict when the corrected start overlaps another entry', async () => {
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    const now = new Date()
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now.getTime() - 4 * 60 * 60_000),
+      endTime: new Date(now.getTime() - 2 * 60 * 60_000),
+    })
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now.getTime() - 60_000),
+      endTime: null,
+    })
+
+    const { result } = renderHook(() => useTimer(now.getTime()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    let corrected = true
+    await act(async () => {
+      corrected = await result.current.correctStart(new Date(now.getTime() - 3 * 60 * 60_000))
+    })
+
+    expect(corrected).toBe(false)
+    expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+  })
+
+  it('does nothing when no timer is running', async () => {
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeUndefined())
+
+    let corrected = true
+    await act(async () => {
+      corrected = await result.current.correctStart(new Date())
+    })
+
+    expect(corrected).toBe(false)
+  })
+})

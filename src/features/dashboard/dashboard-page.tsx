@@ -87,6 +87,7 @@ export function DashboardPage() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-5">
           <CurrentlyTrackingCard
+            now={now}
             onCreateProject={() => setProjectDialogOpen(true)}
             onPickerOpenChange={setPickerOpen}
             pickerOpen={pickerOpen}

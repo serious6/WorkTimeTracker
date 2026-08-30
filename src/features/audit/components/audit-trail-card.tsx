@@ -33,7 +33,7 @@ export function AuditTrailCard({ projectId = null }: { projectId?: number | null
     .slice(0, VISIBLE_RECORDS)
 
   return (
-    <Card>
+    <Card aria-label="Change History" role="region">
       <CardHeader>
         <CardTitle>Change History</CardTitle>
         <p className="text-sm text-muted-foreground">
