@@ -25,9 +25,24 @@ export const timeEntries = sqliteTable('time_entries', {
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   startTime: text('start_time').notNull(),
   endTime: text('end_time'),
+  entryType: text('entry_type', { enum: ['work', 'break'] })
+    .notNull()
+    .default('work'),
   note: text(),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+})
+
+/** Append-only trail that keeps every change to a time entry defensible. */
+export const timeEntryAudits = sqliteTable('time_entry_audits', {
+  id: integer().primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  timeEntryId: integer('time_entry_id').notNull(),
+  action: text({ enum: ['created', 'updated', 'deleted'] }).notNull(),
+  actor: text().notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  recordedAt: text('recorded_at').notNull(),
 })
 
 export const projectBudgets = sqliteTable(
@@ -55,6 +70,14 @@ export const workSettings = sqliteTable('work_settings', {
   weeklyTargetMinutes: integer('weekly_target_minutes').notNull(),
   workingDays: text('working_days').notNull(),
   weekStartsOn: text('week_starts_on').notNull(),
+  breakThresholdMinutes: integer('break_threshold_minutes').notNull().default(360),
+  requiredBreakMinutes: integer('required_break_minutes').notNull().default(30),
+  longBreakThresholdMinutes: integer('long_break_threshold_minutes').notNull().default(540),
+  requiredLongBreakMinutes: integer('required_long_break_minutes').notNull().default(45),
+  minBreakBlockMinutes: integer('min_break_block_minutes').notNull().default(15),
+  maxContinuousWorkMinutes: integer('max_continuous_work_minutes').notNull().default(360),
+  maxDailyWorkMinutes: integer('max_daily_work_minutes').notNull().default(600),
+  minRestMinutes: integer('min_rest_minutes').notNull().default(660),
 })
 
 export const appMetadata = sqliteTable('app_metadata', {

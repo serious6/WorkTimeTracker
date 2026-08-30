@@ -11,7 +11,10 @@ SQLite database, no proprietary runtime service is required.
 - **Time Management**: add worked time retroactively via quick-add buttons or custom durations
   such as `2h 45m`; entries are placed in the first free slot of the day and never overlap.
 - **Budgets**: per-project hour budgets with a due date; consumption and forecast appear in `Reports`.
-- **Settings**: weekly working time and working days; the daily target is derived from both.
+- **Working Time**: breaks as entries of their own, warnings for the break, daily maximum and rest
+  period limits, a monthly CSV or PDF record per employee, and the audit trail of every change.
+- **Settings**: weekly working time and working days; the daily target is derived from both. The
+  working time limits default to the German ArbZG and can be adjusted or restored.
 - **Accounts**: registration with a strict password policy, Argon2id hashes, login lockout, and
   per-user data isolation.
 

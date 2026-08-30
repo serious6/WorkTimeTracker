@@ -12,15 +12,15 @@ use r2d2_postgres::PostgresConnectionManager;
 
 use crate::{
     models::{
-        AuditLogEntry, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
-        TimeEntry, User, WorkSettings, DEFAULT_WORKING_DAYS,
+        AuditLogEntry, ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget,
+        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS,
+        ENTRY_TYPE_BREAK, ENTRY_TYPE_WORK, GERMAN_COMPLIANCE_LIMITS,
     },
     store::{Store, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
 const AUDIT_LOG_LIMIT: i64 = 200;
-const TIME_ENTRY_ENTITY: &str = "timeEntry";
 
 type Manager = PostgresConnectionManager<NoTls>;
 
@@ -112,9 +112,10 @@ fn entry_from_row(row: &postgres::Row) -> TimeEntry {
         project_id: row.get(1),
         start_time: row.get(2),
         end_time: row.get(3),
-        note: row.get(4),
-        created_at: row.get(5),
-        updated_at: row.get(6),
+        entry_type: row.get(4),
+        note: row.get(5),
+        created_at: row.get(6),
+        updated_at: row.get(7),
     }
 }
 
@@ -129,51 +130,55 @@ fn budget_from_row(row: &postgres::Row) -> ProjectBudget {
     }
 }
 
-fn audit_from_row(row: &postgres::Row) -> AuditLogEntry {
-    AuditLogEntry {
+fn audit_from_row(row: &postgres::Row) -> TimeEntryAudit {
+    TimeEntryAudit {
         id: row.get(0),
-        entity: row.get(1),
-        entity_id: row.get(2),
-        action: row.get(3),
+        time_entry_id: row.get(1),
+        action: row.get(2),
+        actor: row.get(3),
         old_value: row.get(4),
         new_value: row.get(5),
-        created_at: row.get(6),
+        recorded_at: row.get(6),
     }
 }
 
 const PROJECT_COLUMNS: &str = "id, name, description, color, active, created_at, updated_at";
-const ENTRY_COLUMNS: &str = "id, project_id, start_time, end_time, note, created_at, updated_at";
+const ENTRY_COLUMNS: &str =
+    "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
 const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
-const AUDIT_LOG_COLUMNS: &str = "id, entity, entity_id, action, old_value, new_value, created_at";
+const AUDIT_COLUMNS: &str = "id, time_entry_id, action, actor, old_value, new_value, recorded_at";
 
-fn entry_snapshot(entry: &TimeEntry) -> String {
-    serde_json::json!({
-        "projectId": entry.project_id,
-        "startTime": entry.start_time,
-        "endTime": entry.end_time,
-        "note": entry.note,
-    })
-    .to_string()
+fn entry_snapshot(entry: &TimeEntry) -> Option<String> {
+    serde_json::to_string(entry).ok()
+}
+
+/// The email of the signed in user identifies the actor of a change.
+fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<String, StoreError> {
+    let email: Option<String> = client
+        .query_opt("SELECT email FROM users WHERE id = $1", &[&user_id])?
+        .map(|row| row.get(0));
+    Ok(email.unwrap_or_else(|| format!("user:{user_id}")))
 }
 
 fn record_audit(
     transaction: &mut postgres::Transaction,
     user_id: i64,
-    entity_id: i64,
+    time_entry_id: i64,
     action: &str,
     old_value: Option<&TimeEntry>,
     new_value: Option<&TimeEntry>,
 ) -> Result<(), StoreError> {
+    let actor = actor(transaction, user_id)?;
     transaction.execute(
-        "INSERT INTO audit_log (user_id, entity, entity_id, action, old_value, new_value, created_at)
+        "INSERT INTO time_entry_audits (user_id, time_entry_id, action, actor, old_value, new_value, recorded_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)",
         &[
             &user_id,
-            &TIME_ENTRY_ENTITY,
-            &entity_id,
+            &time_entry_id,
             &action,
-            &old_value.map(entry_snapshot),
-            &new_value.map(entry_snapshot),
+            &actor,
+            &old_value.and_then(entry_snapshot),
+            &new_value.and_then(entry_snapshot),
             &now_iso(),
         ],
     )?;
@@ -192,6 +197,14 @@ fn read_entry(
         )?
         .ok_or(StoreError::NotFound)?;
     Ok(entry_from_row(&row))
+}
+
+fn entry_is_break(
+    client: &mut impl postgres::GenericClient,
+    id: i64,
+    user_id: i64,
+) -> Result<bool, StoreError> {
+    Ok(read_entry(client, id, user_id)?.entry_type == ENTRY_TYPE_BREAK)
 }
 
 fn overlaps_tx(
@@ -300,7 +313,7 @@ impl Store for PostgresStore {
                 &mut transaction,
                 user_id,
                 current.id,
-                "update",
+                "updated",
                 Some(&current),
                 Some(&updated),
             )?;
@@ -351,14 +364,15 @@ impl Store for PostgresStore {
         let now = now_iso();
         let row = transaction.query_one(
             &format!(
-                "INSERT INTO time_entries (user_id, project_id, start_time, end_time, note, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING {ENTRY_COLUMNS}"
+                "INSERT INTO time_entries (user_id, project_id, start_time, end_time, entry_type, note, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING {ENTRY_COLUMNS}"
             ),
             &[
                 &user_id,
                 &input.project_id,
                 &input.start_time,
                 &input.end_time,
+                &input.entry_type(),
                 &input.note,
                 &now,
             ],
@@ -368,7 +382,7 @@ impl Store for PostgresStore {
             &mut transaction,
             user_id,
             entry.id,
-            "create",
+            "created",
             None,
             Some(&entry),
         )
@@ -385,6 +399,12 @@ impl Store for PostgresStore {
     ) -> Result<TimeEntry, TimeEntryWriteError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction().map_err(StoreError::from)?;
+        if input.project_id.is_some()
+            && input.entry_type.is_none()
+            && entry_is_break(&mut transaction, id, user_id)?
+        {
+            return Err(TimeEntryWriteError::InvalidBreak);
+        }
         if overlaps_tx(
             &mut transaction,
             user_id,
@@ -396,9 +416,13 @@ impl Store for PostgresStore {
         }
         PostgresStore::assert_owns_project(&mut transaction, user_id, input.project_id)?;
         let current = read_entry(&mut transaction, id, user_id)?;
+        let entry_type = input
+            .entry_type
+            .as_deref()
+            .unwrap_or(current.entry_type.as_str());
         transaction
             .execute(
-                "UPDATE time_entries SET project_id = $3, start_time = $4, end_time = $5, note = $6, updated_at = $7
+                "UPDATE time_entries SET project_id = $3, start_time = $4, end_time = $5, entry_type = $6, note = $7, updated_at = $8
                  WHERE id = $1 AND user_id = $2",
                 &[
                     &id,
@@ -406,6 +430,7 @@ impl Store for PostgresStore {
                     &input.project_id,
                     &input.start_time,
                     &input.end_time,
+                    &entry_type,
                     &input.note,
                     &now_iso(),
                 ],
@@ -416,7 +441,7 @@ impl Store for PostgresStore {
             &mut transaction,
             user_id,
             id,
-            "update",
+            "updated",
             Some(&current),
             Some(&updated),
         )?;
@@ -442,7 +467,7 @@ impl Store for PostgresStore {
             &mut transaction,
             user_id,
             id,
-            "update",
+            "updated",
             Some(&current),
             Some(&updated),
         )?;
@@ -488,7 +513,7 @@ impl Store for PostgresStore {
             &mut transaction,
             user_id,
             id,
-            "update",
+            "updated",
             Some(&current),
             Some(&closed),
         )
@@ -499,14 +524,15 @@ impl Store for PostgresStore {
         let row = transaction
             .query_one(
                 &format!(
-                    "INSERT INTO time_entries (user_id, project_id, start_time, end_time, note, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING {ENTRY_COLUMNS}"
+                    "INSERT INTO time_entries (user_id, project_id, start_time, end_time, entry_type, note, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING {ENTRY_COLUMNS}"
                 ),
                 &[
                     &user_id,
                     &input.project_id,
                     &input.start_time,
                     &input.end_time,
+                    &input.entry_type(),
                     &input.note,
                     &now,
                 ],
@@ -517,7 +543,7 @@ impl Store for PostgresStore {
             &mut transaction,
             user_id,
             created.id,
-            "create",
+            "created",
             None,
             Some(&created),
         )
@@ -543,7 +569,7 @@ impl Store for PostgresStore {
                 &mut transaction,
                 user_id,
                 id,
-                "delete",
+                "deleted",
                 Some(&current),
                 None,
             )?;
@@ -552,15 +578,33 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_audit_log(&self, user_id: i64) -> Result<Vec<AuditLogEntry>, StoreError> {
+    fn list_time_entry_audits(&self, user_id: i64) -> Result<Vec<TimeEntryAudit>, StoreError> {
         let mut client = self.conn()?;
         let rows = client.query(
             &format!(
-                "SELECT {AUDIT_LOG_COLUMNS} FROM audit_log WHERE user_id = $1 ORDER BY id DESC LIMIT $2"
+                "SELECT {AUDIT_COLUMNS} FROM time_entry_audits WHERE user_id = $1
+                 ORDER BY recorded_at DESC, id DESC"
             ),
-            &[&user_id, &AUDIT_LOG_LIMIT],
+            &[&user_id],
         )?;
         Ok(rows.iter().map(audit_from_row).collect())
+    }
+
+    fn list_audit_log(&self, user_id: i64) -> Result<Vec<AuditLogEntry>, StoreError> {
+        Ok(self
+            .list_time_entry_audits(user_id)?
+            .into_iter()
+            .take(AUDIT_LOG_LIMIT as usize)
+            .map(|audit| AuditLogEntry {
+                id: audit.id,
+                entity: "timeEntry".into(),
+                entity_id: audit.time_entry_id,
+                action: audit.action.trim_end_matches('d').into(),
+                old_value: audit.old_value,
+                new_value: audit.new_value,
+                created_at: audit.recorded_at,
+            })
+            .collect())
     }
 
     fn list_project_budgets(&self, user_id: i64) -> Result<Vec<ProjectBudget>, StoreError> {
@@ -635,7 +679,11 @@ impl Store for PostgresStore {
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError> {
         let mut client = self.conn()?;
         let row = client.query_opt(
-            "SELECT weekly_target_minutes, working_days, week_starts_on FROM work_settings WHERE user_id = $1",
+            "SELECT weekly_target_minutes, working_days, week_starts_on,
+                    break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+                    required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+                    max_daily_work_minutes, min_rest_minutes
+             FROM work_settings WHERE user_id = $1",
             &[&user_id],
         )?;
         let Some(row) = row else {
@@ -646,6 +694,7 @@ impl Store for PostgresStore {
                     .map(|day| (*day).to_owned())
                     .collect(),
                 week_starts_on: "monday".into(),
+                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
             });
         };
         let working_days_text: String = row.get(1);
@@ -666,6 +715,16 @@ impl Store for PostgresStore {
                 working_days
             },
             week_starts_on: row.get(2),
+            compliance_limits: ComplianceLimits {
+                break_threshold_minutes: row.get(3),
+                required_break_minutes: row.get(4),
+                long_break_threshold_minutes: row.get(5),
+                required_long_break_minutes: row.get(6),
+                min_break_block_minutes: row.get(7),
+                max_continuous_work_minutes: row.get(8),
+                max_daily_work_minutes: row.get(9),
+                min_rest_minutes: row.get(10),
+            },
         })
     }
 
@@ -675,16 +734,32 @@ impl Store for PostgresStore {
         settings: &WorkSettings,
     ) -> Result<WorkSettings, StoreError> {
         let mut client = self.conn()?;
+        let limits = settings.compliance_limits;
         client.execute(
-            "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on)
-             VALUES ($1, $2, $3, $4)
+            "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on,
+               break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+               required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+               max_daily_work_minutes, min_rest_minutes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              ON CONFLICT (user_id) DO UPDATE
-             SET weekly_target_minutes = $2, working_days = $3, week_starts_on = $4",
+             SET weekly_target_minutes = $2, working_days = $3, week_starts_on = $4,
+                 break_threshold_minutes = $5, required_break_minutes = $6,
+                 long_break_threshold_minutes = $7, required_long_break_minutes = $8,
+                 min_break_block_minutes = $9, max_continuous_work_minutes = $10,
+                 max_daily_work_minutes = $11, min_rest_minutes = $12",
             &[
                 &user_id,
                 &settings.weekly_target_minutes,
                 &settings.working_days.join(","),
                 &settings.week_starts_on,
+                &limits.break_threshold_minutes,
+                &limits.required_break_minutes,
+                &limits.long_break_threshold_minutes,
+                &limits.required_long_break_minutes,
+                &limits.min_break_block_minutes,
+                &limits.max_continuous_work_minutes,
+                &limits.max_daily_work_minutes,
+                &limits.min_rest_minutes,
             ],
         )?;
         drop(client);

@@ -30,8 +30,8 @@ flowchart LR
   app -.->|"fallback without a Tauri backend"| browser
 ```
 
-All data stays on the machine. The application has no network storage, no synchronisation, and no
-import or export feature.
+All data stays on the machine. The application has no network storage and no synchronisation. The
+only export is the monthly working time record, written as a CSV or PDF file by the user.
 
 ## Level 2 — Containers
 
@@ -42,15 +42,16 @@ flowchart TB
     projects_t["projects"]
     entries_t["time_entries"]
     budgets_t["project_budgets"]
+    audits_t["time_entry_audits"]
+    audit_log_t["audit_log"]
     settings_t["work_settings"]
     meta_t["app_metadata"]
-    audit_t["audit_log"]
     version_t["user_version pragma<br/>rusqlite_migration"]
   end
 
   subgraph browser["Browser storage (fallback)"]
     ls_users["localStorage: work-time-tracker.users"]
-    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entries, .project-budgets, .work-settings, .audit-log"]
+    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings"]
     ls_sessions["localStorage: work-time-tracker.sessions"]
     ss_session["sessionStorage: work-time-tracker.session"]
   end
@@ -68,11 +69,12 @@ flowchart TB
 | Container | Holds | Source |
 | --- | --- | --- |
 | `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_create_schema.sql`, `drizzle/0001_create_project_budgets.sql`, `drizzle/0003_create_users.sql` |
-| `audit_log` | Append-only history of every created, edited and deleted time entry | `drizzle/0004_create_audit_log.sql`, `src-tauri/src/database.rs` |
+| `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0004_working_time_records.sql` |
+| `audit_log` | Compatibility table for the generic audit interface | `drizzle/0004_create_audit_log.sql` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0002_create_app_metadata.sql`, `src-tauri/src/database.rs` |
 | SQLite `user_version` | Number of applied migrations, managed by `rusqlite_migration` | `src-tauri/src/database.rs` (`migrations`) |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
-| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, audit trail | `src/features/storage/local-repository.ts` (`scopedKey`) |
+| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings | `src/features/storage/local-repository.ts` (`scopedKey`) |
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.timer` | Timer session bookkeeping: project, carried milliseconds, paused | `src/features/timer/timer-store.ts` |
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
@@ -89,7 +91,9 @@ erDiagram
   USERS o|--o{ TIME_ENTRIES : owns
   USERS o|--o{ PROJECT_BUDGETS : owns
   USERS o|--o| WORK_SETTINGS : configures
-  USERS o|--o{ AUDIT_LOG : "changes recorded for"
+  USERS o|--o{ TIME_ENTRY_AUDITS : owns
+  TIME_ENTRIES ||..o{ TIME_ENTRY_AUDITS : "changes recorded in"
+  USERS o|--o{ AUDIT_LOG : owns
   PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
 
@@ -97,6 +101,16 @@ erDiagram
     integer id PK
     text email UK
     text password_hash
+    text created_at
+  }
+  AUDIT_LOG {
+    integer id PK
+    integer user_id FK
+    text entity
+    integer entity_id
+    text action
+    text old_value
+    text new_value
     text created_at
   }
   PROJECTS {
@@ -115,9 +129,20 @@ erDiagram
     integer project_id FK "nullable"
     text start_time
     text end_time "nullable, running entry"
+    text entry_type "work or break"
     text note "nullable"
     text created_at
     text updated_at
+  }
+  TIME_ENTRY_AUDITS {
+    integer id PK
+    integer user_id FK
+    integer time_entry_id "no FK, survives the entry"
+    text action "created, updated, deleted"
+    text actor
+    text old_value "JSON, nullable"
+    text new_value "JSON, nullable"
+    text recorded_at
   }
   PROJECT_BUDGETS {
     integer id PK
@@ -134,16 +159,14 @@ erDiagram
     integer weekly_target_minutes
     text working_days
     text week_starts_on
-  }
-  AUDIT_LOG {
-    integer id PK
-    integer user_id FK
-    text entity
-    integer entity_id
-    text action
-    text old_value "nullable, JSON snapshot"
-    text new_value "nullable, JSON snapshot"
-    text created_at
+    integer break_threshold_minutes
+    integer required_break_minutes
+    integer long_break_threshold_minutes
+    integer required_long_break_minutes
+    integer min_break_block_minutes
+    integer max_continuous_work_minutes
+    integer max_daily_work_minutes
+    integer min_rest_minutes
   }
   APP_METADATA {
     text key PK
@@ -191,8 +214,26 @@ erDiagram
 | `project_id` | INTEGER | no | Booked project; becomes `NULL` when the project is deleted, the entry is kept | FK to `projects.id` ON DELETE SET NULL |
 | `start_time` | TEXT | yes | Canonical ISO 8601 UTC with milliseconds, for example `2026-08-27T08:00:00.000Z` | index `time_entries_start_time` |
 | `end_time` | TEXT | no | Same format, `NULL` marks the running entry | — |
+| `entry_type` | TEXT | yes | `work` or `break` (`CHECK`), default `work`; a break carries no project | — |
 | `note` | TEXT | no | Trimmed, at most 500 characters | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
+
+### time_entry_audits
+
+`drizzle/0004_working_time_records.sql`, `src/features/time-entries/audit-schema.ts`
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | INTEGER | yes | Surrogate key | PK, autoincrement |
+| `user_id` | INTEGER | nullable | Owner | FK to `users.id` ON DELETE CASCADE, index `time_entry_audits_user_id` |
+| `time_entry_id` | INTEGER | yes | Changed entry; no foreign key, so the trail outlives a deleted entry | — |
+| `action` | TEXT | yes | `created`, `updated` or `deleted` (`CHECK`) | — |
+| `actor` | TEXT | yes | E-mail of the signed-in user | — |
+| `old_value`, `new_value` | TEXT | no | JSON of the entry before and after the change | — |
+| `recorded_at` | TEXT | yes | ISO 8601 UTC | index `time_entry_audits_recorded_at` |
+
+Rows are only inserted, never updated or deleted, and are kept for at least the retention period of
+two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 
 ### project_budgets
 
@@ -219,26 +260,10 @@ erDiagram
 | `weekly_target_minutes` | INTEGER | yes | 1 to 10080, default 2400 | — |
 | `working_days` | TEXT | yes | Comma-separated weekdays, default `monday,tuesday,wednesday,thursday,friday` | — |
 | `week_starts_on` | TEXT | yes | `monday` or `sunday`, default `monday` | — |
+| `break_threshold_minutes` … `min_rest_minutes` | INTEGER | yes | The eight working time limits behind the compliance warnings, 1 to 1440 minutes each; the defaults are the German ArbZG values (360, 30, 540, 45, 15, 360, 600, 660) | — |
 
 A user without a row reads `DEFAULT_WORK_SETTINGS`, the row is written on the first save
 (`read_settings` and `write_settings` in `src-tauri/src/database.rs`).
-
-### audit_log
-
-`drizzle/0004_create_audit_log.sql`, `src/features/audit/audit-schema.ts`
-
-| Field | Type | Required | Description | Key/index |
-| --- | --- | --- | --- | --- |
-| `id` | INTEGER | yes | Surrogate key | PK, autoincrement |
-| `user_id` | INTEGER | nullable | Actor and owner of the change | FK to `users.id` ON DELETE CASCADE, index `audit_log_user_id` |
-| `entity` | TEXT | yes | Only `timeEntry` today | — |
-| `entity_id` | INTEGER | yes | Id of the changed record; kept after the record is deleted | — |
-| `action` | TEXT | yes | `create`, `update` or `delete` | — |
-| `old_value`, `new_value` | TEXT | no | JSON snapshot with `projectId`, `startTime`, `endTime`, `note`; `NULL` for the missing side of a create or delete | — |
-| `created_at` | TEXT | yes | ISO 8601 UTC | — |
-
-The trail is append-only: no command updates or deletes a row, and the last 200 records of the
-signed-in user are read by `list_audit_log`.
 
 ### app_metadata
 
@@ -265,6 +290,9 @@ Validation, overlap detection, and the security limits are defined once in
   date.
 - At most one budget per project, and `budget_minutes` greater than zero.
 - At least one working day must be selected, working days are stored deduplicated in weekday order.
+- A break entry carries no project, and `entry_type` is `work` or `break`.
+- Working time limits are between 1 and 1440 minutes; the long break threshold and duration must not
+  be below the short ones. Exceeding a limit only produces a warning, it never blocks recording.
 - E-mail addresses are unique after trimming and lower-casing. Registration requires at least 20
   characters, upper and lower case letters, and two special characters.
 - Security limits: session idle timeout 480 minutes, 5 failed logins, 15 minutes lockout.
@@ -285,6 +313,10 @@ applied migrations is stored in the SQLite `user_version` pragma by `rusqlite_mi
 | 4 | `0002_create_app_metadata.sql` | Adds `app_metadata` |
 | 5 | `0002_work_settings_working_days.sql` | Replaces `daily_target_minutes` with `working_days` |
 | 6 | `0003_create_users.sql` | Adds `users`, the `user_id` columns with indexes, and per-user `work_settings` |
+| 7 | `0004_create_audit_log.sql` | Adds the released generic `audit_log` table |
+| 8 | `0004_working_time_records.sql` | Adds `time_entries.entry_type` and `time_entry_audits`, carries `audit_log` over |
+| 9 | `0005_work_settings_compliance_limits.sql` | Adds the eight working time limits to `work_settings` |
+| 10 | `0006_break_project_constraint.sql` | Rejects breaks that are booked on a project |
 
 Rows that predate migration 6 keep `user_id IS NULL` until the first registration claims them
 (`claim_unowned_data` in `src-tauri/src/database.rs`, `claimLegacyData` in the browser fallback).
@@ -310,3 +342,5 @@ SQLite's `strftime`, so no frontend change is required.
 - Budget consumption and forecast: `src/features/budgets/budget-metrics.ts`
 - Free slots for quick-added entries: `src/features/time-management/quick-add.ts`
 - Elapsed time of a running timer, computed from `start_time`: `src/features/timer/use-timer.ts`
+- Working days, break and rest compliance warnings: `src/features/compliance/compliance-rules.ts`
+- Monthly CSV and PDF record per employee: `src/features/compliance/monthly-export.ts`

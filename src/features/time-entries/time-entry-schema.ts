@@ -6,11 +6,17 @@ export const ORDER_MESSAGE = 'End time must be later than start time'
 export const FUTURE_START_MESSAGE = 'The start time cannot be in the future'
 export const TIMER_ERROR_MESSAGE = 'Unable to start the timer. Please try again'
 export const DELETED_PROJECT_NAME = 'Deleted project'
+export const BREAK_PROJECT_MESSAGE = 'A break is not booked on a project'
+export const BREAK_LABEL = 'Break'
 
 function isCanonicalTimestamp(value: string): boolean {
   const date = new Date(value)
   return Number.isFinite(date.getTime()) && date.toISOString() === value
 }
+
+export const entryTypeSchema = z.enum(['work', 'break'])
+
+export type EntryType = z.infer<typeof entryTypeSchema>
 
 export const timeEntrySchema = z.object({
   id: z.number().int().positive(),
@@ -25,6 +31,7 @@ export const timeEntrySchema = z.object({
     .string()
     .nullish()
     .transform((value) => value ?? null),
+  entryType: entryTypeSchema.nullish().transform((value) => value ?? 'work'),
   note: z
     .string()
     .nullish()
@@ -37,23 +44,49 @@ export const saveTimeEntrySchema = z.object({
   projectId: z.number().int().positive().nullable(),
   startTime: z.string().refine(isCanonicalTimestamp, 'Invalid start time'),
   endTime: z.string().refine(isCanonicalTimestamp, 'Invalid end time').nullable(),
+  /** Omitted input records work, breaks have to be requested explicitly. */
+  entryType: entryTypeSchema.optional(),
   note: z.string().trim().max(500).nullable(),
-}).refine((entry) => !entry.endTime || entry.endTime > entry.startTime, {
-  message: ORDER_MESSAGE,
-  path: ['endTime'],
 })
+  .refine((entry) => !entry.endTime || entry.endTime > entry.startTime, {
+    message: ORDER_MESSAGE,
+    path: ['endTime'],
+  })
+  .refine((entry) => entry.entryType !== 'break' || entry.projectId === null, {
+    message: BREAK_PROJECT_MESSAGE,
+    path: ['projectId'],
+  })
 
 export type TimeEntry = z.infer<typeof timeEntrySchema>
 export type SaveTimeEntry = z.infer<typeof saveTimeEntrySchema>
 
+/** Breaks are recorded as entries of their own, never as gaps between entries. */
+export function isBreak(entry: { entryType: EntryType }): boolean {
+  return entry.entryType === 'break'
+}
+
 /** Values of the manual time entry dialog. */
 export const timeEntryFormSchema = z
   .object({
-    projectId: z.coerce.number({ error: 'Project is required' }).int().positive('Project is required'),
+    entryType: entryTypeSchema.nullish().transform((value) => value ?? 'work'),
+    projectId: z.coerce
+      .number({ error: 'Project is required' })
+      .int()
+      .positive('Project is required')
+      .nullish()
+      .transform((value) => value ?? null),
     date: z.string().min(1, 'Date is required'),
     startTime: z.string().min(1, 'Start time is required'),
     endTime: z.string().min(1, 'End time is required'),
     note: z.string().trim().max(500).optional(),
+  })
+  .refine((values) => values.entryType === 'break' || values.projectId !== null, {
+    message: 'Project is required',
+    path: ['projectId'],
+  })
+  .refine((values) => values.entryType === 'work' || values.projectId === null, {
+    message: BREAK_PROJECT_MESSAGE,
+    path: ['projectId'],
   })
   .refine(
     (values) =>
@@ -72,6 +105,7 @@ export function formToSaveTimeEntry(form: TimeEntryForm): SaveTimeEntry {
     projectId: form.projectId,
     startTime: combineDateAndTime(form.date, form.startTime).toISOString(),
     endTime: combineDateAndTime(form.date, form.endTime).toISOString(),
+    entryType: form.entryType,
     note: form.note?.trim() || null,
   }
 }
@@ -80,6 +114,7 @@ export function entryToForm(entry: TimeEntry): TimeEntryFormValues {
   const start = new Date(entry.startTime)
   const end = entry.endTime ? new Date(entry.endTime) : new Date()
   return {
+    entryType: entry.entryType,
     projectId: entry.projectId ?? undefined,
     date: toDateKey(start),
     startTime: toTimeKey(start),

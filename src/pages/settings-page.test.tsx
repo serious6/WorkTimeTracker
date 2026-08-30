@@ -1,5 +1,9 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test } from 'vitest'
+import {
+  BREAK_ORDER_MESSAGE,
+  GERMAN_COMPLIANCE_LIMITS,
+} from '@/features/settings/work-settings-schema'
 import { localRepository } from '@/features/storage/local-repository'
 import { renderWithProviders, resetAppState, signIn } from '@/test/harness'
 import { SettingsPage } from './settings-page'
@@ -69,5 +73,45 @@ describe('SettingsPage', () => {
   test('shows local data section', async () => {
     renderWithProviders(<SettingsPage />)
     expect(await screen.findByText('Local data')).toBeInTheDocument()
+  })
+
+  test('saves adjusted working time limits', async () => {
+    renderWithProviders(<SettingsPage />)
+    await screen.findByText('Working time limits')
+    fireEvent.change(screen.getByLabelText(/maximum daily working time/i), {
+      target: { value: '480' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+
+    await waitFor(async () => {
+      expect(
+        (await localRepository.getWorkSettings()).complianceLimits.maxDailyWorkMinutes,
+      ).toBe(480)
+    })
+  })
+
+  test('restores the German defaults', async () => {
+    renderWithProviders(<SettingsPage />)
+    await screen.findByText('Working time limits')
+    const restore = screen.getByRole('button', { name: /restore german defaults/i })
+    expect(restore).toBeDisabled()
+
+    const field = screen.getByLabelText(/minimum rest between working days/i)
+    fireEvent.change(field, { target: { value: '600' } })
+    expect(restore).toBeEnabled()
+    fireEvent.click(restore)
+
+    expect((field as HTMLInputElement).value).toBe(
+      `${GERMAN_COMPLIANCE_LIMITS.minRestMinutes}`,
+    )
+  })
+
+  test('rejects a longer break that is shorter than the short break', async () => {
+    renderWithProviders(<SettingsPage />)
+    await screen.findByText('Working time limits')
+    fireEvent.change(screen.getByLabelText(/required longer break/i), { target: { value: '15' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+
+    expect(await screen.findByText(BREAK_ORDER_MESSAGE)).toBeInTheDocument()
   })
 })

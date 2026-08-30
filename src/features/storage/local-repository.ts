@@ -2,8 +2,6 @@ import { z } from 'zod'
 import {
   TIME_ENTRY_ENTITY,
   auditLogEntrySchema,
-  toSnapshot,
-  type AuditAction,
   type AuditLogEntry,
 } from '@/features/audit/audit-schema'
 import {
@@ -40,6 +38,11 @@ import {
 } from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
 import {
+  timeEntryAuditSchema,
+  type AuditAction,
+  type TimeEntryAudit,
+} from '@/features/time-entries/audit-schema'
+import {
   OVERLAP_MESSAGE,
   saveTimeEntrySchema,
   timeEntrySchema,
@@ -55,11 +58,10 @@ const SCOPED_KEYS = [
   'time-entries',
   'project-budgets',
   'work-settings',
+  'time-entry-audits',
+  'time-entry-state',
   'audit-log',
 ] as const
-
-/** Kept in step with the limit of the Rust backend. */
-const AUDIT_LOG_LIMIT = 200
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
 
@@ -68,6 +70,11 @@ export const NOT_SIGNED_IN_MESSAGE = 'Please sign in first'
 const storedUserSchema = authUserSchema.extend({ passwordHash: z.string() })
 
 type StoredUser = z.infer<typeof storedUserSchema>
+const entryStateSchema = z.object({
+  entries: timeEntrySchema.array(),
+  audits: timeEntryAuditSchema.array(),
+})
+type EntryState = z.infer<typeof entryStateSchema>
 
 const SESSION_KEY = 'work-time-tracker.session'
 const SESSIONS_KEY = 'work-time-tracker.sessions'
@@ -160,39 +167,94 @@ function readProjects(): Project[] {
 }
 
 function readEntries(): TimeEntry[] {
-  return read(scopedKey('time-entries'), [], (value) => timeEntrySchema.array().parse(value))
+  return readEntryState().entries
+}
+
+function readAudits(): TimeEntryAudit[] {
+  return readEntryState().audits
+}
+
+function entryStateKey(): string {
+  return scopedKey('time-entry-state')
+}
+
+/** Records of the released `audit-log` key, kept when the trail moved. */
+function legacyAudits(): TimeEntryAudit[] {
+  const actor = currentActor()
+  return read(scopedKey('audit-log'), [], (value) => auditLogEntrySchema.array().parse(value))
+    .filter((record) => record.entity === TIME_ENTRY_ENTITY)
+    .map((record) =>
+      timeEntryAuditSchema.parse({
+        id: record.id,
+        timeEntryId: record.entityId,
+        action: `${record.action}d`,
+        actor,
+        oldValue: record.oldValue,
+        newValue: record.newValue,
+        recordedAt: record.createdAt,
+      }),
+    )
+}
+
+/** Reads the state of the keys that were written before both were stored together. */
+function migratedEntryState(): EntryState {
+  const audits = [
+    ...legacyAudits(),
+    ...read(scopedKey('time-entry-audits'), [], (value) =>
+      timeEntryAuditSchema.array().parse(value),
+    ),
+  ]
+  return {
+    entries: read(scopedKey('time-entries'), [], (value) => timeEntrySchema.array().parse(value)),
+    audits: audits.map((audit, index) => ({ ...audit, id: index + 1 })),
+  }
+}
+
+function readEntryState(): EntryState {
+  const key = entryStateKey()
+  if (globalThis.localStorage?.getItem(key) !== null) {
+    return read(key, { entries: [], audits: [] }, (value) => entryStateSchema.parse(value))
+  }
+  return migratedEntryState()
+}
+
+function writeEntryState(entries: TimeEntry[], audits: TimeEntryAudit[]): void {
+  write(entryStateKey(), { entries, audits })
+}
+
+function currentActor(): string {
+  const userId = requireUserId()
+  return readUsers().find((user) => user.id === userId)?.email ?? `user:${userId}`
+}
+
+/** Appends to the trail; recorded values are never modified or removed. */
+function appendAudit(
+  audits: TimeEntryAudit[],
+  timeEntryId: number,
+  action: AuditAction,
+  oldValue: TimeEntry | null,
+  newValue: TimeEntry | null,
+): TimeEntryAudit[] {
+  return [
+    ...audits,
+    timeEntryAuditSchema.parse({
+      id: nextId(audits),
+      timeEntryId,
+      action,
+      actor: currentActor(),
+      oldValue: oldValue ? JSON.stringify(oldValue) : null,
+      newValue: newValue ? JSON.stringify(newValue) : null,
+      recordedAt: new Date().toISOString(),
+    }),
+  ]
 }
 
 function readBudgets(): ProjectBudget[] {
   return read(scopedKey('project-budgets'), [], (value) => projectBudgetSchema.array().parse(value))
 }
 
-function readAuditLog(): AuditLogEntry[] {
-  return read(scopedKey('audit-log'), [], (value) => auditLogEntrySchema.array().parse(value))
-}
-
 function nextId(records: { id: number }[]): number {
   return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
-}
-
-/** Appends one change of a time entry to the audit trail of the owner. */
-function recordAudit(
-  entityId: number,
-  action: AuditAction,
-  oldValue: TimeEntry | null,
-  newValue: TimeEntry | null,
-): void {
-  const records = readAuditLog()
-  const record = auditLogEntrySchema.parse({
-    id: nextId(records),
-    entity: TIME_ENTRY_ENTITY,
-    entityId,
-    action,
-    oldValue: oldValue ? JSON.stringify(toSnapshot(oldValue)) : null,
-    newValue: newValue ? JSON.stringify(toSnapshot(newValue)) : null,
-    createdAt: new Date().toISOString(),
-  })
-  write(scopedKey('audit-log'), [...records, record])
 }
 
 const PBKDF2_ITERATIONS = 210_000
@@ -331,8 +393,6 @@ export const localRepository: Repository = {
     return updated
   },
   deleteProject: async (id) => {
-    const entries = readEntries()
-    const affected = entries.filter((entry) => entry.projectId === id)
     write(
       scopedKey('projects'),
       readProjects().filter((project) => project.id !== id),
@@ -341,46 +401,62 @@ export const localRepository: Repository = {
       scopedKey('project-budgets'),
       readBudgets().filter((budget) => budget.projectId !== id),
     )
-    write(
-      scopedKey('time-entries'),
-      entries.map((entry) => (entry.projectId === id ? { ...entry, projectId: null } : entry)),
+    const { entries, audits } = readEntryState()
+    const updatedAt = new Date().toISOString()
+    const updatedEntries = entries.map((entry) =>
+      entry.projectId === id ? { ...entry, projectId: null, updatedAt } : entry,
     )
-    affected.forEach((entry) => recordAudit(entry.id, 'update', entry, { ...entry, projectId: null }))
+    const updatedAudits = entries.reduce(
+      (all, entry) =>
+        entry.projectId === id
+          ? appendAudit(all, entry.id, 'updated', entry, { ...entry, projectId: null, updatedAt })
+          : all,
+      audits,
+    )
+    writeEntryState(updatedEntries, updatedAudits)
   },
   listTimeEntries: async () =>
     readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
-    if (parsed.projectId === null) throw new AppError('validation', 'Project is required')
-    const entries = readEntries()
+    if (parsed.entryType !== 'break' && parsed.projectId === null) {
+      throw new AppError('validation', 'Project is required')
+    }
+    const { entries, audits } = readEntryState()
     if (findOverlap(entries, parsed)) throw new AppError('conflict', OVERLAP_MESSAGE)
     const now = new Date().toISOString()
     const entry = timeEntrySchema.parse({
       ...parsed,
-      id: nextId(entries),
+      id: nextId([...entries, ...audits.map(({ timeEntryId: id }) => ({ id }))]),
       createdAt: now,
       updatedAt: now,
     })
-    write(scopedKey('time-entries'), [...entries, entry])
-    recordAudit(entry.id, 'create', null, entry)
+    writeEntryState([...entries, entry], appendAudit(audits, entry.id, 'created', null, entry))
     return entry
   },
   updateTimeEntry: async (id, input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
-    const entries = readEntries()
+    const { entries, audits } = readEntryState()
     const current = entries.find((entry) => entry.id === id)
     if (!current) throw new AppError('notFound', 'Time entry not found')
+    if ((parsed.entryType ?? current.entryType) === 'break' && parsed.projectId !== null) {
+      throw new AppError('validation', 'A break is not booked on a project')
+    }
     if (findOverlap(entries, parsed, id)) throw new AppError('conflict', OVERLAP_MESSAGE)
-    const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
-    write(
-      scopedKey('time-entries'),
+    const updated = timeEntrySchema.parse({
+      ...current,
+      ...parsed,
+      entryType: parsed.entryType ?? current.entryType,
+      updatedAt: new Date().toISOString(),
+    })
+    writeEntryState(
       entries.map((entry) => (entry.id === id ? updated : entry)),
+      appendAudit(audits, id, 'updated', current, updated),
     )
-    recordAudit(id, 'update', current, updated)
     return updated
   },
   updateTimeEntryNote: async (id, note) => {
-    const entries = readEntries()
+    const { entries, audits } = readEntryState()
     const current = entries.find((entry) => entry.id === id)
     if (!current) throw new AppError('notFound', 'Time entry not found')
     const updated = timeEntrySchema.parse({
@@ -388,17 +464,16 @@ export const localRepository: Repository = {
       note: note?.trim() || null,
       updatedAt: new Date().toISOString(),
     })
-    write(
-      scopedKey('time-entries'),
+    writeEntryState(
       entries.map((entry) => (entry.id === id ? updated : entry)),
+      appendAudit(audits, id, 'updated', current, updated),
     )
-    recordAudit(id, 'update', current, updated)
     return updated
   },
   switchRunningTimeEntry: async (id, input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
     if (parsed.projectId === null || parsed.endTime !== null) throw new AppError('validation', 'Invalid timer switch')
-    const entries = readEntries()
+    const { entries, audits } = readEntryState()
     const current = entries.find((entry) => entry.id === id)
     if (!current) throw new AppError('notFound', 'Time entry not found')
     if (current.endTime !== null) throw new AppError('validation', 'Timer is not running')
@@ -413,28 +488,41 @@ export const localRepository: Repository = {
     const now = new Date().toISOString()
     const created = timeEntrySchema.parse({
       ...parsed,
-      id: nextId(entries),
+      id: nextId([...entries, ...audits.map(({ timeEntryId: id }) => ({ id }))]),
       createdAt: now,
       updatedAt: now,
     })
-    write(scopedKey('time-entries'), [...nextEntries, created])
-    recordAudit(id, 'update', current, closed)
-    recordAudit(created.id, 'create', null, created)
+    writeEntryState(
+      [...nextEntries, created],
+      appendAudit(appendAudit(audits, id, 'updated', current, closed), created.id, 'created', null, created),
+    )
     return created
   },
   deleteTimeEntry: async (id) => {
-    const entries = readEntries()
+    const { entries, audits } = readEntryState()
     const current = entries.find((entry) => entry.id === id)
-    write(
-      scopedKey('time-entries'),
+    writeEntryState(
       entries.filter((entry) => entry.id !== id),
+      current ? appendAudit(audits, id, 'deleted', current, null) : audits,
     )
-    if (current) recordAudit(id, 'delete', current, null)
   },
+  listTimeEntryAudits: async () =>
+    readAudits().sort(
+      (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+    ),
   listAuditLog: async () =>
-    readAuditLog()
+    readAudits()
+      .map((audit): AuditLogEntry => ({
+        id: audit.id,
+        entity: TIME_ENTRY_ENTITY,
+        entityId: audit.timeEntryId,
+        action: audit.action.slice(0, -1) as AuditLogEntry['action'],
+        oldValue: audit.oldValue,
+        newValue: audit.newValue,
+        createdAt: audit.recordedAt,
+      }))
       .sort((left, right) => right.id - left.id)
-      .slice(0, AUDIT_LOG_LIMIT),
+      .slice(0, 200),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {

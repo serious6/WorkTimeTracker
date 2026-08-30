@@ -8,7 +8,7 @@ use crate::{
     database::{self, SqliteDatabase, SwitchRunningTimeEntryError},
     models::{
         AuditLogEntry, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
-        TimeEntry, User, WorkSettings,
+        TimeEntry, TimeEntryAudit, User, WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -53,10 +53,12 @@ impl<T> From<std::sync::PoisonError<T>> for StoreError {
     }
 }
 
-/// A time entry write failed because it would overlap with another one.
+/// A time entry write failed because it would overlap with another one, or
+/// because a break was booked on a project.
 #[derive(Debug)]
 pub enum TimeEntryWriteError {
     Overlap,
+    InvalidBreak,
     Store(StoreError),
 }
 
@@ -146,6 +148,7 @@ pub trait Store {
     ) -> Result<TimeEntry, SwitchEntryError>;
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
+    fn list_time_entry_audits(&self, user_id: i64) -> Result<Vec<TimeEntryAudit>, StoreError>;
     fn list_audit_log(&self, user_id: i64) -> Result<Vec<AuditLogEntry>, StoreError>;
 
     fn list_project_budgets(&self, user_id: i64) -> Result<Vec<ProjectBudget>, StoreError>;
@@ -252,6 +255,12 @@ impl Store for SqliteStore {
         input: &SaveTimeEntry,
     ) -> Result<TimeEntry, TimeEntryWriteError> {
         let connection = self.0 .0.lock().map_err(StoreError::from)?;
+        if input.project_id.is_some()
+            && input.entry_type.is_none()
+            && database::entry_is_break(&connection, id, user_id)?
+        {
+            return Err(TimeEntryWriteError::InvalidBreak);
+        }
         if database::overlaps(
             &connection,
             user_id,
@@ -302,6 +311,11 @@ impl Store for SqliteStore {
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let connection = self.0 .0.lock()?;
         Ok(database::delete_time_entry(&connection, id, user_id)?)
+    }
+
+    fn list_time_entry_audits(&self, user_id: i64) -> Result<Vec<TimeEntryAudit>, StoreError> {
+        let connection = self.0 .0.lock()?;
+        Ok(database::list_time_entry_audits(&connection, user_id)?)
     }
 
     fn list_audit_log(&self, user_id: i64) -> Result<Vec<AuditLogEntry>, StoreError> {

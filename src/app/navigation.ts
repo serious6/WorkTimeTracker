@@ -8,6 +8,7 @@ export type View =
   | 'time-management'
   | 'budgets'
   | 'reports'
+  | 'working-time'
   | 'calendar'
   | 'settings'
   | 'licenses'

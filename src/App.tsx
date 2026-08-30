@@ -39,6 +39,9 @@ const pages = {
   reports: lazy(() =>
     import('@/pages/reports-page').then((module) => ({ default: module.ReportsPage })),
   ),
+  'working-time': lazy(() =>
+    import('@/pages/working-time-page').then((module) => ({ default: module.WorkingTimePage })),
+  ),
   calendar: lazy(() =>
     import('@/pages/calendar-page').then((module) => ({ default: module.CalendarPage })),
   ),

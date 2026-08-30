@@ -10,7 +10,12 @@ import {
   DEFAULT_WORK_SETTINGS,
   NO_WORKING_DAY_MESSAGE,
 } from '@/features/settings/work-settings-schema'
-import { ORDER_MESSAGE, OVERLAP_MESSAGE } from '@/features/time-entries/time-entry-schema'
+import { auditChanges } from '@/features/time-entries/audit-schema'
+import {
+  BREAK_PROJECT_MESSAGE,
+  ORDER_MESSAGE,
+  OVERLAP_MESSAGE,
+} from '@/features/time-entries/time-entry-schema'
 import { localRepository, NOT_SIGNED_IN_MESSAGE } from './local-repository'
 
 const PASSWORD = 'Str0ng-Passphrase!!x'
@@ -233,9 +238,10 @@ describe('local repository projects', () => {
     expect(await localRepository.listProjects()).toEqual([])
     expect(await localRepository.listProjectBudgets()).toEqual([])
     expect((await localRepository.listTimeEntries())[0].projectId).toBeNull()
-    expect((await localRepository.listAuditLog())[0]).toMatchObject({
-      action: 'update',
-      entityId: 1,
+    expect((await localRepository.listTimeEntryAudits()).at(0)).toMatchObject({
+      action: 'updated',
+      oldValue: expect.stringContaining(`"projectId":${project.id}`),
+      newValue: expect.stringContaining('"projectId":null'),
     })
   })
 })
@@ -323,6 +329,25 @@ describe('local repository time entries', () => {
     ).rejects.toThrow(OVERLAP_MESSAGE)
   })
 
+  it('does not let an existing break be booked to a project', async () => {
+    const breakEntry = await localRepository.createTimeEntry({
+      projectId: null,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T08:15:00.000Z',
+      entryType: 'break',
+      note: null,
+    })
+
+    await expect(
+      localRepository.updateTimeEntry(breakEntry.id, {
+        projectId,
+        startTime: breakEntry.startTime,
+        endTime: breakEntry.endTime,
+        note: null,
+      }),
+    ).rejects.toThrow(BREAK_PROJECT_MESSAGE)
+  })
+
   it('rejects an update of an unknown entry', async () => {
     await expect(
       localRepository.updateTimeEntry(404, {
@@ -397,6 +422,95 @@ describe('local repository time entries', () => {
     await localRepository.deleteTimeEntry(404)
 
     expect(await localRepository.listTimeEntries()).toEqual([])
+  })
+
+  it('records a break without a project and rejects a break on a project', async () => {
+    const entry = await localRepository.createTimeEntry({
+      projectId: null,
+      startTime: '2026-08-27T12:00:00.000Z',
+      endTime: '2026-08-27T12:30:00.000Z',
+      entryType: 'break',
+      note: null,
+    })
+
+    expect(entry.entryType).toBe('break')
+    await expect(
+      localRepository.createTimeEntry({
+        projectId,
+        startTime: '2026-08-27T13:00:00.000Z',
+        endTime: '2026-08-27T13:30:00.000Z',
+        entryType: 'break',
+        note: null,
+      }),
+    ).rejects.toThrow(BREAK_PROJECT_MESSAGE)
+  })
+
+  it('keeps an audit trail with actor and old and new values', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.updateTimeEntry(entry.id, {
+      projectId,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T10:00:00.000Z',
+      note: null,
+    })
+    await localRepository.deleteTimeEntry(entry.id)
+
+    const audits = await localRepository.listTimeEntryAudits()
+
+    expect(audits.map(({ action }) => action)).toEqual(['deleted', 'updated', 'created'])
+    expect(audits.every(({ actor }) => actor === 'first@example.com')).toBe(true)
+    expect(audits.every(({ timeEntryId }) => timeEntryId === entry.id)).toBe(true)
+    expect(audits[0].newValue).toBeNull()
+    expect(auditChanges(audits[1])).toEqual([
+      { field: 'endTime', from: '2026-08-27T09:00:00.000Z', to: '2026-08-27T10:00:00.000Z' },
+    ])
+    expect(audits[2].oldValue).toBeNull()
+  })
+
+  it('keeps the audit trail after the entry is gone', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.deleteTimeEntry(entry.id)
+
+    expect(await localRepository.listTimeEntries()).toEqual([])
+    expect(await localRepository.listTimeEntryAudits()).toHaveLength(2)
+  })
+
+  it('does not reuse deleted entry IDs that remain in the audit trail', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.deleteTimeEntry(entry.id)
+    const replacement = await createEntry('2026-08-27T10:00:00.000Z', '2026-08-27T11:00:00.000Z')
+
+    expect(replacement.id).toBeGreaterThan(entry.id)
+  })
+
+  it('keeps the trail that was recorded under the released audit key', async () => {
+    const user = await localRepository.currentSession()
+    globalThis.localStorage?.setItem(
+      `work-time-tracker.${user?.id}.audit-log`,
+      JSON.stringify([
+        {
+          id: 1,
+          entity: 'timeEntry',
+          entityId: 42,
+          action: 'update',
+          oldValue: '{"note":"before"}',
+          newValue: '{"note":"after"}',
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]),
+    )
+
+    expect(await localRepository.listTimeEntryAudits()).toEqual([
+      {
+        id: 1,
+        timeEntryId: 42,
+        action: 'updated',
+        actor: 'first@example.com',
+        oldValue: '{"note":"before"}',
+        newValue: '{"note":"after"}',
+        recordedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ])
   })
 })
 
@@ -637,85 +751,5 @@ describe('local repository error kinds', () => {
     await expect(
       localRepository.login({ email: 'validation@example.com', password: PASSWORD }),
     ).rejects.toMatchObject({ kind: 'rateLimited', message: LOCKED_OUT_MESSAGE })
-  })
-})
-
-describe('local repository audit trail', () => {
-  let projectId: number
-
-  beforeEach(async () => {
-    await register('first@example.com')
-    projectId = (await createProject('Website Redesign')).id
-  })
-
-  async function createEntry(startTime: string, endTime: string | null) {
-    return localRepository.createTimeEntry({ projectId, startTime, endTime, note: null })
-  }
-
-  it('records create, update and delete of a time entry, newest first', async () => {
-    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
-    await localRepository.updateTimeEntry(entry.id, {
-      projectId,
-      startTime: '2026-08-27T08:00:00.000Z',
-      endTime: '2026-08-27T10:00:00.000Z',
-      note: null,
-    })
-    await localRepository.deleteTimeEntry(entry.id)
-
-    const records = await localRepository.listAuditLog()
-
-    expect(records.map(({ action }) => action)).toEqual(['delete', 'update', 'create'])
-    expect(records.every((record) => record.entityId === entry.id)).toBe(true)
-    expect(records[1].oldValue).toContain('2026-08-27T09:00:00.000Z')
-    expect(records[1].newValue).toContain('2026-08-27T10:00:00.000Z')
-    expect(records[0].newValue).toBeNull()
-    expect(records[2].oldValue).toBeNull()
-  })
-
-  it('records an edited note', async () => {
-    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
-
-    await localRepository.updateTimeEntryNote(entry.id, 'Kickoff')
-
-    const [record] = await localRepository.listAuditLog()
-    expect(record.action).toBe('update')
-    expect(record.newValue).toContain('Kickoff')
-  })
-
-  it('records the closed and the started entry of a timer switch', async () => {
-    const running = await createEntry('2026-08-27T08:00:00.000Z', null)
-
-    const created = await localRepository.switchRunningTimeEntry(running.id, {
-      projectId,
-      startTime: '2026-08-27T09:00:00.000Z',
-      endTime: null,
-      note: null,
-    })
-
-    const records = await localRepository.listAuditLog()
-    expect(records[0]).toMatchObject({ action: 'create', entityId: created.id })
-    expect(records[1]).toMatchObject({ action: 'update', entityId: running.id })
-  })
-
-  it('keeps the audit trail of another user private', async () => {
-    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
-    await localRepository.logout()
-    await register('second@example.com')
-
-    expect(await localRepository.listAuditLog()).toEqual([])
-  })
-
-  it('retains audit records beyond the query limit', async () => {
-    for (let day = 1; day <= 201; day += 1) {
-      const date = new Date(Date.UTC(2026, 0, day))
-      const start = date.toISOString()
-      date.setUTCHours(1)
-      await createEntry(start, date.toISOString())
-    }
-
-    expect(await localRepository.listAuditLog()).toHaveLength(200)
-    expect(JSON.parse(globalThis.localStorage?.getItem('work-time-tracker.1.audit-log') ?? '[]')).toHaveLength(
-      201,
-    )
   })
 })

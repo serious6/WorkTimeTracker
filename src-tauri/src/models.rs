@@ -155,20 +155,43 @@ pub struct Project {
     pub updated_at: String,
 }
 
+/// Working time and break time are recorded as entries of the same table.
+pub const ENTRY_TYPE_WORK: &str = "work";
+pub const ENTRY_TYPE_BREAK: &str = "break";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveTimeEntry {
     pub project_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
+    /// Missing input records work, breaks have to be requested explicitly.
+    #[serde(default)]
+    pub entry_type: Option<String>,
     pub note: Option<String>,
 }
 
 impl SaveTimeEntry {
+    /// The requested kind of entry, `work` unless a break was requested.
+    pub fn entry_type(&self) -> &str {
+        self.entry_type.as_deref().unwrap_or(ENTRY_TYPE_WORK)
+    }
+
+    pub fn is_break(&self) -> bool {
+        self.entry_type() == ENTRY_TYPE_BREAK
+    }
+
     pub fn validate(&mut self) -> Result<(), &'static str> {
         normalize(&mut self.start_time);
         normalize_optional(&mut self.end_time);
         normalize_optional(&mut self.note);
+        normalize_optional(&mut self.entry_type);
+        if !matches!(self.entry_type(), ENTRY_TYPE_WORK | ENTRY_TYPE_BREAK) {
+            return Err("invalid entry type");
+        }
+        if self.is_break() && self.project_id.is_some() {
+            return Err("a break is not booked on a project");
+        }
         if self.project_id.is_some_and(|project_id| project_id <= 0) {
             return Err("invalid project");
         }
@@ -201,12 +224,25 @@ pub struct TimeEntry {
     pub project_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
+    pub entry_type: String,
     pub note: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
 
-/// One recorded change of a time entry. Values are JSON snapshots of the entry.
+/// Append-only trail of every change to a time entry.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeEntryAudit {
+    pub id: i64,
+    pub time_entry_id: i64,
+    pub action: String,
+    pub actor: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub recorded_at: String,
+}
+
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditLogEntry {
@@ -267,6 +303,69 @@ pub const WEEKDAYS: [&str; 7] = [
 pub const DEFAULT_WORKING_DAYS: [&str; 5] =
     ["monday", "tuesday", "wednesday", "thursday", "friday"];
 
+/// Legal limits behind the compliance warnings. The defaults follow the German
+/// ArbZG and are restored from the settings.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComplianceLimits {
+    pub break_threshold_minutes: i64,
+    pub required_break_minutes: i64,
+    pub long_break_threshold_minutes: i64,
+    pub required_long_break_minutes: i64,
+    pub min_break_block_minutes: i64,
+    pub max_continuous_work_minutes: i64,
+    pub max_daily_work_minutes: i64,
+    pub min_rest_minutes: i64,
+}
+
+pub const GERMAN_COMPLIANCE_LIMITS: ComplianceLimits = ComplianceLimits {
+    break_threshold_minutes: 360,
+    required_break_minutes: 30,
+    long_break_threshold_minutes: 540,
+    required_long_break_minutes: 45,
+    min_break_block_minutes: 15,
+    max_continuous_work_minutes: 360,
+    max_daily_work_minutes: 600,
+    min_rest_minutes: 660,
+};
+
+impl Default for ComplianceLimits {
+    fn default() -> Self {
+        GERMAN_COMPLIANCE_LIMITS
+    }
+}
+
+impl ComplianceLimits {
+    fn values(&self) -> [i64; 8] {
+        [
+            self.break_threshold_minutes,
+            self.required_break_minutes,
+            self.long_break_threshold_minutes,
+            self.required_long_break_minutes,
+            self.min_break_block_minutes,
+            self.max_continuous_work_minutes,
+            self.max_daily_work_minutes,
+            self.min_rest_minutes,
+        ]
+    }
+
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self
+            .values()
+            .iter()
+            .any(|value| !(1..=1_440).contains(value))
+        {
+            return Err("invalid working time limit");
+        }
+        if self.long_break_threshold_minutes < self.break_threshold_minutes
+            || self.required_long_break_minutes < self.required_break_minutes
+        {
+            return Err("invalid working time limit order");
+        }
+        Ok(())
+    }
+}
+
 /// General settings of the application, persisted as a single record.
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -274,6 +373,8 @@ pub struct WorkSettings {
     pub weekly_target_minutes: i64,
     pub working_days: Vec<String>,
     pub week_starts_on: String,
+    #[serde(default)]
+    pub compliance_limits: ComplianceLimits,
 }
 
 impl WorkSettings {
@@ -302,7 +403,7 @@ impl WorkSettings {
         {
             return Err("invalid work settings");
         }
-        Ok(())
+        self.compliance_limits.validate()
     }
 }
 
@@ -340,6 +441,7 @@ mod tests {
             project_id: Some(1),
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: Some("2026-08-27T09:00:00.000Z".into()),
+            entry_type: None,
             note: None,
         };
         assert_eq!(
@@ -354,10 +456,49 @@ mod tests {
             project_id: Some(1),
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: None,
+            entry_type: None,
             note: Some(" Design ".into()),
         };
         input.validate().unwrap();
         assert_eq!(input.note.as_deref(), Some("Design"));
+        assert_eq!(input.entry_type(), ENTRY_TYPE_WORK);
+    }
+
+    #[test]
+    fn accepts_a_break_without_a_project() {
+        let mut input = SaveTimeEntry {
+            project_id: None,
+            start_time: "2026-08-27T12:00:00.000Z".into(),
+            end_time: Some("2026-08-27T12:30:00.000Z".into()),
+            entry_type: Some(" break ".into()),
+            note: None,
+        };
+        input.validate().unwrap();
+        assert!(input.is_break());
+    }
+
+    #[test]
+    fn rejects_breaks_that_are_booked_on_a_project() {
+        let mut input = SaveTimeEntry {
+            project_id: Some(1),
+            start_time: "2026-08-27T12:00:00.000Z".into(),
+            end_time: Some("2026-08-27T12:30:00.000Z".into()),
+            entry_type: Some(ENTRY_TYPE_BREAK.into()),
+            note: None,
+        };
+        assert_eq!(input.validate(), Err("a break is not booked on a project"));
+    }
+
+    #[test]
+    fn rejects_an_unknown_entry_type() {
+        let mut input = SaveTimeEntry {
+            project_id: Some(1),
+            start_time: "2026-08-27T12:00:00.000Z".into(),
+            end_time: None,
+            entry_type: Some("holiday".into()),
+            note: None,
+        };
+        assert_eq!(input.validate(), Err("invalid entry type"));
     }
 
     #[test]
@@ -366,6 +507,7 @@ mod tests {
             project_id: Some(1),
             start_time: "xxxxxxxxxxxxTxxxxxxxxxxZ".into(),
             end_time: None,
+            entry_type: None,
             note: None,
         };
 
@@ -407,7 +549,28 @@ mod tests {
             weekly_target_minutes,
             working_days: working_days.iter().map(|day| (*day).to_owned()).collect(),
             week_starts_on: "monday".into(),
+            compliance_limits: GERMAN_COMPLIANCE_LIMITS,
         }
+    }
+
+    #[test]
+    fn rejects_working_time_limits_outside_the_supported_range() {
+        let mut input = settings(2_400, &DEFAULT_WORKING_DAYS);
+        input.compliance_limits.max_daily_work_minutes = 0;
+        assert_eq!(input.validate(), Err("invalid working time limit"));
+    }
+
+    #[test]
+    fn rejects_a_long_break_below_the_short_break() {
+        let mut input = settings(2_400, &DEFAULT_WORKING_DAYS);
+        input.compliance_limits.required_long_break_minutes = 15;
+        assert_eq!(input.validate(), Err("invalid working time limit order"));
+    }
+
+    #[test]
+    fn defaults_the_working_time_limits_to_german_law() {
+        assert_eq!(ComplianceLimits::default(), GERMAN_COMPLIANCE_LIMITS);
+        assert_eq!(GERMAN_COMPLIANCE_LIMITS.validate(), Ok(()));
     }
 
     #[test]

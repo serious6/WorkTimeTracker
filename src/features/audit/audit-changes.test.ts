@@ -56,6 +56,7 @@ describe('audit snapshots', () => {
       projectId: 1,
       startTime: snapshot.startTime,
       endTime: snapshot.endTime,
+      entryType: 'work' as const,
       note: snapshot.note,
       createdAt: snapshot.startTime,
       updatedAt: snapshot.startTime,

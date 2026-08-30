@@ -1,0 +1,54 @@
+import { z } from 'zod'
+
+export const auditActionSchema = z.enum(['created', 'updated', 'deleted'])
+
+/**
+ * Append-only record of every change to a time entry. Entries stay immutable in
+ * spirit: an edit keeps the previous values in `oldValue`, so the working time
+ * record remains defensible.
+ */
+export const timeEntryAuditSchema = z.object({
+  id: z.number().int().positive(),
+  timeEntryId: z.number().int().positive(),
+  action: auditActionSchema,
+  actor: z.string(),
+  oldValue: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? null),
+  newValue: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? null),
+  recordedAt: z.string(),
+})
+
+export type AuditAction = z.infer<typeof auditActionSchema>
+export type TimeEntryAudit = z.infer<typeof timeEntryAuditSchema>
+
+export type AuditChange = { field: string; from: string; to: string }
+
+const AUDITED_FIELDS = ['projectId', 'startTime', 'endTime', 'entryType', 'note'] as const
+
+function parse(value: string | null): Record<string, unknown> {
+  if (!value) return {}
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function display(value: unknown): string {
+  return value === null || value === undefined ? '—' : `${value}`
+}
+
+/** Fields that differ between the recorded old and new value of an audit. */
+export function auditChanges(audit: TimeEntryAudit): AuditChange[] {
+  const oldValue = parse(audit.oldValue)
+  const newValue = parse(audit.newValue)
+  return AUDITED_FIELDS.filter((field) => display(oldValue[field]) !== display(newValue[field])).map(
+    (field) => ({ field, from: display(oldValue[field]), to: display(newValue[field]) }),
+  )
+}

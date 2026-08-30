@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { errorToast } from '@/components/ui/toast-store'
 import { repository } from '@/features/storage'
 import { errorMessage } from '@/lib/errors'
-import { DEFAULT_WORK_SETTINGS, type WorkSettings } from './work-settings-schema'
+import { DEFAULT_WORK_SETTINGS, type SaveWorkSettings, type WorkSettings } from './work-settings-schema'
 
 export const workSettingsKeys = { all: ['work-settings'] as const }
 
@@ -36,7 +36,7 @@ export function useWorkSettings(): WorkSettings {
 export function useUpdateWorkSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (settings: WorkSettings) => repository.updateWorkSettings(settings),
+    mutationFn: (settings: SaveWorkSettings) => repository.updateWorkSettings(settings),
     onSuccess: (settings) => {
       queryClient.setQueryData(workSettingsKeys.all, settings)
     },

@@ -8,6 +8,7 @@ import { combineDateAndTime, formatDuration, toDateKey, toTimeKey } from '@/lib/
 import { errorMessage } from '@/lib/errors'
 import { useCreateTimeEntry, useUpdateTimeEntry } from '../time-entry-queries'
 import {
+  BREAK_LABEL,
   entryToForm,
   formToSaveTimeEntry,
   timeEntryFormSchema,
@@ -17,6 +18,7 @@ import {
 function emptyForm(dateKey: string) {
   const now = new Date()
   return {
+    entryType: 'work',
     projectId: '',
     date: dateKey,
     startTime: toTimeKey(new Date(now.getTime() - 60 * 60_000)),
@@ -69,8 +71,14 @@ export function TimeEntryDialog({
         60_000
       : 0
 
+  const isBreakEntry = values.entryType === 'break'
+
   function update(field: keyof ReturnType<typeof emptyForm>, value: string) {
-    setValues((current) => ({ ...current, [field]: value }))
+    setValues((current) =>
+      field === 'entryType' && value === 'break'
+        ? { ...current, entryType: value, projectId: '' }
+        : { ...current, [field]: value },
+    )
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -108,13 +116,25 @@ export function TimeEntryDialog({
     >
       <form className="space-y-4" onSubmit={submit}>
         <label className="block space-y-1 text-sm font-medium">
+          Entry type
+          <Select
+            name="entryType"
+            onChange={(event) => update('entryType', event.target.value)}
+            value={values.entryType}
+          >
+            <option value="work">Work</option>
+            <option value="break">{BREAK_LABEL}</option>
+          </Select>
+        </label>
+        <label className="block space-y-1 text-sm font-medium">
           Project
           <Select
+            disabled={isBreakEntry}
             name="projectId"
             onChange={(event) => update('projectId', event.target.value)}
             value={values.projectId}
           >
-            <option value="">Select a project</option>
+            <option value="">{isBreakEntry ? 'No project' : 'Select a project'}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}

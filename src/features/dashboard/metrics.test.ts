@@ -32,10 +32,15 @@ function entry(id: number, projectId: number | null, start: Date, end: Date | nu
     projectId,
     startTime: start.toISOString(),
     endTime: end?.toISOString() ?? null,
+    entryType: 'work',
     note: null,
     createdAt: start.toISOString(),
     updatedAt: start.toISOString(),
   }
+}
+
+function breakEntry(id: number, start: Date, end: Date): TimeEntry {
+  return { ...entry(id, null, start, end), entryType: 'break' }
 }
 
 const projects = [project(1, 'Website Redesign', '#22c55e'), project(2, 'Mobile App', '#3b82f6')]
@@ -92,6 +97,18 @@ describe('metrics', () => {
       { projectId: 1, name: 'Website Redesign', color: '#22c55e', minutes: 180, percentage: 67 },
       { projectId: 2, name: 'Mobile App', color: '#3b82f6', minutes: 60, percentage: 22 },
       { projectId: 99, name: 'Deleted project', color: '#64748b', minutes: 30, percentage: 11 },
+    ])
+  })
+
+  it('excludes breaks from tracked-time aggregates', () => {
+    const entries = [
+      entry(1, 1, at(27, 9), at(27, 10)),
+      breakEntry(2, at(27, 10), at(27, 10, 30)),
+    ]
+
+    expect(totalMinutes(entries)).toBe(60)
+    expect(projectTotals(entries, projects)).toEqual([
+      { projectId: 1, name: 'Website Redesign', color: '#22c55e', minutes: 60, percentage: 100 },
     ])
   })
 

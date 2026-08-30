@@ -79,6 +79,14 @@ describe('TimeEntryList', () => {
     expect(screen.getByText(/deleted project/i)).toBeInTheDocument()
   })
 
+  it('labels project-less break entries as breaks', async () => {
+    const { entry } = await setup()
+    renderList([{ ...entry, projectId: null, entryType: 'break' }], [])
+
+    expect(screen.getByText('Break')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /actions for break/i })).toBeInTheDocument()
+  })
+
   it('calls onPlay when play button clicked', async () => {
     const onPlay = vi.fn()
     const { project, entry } = await setup()
