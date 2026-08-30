@@ -39,13 +39,34 @@ The development container runs the browser UI with `docker compose up --build` o
 on the host. Its SQLite database persists in the `app_data` volume at
 `/root/.local/share/io.github.serious6.worktimetracker/work-time-tracker.sqlite`.
 
+## Database backend
+
+The app defaults to an embedded SQLite file and needs no extra setup. It can be pointed at a
+Postgres server instead, for example one started locally via Podman/Docker compose:
+
+```sh
+cp .env.example .env             # then edit as needed
+podman compose --profile postgres up -d   # or: docker compose --profile postgres up -d
+npm run tauri dev                # or: npm run dev
+```
+
+Backend selection is driven by environment variables (see `.env.example`):
+
+- `WTT_DB_BACKEND` — `sqlite` (default) or `postgres`.
+- `DATABASE_URL` — Postgres connection string, only read when the backend is `postgres`.
+- `WTT_SQLITE_PATH` — optional override of the SQLite file location.
+
+Running `podman compose up -d` (without `--profile postgres`) behaves exactly as before and never
+starts the `db` service. `podman compose down -v` removes the `postgres_data` volume and
+permanently deletes the Postgres database — only use it when you intend to discard local data.
+
 ## Project layout
 
 ```text
 architecture/   LikeC4 model and decision records
 contract/       Domain rules shared by the Rust backend and the browser fallback
 docs/           Data model and further documentation
-drizzle/        Versioned SQLite migrations
+drizzle/        Versioned SQLite migrations (drizzle/postgres for the optional Postgres backend)
 e2e/            Playwright tests
 src/            React application (app, components, db, features, lib, pages)
 src-tauri/src/  Rust backend (auth, commands, contract, database, error, logging, window_state)

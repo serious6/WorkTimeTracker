@@ -21,7 +21,8 @@ npm run tauri dev
 ```
 
 Starts the Rust backend and the frontend in a native window. Data is stored in a local SQLite
-database.
+database by default; set `WTT_DB_BACKEND=postgres` and `DATABASE_URL` to use Postgres instead (see
+the README's "Database backend" section).
 
 ### Web application (browser)
 

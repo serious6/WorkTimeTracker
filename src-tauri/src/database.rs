@@ -15,7 +15,11 @@ const APP_VERSION_KEY: &str = "app_version";
 /// Version of the released application, taken from `Cargo.toml` at build time.
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub struct Database(pub Mutex<Connection>);
+/// A SQLite-backed connection, wrapped for exclusive access across commands.
+///
+/// This is the concrete SQLite storage; see [`crate::store`] for the
+/// backend-agnostic abstraction used by the rest of the application.
+pub struct SqliteDatabase(pub Mutex<Connection>);
 
 #[derive(Debug)]
 pub enum SwitchRunningTimeEntryError {
@@ -47,7 +51,7 @@ fn migrations() -> Migrations<'static> {
     ])
 }
 
-impl Database {
+impl SqliteDatabase {
     pub fn open(path: impl AsRef<Path>) -> std::result::Result<Self, Box<dyn std::error::Error>> {
         let mut connection = Connection::open(path)?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
@@ -1578,7 +1582,7 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
 
-        let database = Database::open(&path).unwrap();
+        let database = SqliteDatabase::open(&path).unwrap();
         {
             let connection = database.0.lock().unwrap();
             assert_eq!(
@@ -1589,7 +1593,7 @@ mod tests {
         }
         drop(database);
 
-        let database = Database::open(&path).unwrap();
+        let database = SqliteDatabase::open(&path).unwrap();
         assert_eq!(
             read_app_version(&database.0.lock().unwrap()).unwrap(),
             Some(APP_VERSION.into())
