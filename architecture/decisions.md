@@ -17,11 +17,14 @@ only fails the other suite in CI, so new rules are added to the contract first.
 ## 2. Structured errors across the IPC boundary
 
 Commands return `AppError` (`src-tauri/src/error.rs`) instead of `String`. The variants
-`notSignedIn`, `validation`, `conflict`, `notFound`, `rateLimited`, and `database` are serialized as
+`notSignedIn`, `validation`, `conflict`, `notFound`, `rateLimited`, `database`, and `internal` are
+serialized as
 `{ "kind": ..., "message": ... }`. The frontend turns them back into the `AppError` class in
 `src/lib/errors.ts` and branches on `kind` with `isErrorKind`, never on message text. Messages of
 the `database` kind are replaced by the fallback text of the calling view, so infrastructure
-details never reach the user interface.
+details never reach the user interface. `internal` covers failures of the process itself, such as a
+key derivation or a poisoned lock; its message is replaced the same way, so a failing KDF is never
+reported as a database failure.
 
 ## 3. One log file for both sides
 
