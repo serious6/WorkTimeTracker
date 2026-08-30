@@ -12,7 +12,7 @@ mod store;
 mod test_support;
 mod window_state;
 
-use auth::{LoginAttempts, Session};
+use auth::Session;
 use config::DbConfig;
 use store::Database;
 use tauri::{Manager, WindowEvent};
@@ -43,7 +43,6 @@ pub fn run() {
                 .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
             app.manage(database);
             app.manage(Session::default());
-            app.manage(LoginAttempts::default());
             if let Some(window) = app.get_webview_window("main") {
                 window_state::restore(&window.as_ref().window_ref());
             }

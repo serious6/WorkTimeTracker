@@ -134,3 +134,13 @@ export const absenceAudits = pgTable('absence_audits', {
   newValue: text('new_value'),
   recordedAt: text('recorded_at').notNull(),
 })
+
+/**
+ * Failed logins per email. Persisted so a restart does not clear a lockout;
+ * rows are evicted once their lockout has been served.
+ */
+export const loginAttempts = pgTable('login_attempts', {
+  email: text().primaryKey(),
+  failures: bigint({ mode: 'number' }).notNull(),
+  lastFailure: text('last_failure').notNull(),
+})

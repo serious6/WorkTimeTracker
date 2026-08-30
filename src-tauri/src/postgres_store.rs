@@ -16,7 +16,7 @@ use crate::{
         SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
         User, WorkSettings, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
     },
-    store::{Store, StoreError, SwitchEntryError, TimeEntryWriteError},
+    store::{LoginAttempt, LoginAttemptStore, Store, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -36,6 +36,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0001_absences",
         include_str!("../../drizzle/0001_absences.sql"),
+    ),
+    (
+        "0002_login_attempts",
+        include_str!("../../drizzle/0002_login_attempts.sql"),
     ),
 ];
 
@@ -367,6 +371,47 @@ fn overlaps_tx(
         ],
     )?;
     Ok(row.get(0))
+}
+
+impl LoginAttemptStore for PostgresStore {
+    fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError> {
+        let mut client = self.conn()?;
+        Ok(client
+            .query_opt(
+                "SELECT failures, last_failure FROM login_attempts WHERE email = $1",
+                &[&email],
+            )?
+            .map(|row| LoginAttempt {
+                failures: row.get(0),
+                last_failure: row.get(1),
+            }))
+    }
+
+    fn record_login_failure(&self, email: &str, now: &str) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        client.execute(
+            "INSERT INTO login_attempts (email, failures, last_failure) VALUES ($1, 1, $2)
+             ON CONFLICT (email)
+             DO UPDATE SET failures = login_attempts.failures + 1, last_failure = EXCLUDED.last_failure",
+            &[&email, &now],
+        )?;
+        Ok(())
+    }
+
+    fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        client.execute("DELETE FROM login_attempts WHERE email = $1", &[&email])?;
+        Ok(())
+    }
+
+    fn purge_login_attempts(&self, before: &str) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        client.execute(
+            "DELETE FROM login_attempts WHERE last_failure <= $1",
+            &[&before],
+        )?;
+        Ok(())
+    }
 }
 
 impl Store for PostgresStore {
@@ -1189,6 +1234,50 @@ mod tests {
                 .all(|c| c.is_ascii_digit()),
             "expected only digits in the numeric fields of {timestamp}"
         );
+    }
+
+    /// The counters behind the login lockout survive a restart of the process,
+    /// so they must be readable through a second connection and disappear once
+    /// their lockout has been served.
+    #[test]
+    fn counts_and_evicts_login_attempts_in_postgres() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+
+        store.record_login_failure(&email, "2026-08-30T10:00:00.000Z").unwrap();
+        store.record_login_failure(&email, "2026-08-30T10:01:00.000Z").unwrap();
+
+        assert_eq!(
+            store.read_login_attempt(&email).unwrap(),
+            Some(LoginAttempt {
+                failures: 2,
+                last_failure: "2026-08-30T10:01:00.000Z".to_owned(),
+            })
+        );
+
+        store.purge_login_attempts("2026-08-30T09:00:00.000Z").unwrap();
+        assert!(store.read_login_attempt(&email).unwrap().is_some());
+
+        store.purge_login_attempts("2026-08-30T10:30:00.000Z").unwrap();
+        assert_eq!(store.read_login_attempt(&email).unwrap(), None);
+    }
+
+    #[test]
+    fn forgets_the_login_attempts_of_one_email_only() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let other = unique_email();
+        store.record_login_failure(&email, "2026-08-30T10:00:00.000Z").unwrap();
+        store.record_login_failure(&other, "2026-08-30T10:00:00.000Z").unwrap();
+
+        store.clear_login_attempts(&email).unwrap();
+
+        assert_eq!(store.read_login_attempt(&email).unwrap(), None);
+        assert!(store.read_login_attempt(&other).unwrap().is_some());
     }
 
     /// `CREATE TABLE IF NOT EXISTS` is not race free in Postgres, so several

@@ -43,7 +43,13 @@ The file is rotated once it passes 512 KiB, and a failing logger never breaks a 
 
 Native sessions live in memory and end after 480 idle minutes; every command extends them, a
 restart always returns to the login page. Both storage paths lock an email out for 15 minutes after 5
-failed logins, in memory only. The limits are part of the contract file, so both sides stay equal.
+failed logins. The limits are part of the contract file, so both sides stay equal.
+
+The native counters live in the `login_attempts` table, not in the process: restarting the
+application no longer clears a lockout. Every check and every recorded failure first deletes the
+counters whose lockout has been served, so the table stays bounded no matter how many addresses are
+tried. The browser fallback keeps its counters in memory, which is consistent with it not being a
+security boundary.
 
 A login with an unknown email verifies a fixed dummy hash instead of returning early, so both paths
 spend the same Argon2 work and the response time does not reveal whether an account exists.

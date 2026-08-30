@@ -68,10 +68,10 @@ pub fn register(
 pub fn login(
     database: State<'_, Database>,
     session: State<'_, Session>,
-    attempts: State<'_, LoginAttempts>,
     mut credentials: Credentials,
 ) -> AppResult<User> {
     logging::logged("login", || {
+        let attempts = LoginAttempts::new(database.0.as_ref());
         credentials
             .validate()
             .map_err(|_| AppError::validation(INVALID_CREDENTIALS))?;

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::{LazyLock, Mutex},
     time::{Duration, Instant},
 };
@@ -9,7 +8,12 @@ use argon2::{
     Algorithm, Argon2, Params, Version,
 };
 
-use crate::error::{AppError, AppResult};
+use chrono::{DateTime, Utc};
+
+use crate::{
+    error::{AppError, AppResult},
+    store::LoginAttemptStore,
+};
 
 /// Idle timeout of a session. Every command resets it, an idle session ends.
 pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
@@ -75,57 +79,63 @@ impl Session {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Attempts {
-    failures: u32,
-    last_failure: Instant,
-}
-
 /// Counts failed logins per email to slow down password guessing. The counters
-/// live in memory only and are lost with the process.
-#[derive(Default)]
-pub struct LoginAttempts(Mutex<HashMap<String, Attempts>>);
+/// are persisted, so restarting the application does not clear a lockout, and
+/// expired counters are removed on every check.
+pub struct LoginAttempts<'store>(&'store dyn LoginAttemptStore);
 
-impl LoginAttempts {
-    /// Rejects further attempts while an email is locked out.
-    pub fn check(&self, email: &str) -> AppResult<()> {
-        self.check_at(email, Instant::now())
+impl<'store> LoginAttempts<'store> {
+    pub fn new(store: &'store dyn LoginAttemptStore) -> Self {
+        Self(store)
     }
 
-    fn check_at(&self, email: &str, now: Instant) -> AppResult<()> {
-        let mut attempts = self.0.lock()?;
-        let Some(attempt) = attempts.get(email).copied() else {
+    /// Rejects further attempts while an email is locked out.
+    pub fn check(&self, email: &str) -> AppResult<()> {
+        self.check_at(email, Utc::now())
+    }
+
+    fn check_at(&self, email: &str, now: DateTime<Utc>) -> AppResult<()> {
+        let expired = self.expired_before(now);
+        self.0.purge_login_attempts(&expired)?;
+        let Some(attempt) = self.0.read_login_attempt(email)? else {
             return Ok(());
         };
-        if now.duration_since(attempt.last_failure) >= minutes(LOGIN_LOCKOUT_MINUTES) {
-            attempts.remove(email);
+        if attempt.last_failure <= expired {
+            self.0.clear_login_attempts(email)?;
             return Ok(());
         }
-        if attempt.failures >= MAX_LOGIN_ATTEMPTS {
+        if attempt.failures >= i64::from(MAX_LOGIN_ATTEMPTS) {
             return Err(AppError::RateLimited(LOCKED_OUT.to_owned()));
         }
         Ok(())
     }
 
     pub fn record_failure(&self, email: &str) -> AppResult<()> {
-        self.record_failure_at(email, Instant::now())
+        self.record_failure_at(email, Utc::now())
     }
 
-    fn record_failure_at(&self, email: &str, now: Instant) -> AppResult<()> {
-        let mut attempts = self.0.lock()?;
-        let attempt = attempts.entry(email.to_owned()).or_insert(Attempts {
-            failures: 0,
-            last_failure: now,
-        });
-        attempt.failures += 1;
-        attempt.last_failure = now;
+    fn record_failure_at(&self, email: &str, now: DateTime<Utc>) -> AppResult<()> {
+        // The expired counters go first, so a new lockout starts from one.
+        self.0.purge_login_attempts(&self.expired_before(now))?;
+        self.0.record_login_failure(email, &timestamp(now))?;
         Ok(())
     }
 
     pub fn record_success(&self, email: &str) -> AppResult<()> {
-        self.0.lock()?.remove(email);
+        self.0.clear_login_attempts(email)?;
         Ok(())
     }
+
+    /// Timestamp at which a counter has served its lockout.
+    fn expired_before(&self, now: DateTime<Utc>) -> String {
+        timestamp(now - chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64))
+    }
+}
+
+/// The ISO 8601 UTC format every timestamp of the backend is written in, so
+/// stored counters compare as strings.
+fn timestamp(time: DateTime<Utc>) -> String {
+    time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 /// Argon2id with the pinned parameters above.
@@ -176,7 +186,10 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
+    use crate::store::{LoginAttempt, StoreError};
 
     #[test]
     fn verifies_only_the_hashed_password() {
@@ -250,16 +263,55 @@ mod tests {
         assert_eq!(session.user_id().unwrap(), None);
     }
 
+    /// In-memory stand-in for the persisted counters.
+    #[derive(Default)]
+    struct FakeAttempts(Mutex<HashMap<String, LoginAttempt>>);
+
+    impl LoginAttemptStore for FakeAttempts {
+        fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError> {
+            Ok(self.0.lock().unwrap().get(email).cloned())
+        }
+
+        fn record_login_failure(&self, email: &str, now: &str) -> Result<(), StoreError> {
+            let mut attempts = self.0.lock().unwrap();
+            let attempt = attempts.entry(email.to_owned()).or_insert(LoginAttempt {
+                failures: 0,
+                last_failure: now.to_owned(),
+            });
+            attempt.failures += 1;
+            attempt.last_failure = now.to_owned();
+            Ok(())
+        }
+
+        fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError> {
+            self.0.lock().unwrap().remove(email);
+            Ok(())
+        }
+
+        fn purge_login_attempts(&self, before: &str) -> Result<(), StoreError> {
+            self.0
+                .lock()
+                .unwrap()
+                .retain(|_, attempt| attempt.last_failure.as_str() > before);
+            Ok(())
+        }
+    }
+
+    fn moment() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-08-30T10:00:00.000Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
     #[test]
     fn locks_out_an_email_after_too_many_failures() {
-        let attempts = LoginAttempts::default();
-        let now = Instant::now();
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
 
         for _ in 0..MAX_LOGIN_ATTEMPTS {
             attempts.check_at("first@example.com", now).unwrap();
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.record_failure_at("first@example.com", now).unwrap();
         }
 
         assert_eq!(
@@ -270,29 +322,79 @@ mod tests {
     }
 
     #[test]
-    fn releases_the_lockout_after_the_waiting_time() {
-        let attempts = LoginAttempts::default();
-        let now = Instant::now();
+    fn keeps_a_lockout_across_a_restart() {
+        let store = FakeAttempts::default();
+        let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
+            LoginAttempts::new(&store)
                 .record_failure_at("first@example.com", now)
                 .unwrap();
         }
 
+        // A new instance stands for the restarted process; the counters live
+        // in the store, not in the instance.
+        assert!(LoginAttempts::new(&store)
+            .check_at("first@example.com", now)
+            .is_err());
+    }
+
+    #[test]
+    fn releases_the_lockout_after_the_waiting_time() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            attempts.record_failure_at("first@example.com", now).unwrap();
+        }
+
         assert!(attempts.check_at("first@example.com", now).is_err());
-        attempts
-            .check_at("first@example.com", now + minutes(LOGIN_LOCKOUT_MINUTES))
-            .unwrap();
+        let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64);
+        attempts.check_at("first@example.com", later).unwrap();
+    }
+
+    #[test]
+    fn evicts_expired_counters_instead_of_keeping_them() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        attempts.record_failure_at("first@example.com", now).unwrap();
+
+        let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
+        attempts.check_at("second@example.com", later).unwrap();
+
+        assert_eq!(store.read_login_attempt("first@example.com").unwrap(), None);
+    }
+
+    #[test]
+    fn counts_a_new_lockout_from_one_after_the_waiting_time() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            attempts.record_failure_at("first@example.com", now).unwrap();
+        }
+
+        let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
+        attempts.record_failure_at("first@example.com", later).unwrap();
+
+        assert_eq!(
+            store
+                .read_login_attempt("first@example.com")
+                .unwrap()
+                .unwrap()
+                .failures,
+            1
+        );
+        attempts.check_at("first@example.com", later).unwrap();
     }
 
     #[test]
     fn forgets_the_failures_after_a_successful_login() {
-        let attempts = LoginAttempts::default();
-        let now = Instant::now();
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.record_failure_at("first@example.com", now).unwrap();
         }
         attempts.record_success("first@example.com").unwrap();
 

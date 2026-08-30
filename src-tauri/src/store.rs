@@ -57,8 +57,26 @@ impl From<StoreError> for SwitchEntryError {
     }
 }
 
+/// Failed logins of one email. Persisted, so a restart does not clear a lockout.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoginAttempt {
+    pub failures: i64,
+    /// ISO 8601 UTC timestamp of the last failure, as written by the backend.
+    pub last_failure: String,
+}
+
+/// Counters behind the login lockout, kept apart from `Store` so the rule can
+/// be tested without the rest of the storage.
+pub trait LoginAttemptStore {
+    fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError>;
+    fn record_login_failure(&self, email: &str, now: &str) -> Result<(), StoreError>;
+    fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError>;
+    /// Removes every counter whose last failure is at or before `before`.
+    fn purge_login_attempts(&self, before: &str) -> Result<(), StoreError>;
+}
+
 /// Operations needed by the Tauri commands.
-pub trait Store {
+pub trait Store: LoginAttemptStore {
     fn list_projects(&self, user_id: i64) -> Result<Vec<Project>, StoreError>;
     fn insert_project(&self, user_id: i64, input: &SaveProject) -> Result<Project, StoreError>;
     fn update_project(
