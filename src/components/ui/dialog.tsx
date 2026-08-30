@@ -56,7 +56,7 @@ export function Dialog({
     document.addEventListener('keydown', onKeyDown)
     ;(
       panel.current?.querySelector<HTMLElement>(
-        'input:not([disabled]), textarea:not([disabled]), select:not([disabled])',
+        'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
       ) ??
       focusable()[0] ??
       panel.current

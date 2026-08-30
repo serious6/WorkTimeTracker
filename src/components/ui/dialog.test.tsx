@@ -57,6 +57,17 @@ describe('Dialog', () => {
     expect(input).toHaveFocus()
   })
 
+  test('autofocus skips hidden inputs', () => {
+    render(
+      <Dialog onClose={() => {}} open title="Visible focus">
+        <input type="hidden" />
+        <input aria-label="Name" />
+      </Dialog>,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus()
+  })
+
   test('labels the dialog with the title and describes it with the description', () => {
     renderDialog(true)
     const dialog = screen.getByRole('dialog', { name: 'Test Dialog' })
