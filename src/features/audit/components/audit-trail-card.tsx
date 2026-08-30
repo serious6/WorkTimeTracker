@@ -14,8 +14,8 @@ export function AuditTrailCard({ projectId = null }: { projectId?: number | null
   const { data: projects = [] } = useProjects()
   const { data: user } = useSession()
 
-  const projectName = (projectId: number | null) =>
-    projects.find((project) => project.id === projectId)?.name ?? DELETED_PROJECT_NAME
+  const projectName = (id: number | null) =>
+    projects.find((project) => project.id === id)?.name ?? DELETED_PROJECT_NAME
 
   const visible = records
     .map((record) => ({
