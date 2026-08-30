@@ -68,6 +68,36 @@ describe('Dialog', () => {
     expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus()
   })
 
+  test('autofocus skips controls hidden by attributes, ancestors, or CSS', () => {
+    render(
+      <Dialog onClose={() => {}} open title="Visible focus">
+        <input aria-label="Hidden attribute" hidden />
+        <div aria-hidden="true">
+          <input aria-label="Aria hidden ancestor" />
+        </div>
+        <div inert={true}>
+          <input aria-label="Inert ancestor" />
+        </div>
+        <div style={{ display: 'none' }}>
+          <input aria-label="Display none ancestor" />
+        </div>
+        <input aria-label="Visible" />
+      </Dialog>,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Visible' })).toHaveFocus()
+  })
+
+  test('autofocus falls back to the first focusable control when an input rejects focus', () => {
+    render(
+      <Dialog onClose={() => {}} open title="Panel focus">
+        <input aria-label="Hidden attribute" hidden />
+      </Dialog>,
+    )
+
+    expect(screen.getByRole('button', { name: 'Close dialog' })).toHaveFocus()
+  })
+
   test('labels the dialog with the title and describes it with the description', () => {
     renderDialog(true)
     const dialog = screen.getByRole('dialog', { name: 'Test Dialog' })

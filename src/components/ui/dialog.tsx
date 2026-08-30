@@ -2,6 +2,28 @@ import { useEffect, useId, useRef, type PropsWithChildren } from 'react'
 import { X } from 'lucide-react'
 import { Button } from './button'
 
+function isVisible(element: HTMLElement, root: HTMLElement) {
+  for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+    if (current.hidden || current.getAttribute('aria-hidden') === 'true' || current.hasAttribute('inert')) {
+      return false
+    }
+
+    const style = window.getComputedStyle(current)
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') {
+      return false
+    }
+
+    if (current === root) return true
+  }
+
+  return false
+}
+
+function tryFocus(element: HTMLElement) {
+  element.focus()
+  return document.activeElement === element
+}
+
 export function Dialog({
   open,
   title,
@@ -32,7 +54,7 @@ export function Dialog({
         panel.current?.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ) ?? [],
-      ).filter((element) => !element.hasAttribute('aria-hidden'))
+      ).filter((element) => (panel.current ? isVisible(element, panel.current) : false))
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') closeRef.current()
       if (event.key !== 'Tab') return
@@ -54,13 +76,20 @@ export function Dialog({
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    ;(
-      panel.current?.querySelector<HTMLElement>(
-        'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
-      ) ??
-      focusable()[0] ??
-      panel.current
-    )?.focus()
+    const autofocusCandidates = [
+      ...Array.from(
+        panel.current?.querySelectorAll<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
+        ) ?? [],
+      ),
+      ...focusable(),
+      ...(panel.current ? [panel.current] : []),
+    ].filter((element, index, elements) => elements.indexOf(element) === index)
+
+    for (const element of autofocusCandidates) {
+      if ((panel.current && !isVisible(element, panel.current)) || !tryFocus(element)) continue
+      break
+    }
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       previousFocus.current?.focus()
