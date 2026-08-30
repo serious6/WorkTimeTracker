@@ -76,7 +76,7 @@ export function cumulativeBalance({
   let trackedMinutes = 0
   let targetMinutes = 0
   let carriedOverMinutes = 0
-  for (let day = startDate; day <= endDate; day = addDays(day, 1)) {
+  for (let day = startDate; day.getTime() <= endDate.getTime(); day = addDays(day, 1)) {
     if (day.getTime() === endDate.getTime()) carriedOverMinutes = trackedMinutes - targetMinutes
     trackedMinutes += minutesByDay.get(toDateKey(day)) ?? 0
     targetMinutes += targetMinutesForDay(settings, day)
