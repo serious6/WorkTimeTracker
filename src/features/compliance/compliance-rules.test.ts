@@ -44,6 +44,20 @@ describe('workingDays', () => {
     expect(day.start?.getHours()).toBe(8)
     expect(day.end?.getHours()).toBe(16)
   })
+
+  it('uses work timestamps for day boundaries and ignores break-only days', () => {
+    const [day] = workingDays([
+      entry('2026-03-02', '07:00', '07:15', 'break'),
+      entry('2026-03-02', '08:00', '16:00'),
+      entry('2026-03-02', '16:00', '16:15', 'break'),
+    ])
+    const [breakOnly] = workingDays([entry('2026-03-03', '08:00', '08:30', 'break')])
+
+    expect(day.start?.getHours()).toBe(8)
+    expect(day.end?.getHours()).toBe(16)
+    expect(breakOnly.start).toBeNull()
+    expect(breakOnly.end).toBeNull()
+  })
 })
 
 describe('requiredBreakMinutes', () => {
@@ -78,6 +92,15 @@ describe('complianceWarningsForEntries', () => {
         entry('2026-03-02', '12:30', '16:00'),
       ]),
     ).toEqual([])
+  })
+
+  it('does not count a break that does not interrupt work', () => {
+    expect(
+      rules([
+        entry('2026-03-02', '07:00', '18:00'),
+        entry('2026-03-02', '18:00', '18:45', 'break'),
+      ]),
+    ).toContain('break')
   })
 
   it('warns about more than six hours of work in a row, ArbZG § 4 sentence 3', () => {

@@ -238,6 +238,11 @@ describe('local repository projects', () => {
     expect(await localRepository.listProjects()).toEqual([])
     expect(await localRepository.listProjectBudgets()).toEqual([])
     expect((await localRepository.listTimeEntries())[0].projectId).toBeNull()
+    expect((await localRepository.listTimeEntryAudits()).at(0)).toMatchObject({
+      action: 'updated',
+      oldValue: expect.stringContaining(`"projectId":${project.id}`),
+      newValue: expect.stringContaining('"projectId":null'),
+    })
   })
 })
 
@@ -322,6 +327,25 @@ describe('local repository time entries', () => {
         note: null,
       }),
     ).rejects.toThrow(OVERLAP_MESSAGE)
+  })
+
+  it('does not let an existing break be booked to a project', async () => {
+    const breakEntry = await localRepository.createTimeEntry({
+      projectId: null,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T08:15:00.000Z',
+      entryType: 'break',
+      note: null,
+    })
+
+    await expect(
+      localRepository.updateTimeEntry(breakEntry.id, {
+        projectId,
+        startTime: breakEntry.startTime,
+        endTime: breakEntry.endTime,
+        note: null,
+      }),
+    ).rejects.toThrow(BREAK_PROJECT_MESSAGE)
   })
 
   it('rejects an update of an unknown entry', async () => {
@@ -449,6 +473,14 @@ describe('local repository time entries', () => {
 
     expect(await localRepository.listTimeEntries()).toEqual([])
     expect(await localRepository.listTimeEntryAudits()).toHaveLength(2)
+  })
+
+  it('does not reuse deleted entry IDs that remain in the audit trail', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.deleteTimeEntry(entry.id)
+    const replacement = await createEntry('2026-08-27T10:00:00.000Z', '2026-08-27T11:00:00.000Z')
+
+    expect(replacement.id).toBeGreaterThan(entry.id)
   })
 })
 

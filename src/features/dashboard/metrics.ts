@@ -1,4 +1,8 @@
-import { DELETED_PROJECT_NAME, type TimeEntry } from '@/features/time-entries/time-entry-schema'
+import {
+  DELETED_PROJECT_NAME,
+  isBreak,
+  type TimeEntry,
+} from '@/features/time-entries/time-entry-schema'
 import type { Project } from '@/features/projects/project-schema'
 import { addDays, MINUTE_MS, startOfDay, startOfWeek, type WeekStart } from '@/lib/date'
 
@@ -70,7 +74,7 @@ export function entriesInRange(entries: TimeEntry[], range: DateRange, now = Dat
 }
 
 export function totalMinutes(entries: TimeEntry[], now = Date.now(), range?: DateRange): number {
-  return entries.reduce(
+  return entries.filter((entry) => !isBreak(entry)).reduce(
     (total, entry) =>
       total + (range ? entryMinutesInRange(entry, range, now) : entryMinutes(entry, now)),
     0,
@@ -95,7 +99,7 @@ export function projectTotals(
   range?: DateRange,
 ): ProjectTotal[] {
   const minutesByProject = new Map<number | null, number>()
-  for (const entry of entries) {
+  for (const entry of entries.filter((entry) => !isBreak(entry))) {
     const current = minutesByProject.get(entry.projectId) ?? 0
     minutesByProject.set(
       entry.projectId,
@@ -128,7 +132,7 @@ export function recentProjects(
 ): ProjectTotal[] {
   const lastTracked = new Map<number, string>()
   const minutes = new Map<number, number>()
-  for (const entry of entries) {
+  for (const entry of entries.filter((entry) => !isBreak(entry))) {
     if (entry.projectId === null) continue
     const previous = lastTracked.get(entry.projectId) ?? ''
     if (entry.startTime > previous) lastTracked.set(entry.projectId, entry.startTime)

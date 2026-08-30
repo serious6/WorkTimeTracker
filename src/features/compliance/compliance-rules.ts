@@ -68,7 +68,12 @@ function summarize(
   const sorted = toIntervals(entries, now)
   const work = sorted.filter((interval) => !interval.isBreak)
   const blocks = mergeBreaks(sorted)
-  const qualifying = blocks.filter((block) => block.minutes >= limits.minBreakBlockMinutes)
+  const qualifying = blocks.filter(
+    (block) =>
+      block.minutes >= limits.minBreakBlockMinutes &&
+      work.some((interval) => interval.end <= block.start) &&
+      work.some((interval) => interval.start >= block.end),
+  )
 
   let stretchMinutes = 0
   let longestWorkStretchMinutes = 0
@@ -85,8 +90,8 @@ function summarize(
   return {
     dateKey,
     date: new Date(sorted[0].start),
-    start: new Date(Math.min(...sorted.map((interval) => interval.start))),
-    end: new Date(Math.max(...sorted.map((interval) => interval.end))),
+    start: work.length > 0 ? new Date(Math.min(...work.map((interval) => interval.start))) : null,
+    end: work.length > 0 ? new Date(Math.max(...work.map((interval) => interval.end))) : null,
     workMinutes: work.reduce((total, interval) => total + interval.minutes, 0),
     breakMinutes: blocks.reduce((total, block) => total + block.minutes, 0),
     countedBreakMinutes: qualifying.reduce((total, block) => total + block.minutes, 0),

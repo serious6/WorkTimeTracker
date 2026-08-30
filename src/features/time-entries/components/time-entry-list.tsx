@@ -12,7 +12,7 @@ import { formatStopwatch, formatTimeOfDay } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import { useDeleteTimeEntry, useUpdateTimeEntryNote } from '../time-entry-queries'
-import { DELETED_PROJECT_NAME, type TimeEntry } from '../time-entry-schema'
+import { BREAK_LABEL, DELETED_PROJECT_NAME, isBreak, type TimeEntry } from '../time-entry-schema'
 import { TimeEntryDialog } from './time-entry-dialog'
 
 export function TimeEntryList({
@@ -54,6 +54,7 @@ export function TimeEntryList({
       <ul className="divide-y divide-border">
         {entries.map((entry) => {
           const project = projectOf(entry)
+          const name = isBreak(entry) ? BREAK_LABEL : (project?.name ?? DELETED_PROJECT_NAME)
           const running = isRunning(entry)
           return (
             <li
@@ -69,7 +70,7 @@ export function TimeEntryList({
                 style={{ backgroundColor: project?.color ?? '#64748b' }}
               />
               <span className="min-w-0 flex-1 truncate font-medium">
-                {project?.name ?? DELETED_PROJECT_NAME}
+                {name}
                 {entry.note && <span className="ml-2 text-xs text-muted-foreground">{entry.note}</span>}
               </span>
               <span className="hidden w-44 shrink-0 text-right text-muted-foreground sm:block">
@@ -87,7 +88,7 @@ export function TimeEntryList({
                 </Button>
               ) : (
                 <Button
-                  aria-label={`Start timer for ${project?.name ?? DELETED_PROJECT_NAME}`}
+                  aria-label={`Start timer for ${name}`}
                   disabled={!project}
                   onClick={() => project && onPlay(project.id)}
                   size="icon"
@@ -105,7 +106,7 @@ export function TimeEntryList({
                   { label: entry.note ? 'Edit note' : 'Add note', onSelect: () => setNoting(entry) },
                   { label: 'Delete', destructive: true, onSelect: () => setDeleting(entry) },
                 ]}
-                label={`Actions for ${project?.name ?? DELETED_PROJECT_NAME}`}
+                label={`Actions for ${name}`}
                 trigger={<MoreVertical className="size-4" />}
               />
             </li>

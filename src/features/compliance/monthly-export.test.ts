@@ -68,7 +68,20 @@ describe('monthlyExport', () => {
 
     expect(rows[0].balanceMinutes).toBe(510 - target)
     expect(rows[1].balanceMinutes).toBe(510 - target + (360 - target))
-    expect(totals.balanceMinutes).toBe(rows[1].balanceMinutes)
+    expect(totals.balanceMinutes).toBe(870 - rows[0].targetMinutes * 22)
+  })
+
+  it('subtracts targets for elapsed scheduled days without records', () => {
+    const { rows, totals } = monthlyExport(
+      [entry('2026-03-03', '08:00', '16:00')],
+      DEFAULT_WORK_SETTINGS,
+      new Date(2026, 2, 15),
+      'first@example.com',
+      new Date('2026-03-03T12:00:00.000Z').getTime(),
+    )
+
+    expect(rows[0].balanceMinutes).toBe(480 - rows[0].targetMinutes * 2)
+    expect(totals.balanceMinutes).toBe(rows[0].balanceMinutes)
   })
 
   it('ignores days outside of the selected month', () => {

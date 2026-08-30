@@ -2,7 +2,7 @@ import { monthRange, type DateRange } from '@/features/dashboard/metrics'
 import { targetMinutesForDay } from '@/features/settings/work-schedule'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
-import { fromDateKey, toDateKey, toTimeKey } from '@/lib/date'
+import { addDays, fromDateKey, startOfDay, toDateKey, toTimeKey } from '@/lib/date'
 import { workingDays, type WorkingDay } from './compliance-rules'
 
 export type MonthlyExportRow = {
@@ -68,10 +68,18 @@ export function monthlyExport(
   const days = workingDays(entries, settings.complianceLimits, now).filter((day) =>
     inRange(day, range),
   )
+  const daysByKey = new Map(days.map((day) => [day.dateKey, day] as const))
+  const balanceByKey = new Map<string, number>()
   let balanceMinutes = 0
+  const end = new Date(Math.min(range.end.getTime(), addDays(startOfDay(new Date(now)), 1).getTime()))
+  for (let date = range.start; date < end; date = addDays(date, 1)) {
+    const dateKey = toDateKey(date)
+    balanceMinutes +=
+      (daysByKey.get(dateKey)?.workMinutes ?? 0) - targetMinutesForDay(settings, date)
+    balanceByKey.set(dateKey, balanceMinutes)
+  }
   const rows = days.map((day) => {
     const targetMinutes = targetMinutesForDay(settings, fromDateKey(day.dateKey))
-    balanceMinutes += day.workMinutes - targetMinutes
     return {
       dateKey: day.dateKey,
       start: day.start ? toTimeKey(day.start) : null,
@@ -79,7 +87,7 @@ export function monthlyExport(
       breakMinutes: day.breakMinutes,
       workMinutes: day.workMinutes,
       targetMinutes,
-      balanceMinutes,
+      balanceMinutes: balanceByKey.get(day.dateKey) ?? 0,
     }
   })
 

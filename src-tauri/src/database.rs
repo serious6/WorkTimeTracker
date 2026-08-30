@@ -39,6 +39,9 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../drizzle/0005_work_settings_compliance_limits.sql"
         )),
+        M::up(include_str!(
+            "../../drizzle/0006_break_project_constraint.sql"
+        )),
     ])
 }
 
@@ -178,10 +181,27 @@ pub fn update_project(
 }
 
 pub fn delete_project(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let entries = list_time_entries(&transaction, user_id)?
+        .into_iter()
+        .filter(|entry| entry.project_id == Some(id))
+        .collect::<Vec<_>>();
+    transaction.execute(
         "DELETE FROM projects WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
+    for previous in entries {
+        let updated = read_entry(&transaction, previous.id, user_id)?;
+        record_audit(
+            &transaction,
+            user_id,
+            previous.id,
+            "updated",
+            Some(&previous),
+            Some(&updated),
+        )?;
+    }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -232,6 +252,17 @@ pub fn insert_time_entry(
     user_id: i64,
     input: &SaveTimeEntry,
 ) -> Result<TimeEntry> {
+    let transaction = connection.unchecked_transaction()?;
+    let created = insert_time_entry_with_audit(&transaction, user_id, input)?;
+    transaction.commit()?;
+    Ok(created)
+}
+
+fn insert_time_entry_with_audit(
+    connection: &Connection,
+    user_id: i64,
+    input: &SaveTimeEntry,
+) -> Result<TimeEntry> {
     assert_owns_project(connection, user_id, input.project_id)?;
     connection.execute(
         "INSERT INTO time_entries (user_id, project_id, start_time, end_time, entry_type, note, created_at, updated_at)
@@ -263,9 +294,17 @@ pub fn update_time_entry(
     user_id: i64,
     input: &SaveTimeEntry,
 ) -> Result<TimeEntry> {
-    assert_owns_project(connection, user_id, input.project_id)?;
-    let previous = read_entry(connection, id, user_id)?;
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let previous = read_entry(&transaction, id, user_id)?;
+    let entry_type = input
+        .entry_type
+        .as_deref()
+        .unwrap_or(previous.entry_type.as_str());
+    if entry_type == "break" && input.project_id.is_some() {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    assert_owns_project(&transaction, user_id, input.project_id)?;
+    transaction.execute(
         "UPDATE time_entries
      SET project_id = ?3, start_time = ?4, end_time = ?5, entry_type = ?6, note = ?7,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -276,22 +315,20 @@ pub fn update_time_entry(
             input.project_id,
             input.start_time,
             input.end_time,
-            input
-                .entry_type
-                .as_deref()
-                .unwrap_or(previous.entry_type.as_str()),
+            entry_type,
             input.note
         ],
     )?;
-    let updated = read_entry(connection, id, user_id)?;
+    let updated = read_entry(&transaction, id, user_id)?;
     record_audit(
-        connection,
+        &transaction,
         user_id,
         id,
         "updated",
         Some(&previous),
         Some(&updated),
     )?;
+    transaction.commit()?;
     Ok(updated)
 }
 
@@ -301,22 +338,24 @@ pub fn update_time_entry_note(
     user_id: i64,
     note: Option<&str>,
 ) -> Result<TimeEntry> {
-    let previous = read_entry(connection, id, user_id)?;
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let previous = read_entry(&transaction, id, user_id)?;
+    transaction.execute(
         "UPDATE time_entries
      SET note = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ?1 AND user_id = ?2",
         params![id, user_id, note],
     )?;
-    let updated = read_entry(connection, id, user_id)?;
+    let updated = read_entry(&transaction, id, user_id)?;
     record_audit(
-        connection,
+        &transaction,
         user_id,
         id,
         "updated",
         Some(&previous),
         Some(&updated),
     )?;
+    transaction.commit()?;
     Ok(updated)
 }
 
@@ -369,7 +408,7 @@ pub fn switch_running_time_entry(
         Some(&closed),
     )
     .map_err(SwitchRunningTimeEntryError::Database)?;
-    let created = insert_time_entry(&transaction, user_id, input)
+    let created = insert_time_entry_with_audit(&transaction, user_id, input)
         .map_err(SwitchRunningTimeEntryError::Database)?;
     transaction
         .commit()
@@ -378,14 +417,16 @@ pub fn switch_running_time_entry(
 }
 
 pub fn delete_time_entry(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
-    let previous = read_entry(connection, id, user_id).optional()?;
-    connection.execute(
+    let transaction = connection.unchecked_transaction()?;
+    let previous = read_entry(&transaction, id, user_id).optional()?;
+    transaction.execute(
         "DELETE FROM time_entries WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
     if let Some(previous) = previous {
-        record_audit(connection, user_id, id, "deleted", Some(&previous), None)?;
+        record_audit(&transaction, user_id, id, "deleted", Some(&previous), None)?;
     }
+    transaction.commit()?;
     Ok(())
 }
 
@@ -812,6 +853,30 @@ mod tests {
     }
 
     #[test]
+    fn does_not_book_an_existing_break_to_a_project() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        let recorded = insert_time_entry(
+            &connection,
+            user_id,
+            &break_entry("2026-08-27T12:00:00.000Z", "2026-08-27T12:30:00.000Z"),
+        )
+        .unwrap();
+
+        assert!(update_time_entry(
+            &connection,
+            recorded.id,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T12:00:00.000Z",
+                Some("2026-08-27T12:30:00.000Z"),
+            ),
+        )
+        .is_err());
+    }
+
+    #[test]
     fn keeps_an_audit_trail_of_every_change() {
         let (connection, user_id) = connect();
         let project = project(&connection, user_id);
@@ -1025,6 +1090,18 @@ mod tests {
         let entries = list_time_entries(&connection, user_id).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].project_id, None);
+        let audits = list_time_entry_audits(&connection, user_id).unwrap();
+        assert!(audits.iter().any(|audit| {
+            audit.action == "updated"
+                && audit
+                    .old_value
+                    .as_deref()
+                    .is_some_and(|value| value.contains("\"projectId\":1"))
+                && audit
+                    .new_value
+                    .as_deref()
+                    .is_some_and(|value| value.contains("\"projectId\":null"))
+        }));
     }
 
     #[test]

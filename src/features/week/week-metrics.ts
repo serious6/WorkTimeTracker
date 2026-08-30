@@ -2,7 +2,7 @@ import { type DateRange, entriesInRange, entryMinutesInRange, monthRange, weekRa
 import type { Project } from '@/features/projects/project-schema'
 import { dailyTargetMinutes, isWorkingDay, scheduledMinutesInRange } from '@/features/settings/work-schedule'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
-import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
+import { isBreak, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, formatDuration, formatShortDay, startOfDay, startOfWeek, toDateKey } from '@/lib/date'
 
 export type RangeMetricsDay = {
@@ -109,7 +109,7 @@ export function rangeMetrics({
   now?: number
 }): RangeMetrics {
   const nowDate = new Date(now)
-  const inRange = entriesInRange(entries, range, now)
+  const inRange = entriesInRange(entries, range, now).filter((entry) => !isBreak(entry))
   const dayList = timeline(range)
   const projectById = new Map(projects.map((project) => [project.id, project] as const))
   const elapsed = elapsedRange(nowDate, range)
