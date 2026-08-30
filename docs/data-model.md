@@ -45,7 +45,7 @@ flowchart TB
 
   subgraph browser["Browser storage (fallback)"]
     ls_users["localStorage: work-time-tracker.users"]
-    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entries, .time-entry-audits, .project-budgets,<br/>.work-settings"]
+    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings"]
     ls_sessions["localStorage: work-time-tracker.sessions"]
     ss_session["sessionStorage: work-time-tracker.session"]
   end

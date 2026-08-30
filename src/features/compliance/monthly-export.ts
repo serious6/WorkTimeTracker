@@ -71,11 +71,16 @@ export function monthlyExport(
   const daysByKey = new Map(days.map((day) => [day.dateKey, day] as const))
   const balanceByKey = new Map<string, number>()
   let balanceMinutes = 0
-  const end = new Date(Math.min(range.end.getTime(), addDays(startOfDay(new Date(now)), 1).getTime()))
-  for (let date = range.start; date < end; date = addDays(date, 1)) {
+  const elapsedEnd = new Date(
+    Math.min(range.end.getTime(), addDays(startOfDay(new Date(now)), 1).getTime()),
+  )
+  const lastRecordedEnd = days.at(-1) ? addDays(fromDateKey(days.at(-1)!.dateKey), 1) : range.start
+  const balanceEnd = new Date(Math.max(elapsedEnd.getTime(), lastRecordedEnd.getTime()))
+  for (let date = range.start; date < balanceEnd; date = addDays(date, 1)) {
     const dateKey = toDateKey(date)
     balanceMinutes +=
-      (daysByKey.get(dateKey)?.workMinutes ?? 0) - targetMinutesForDay(settings, date)
+      (daysByKey.get(dateKey)?.workMinutes ?? 0) -
+      (date < elapsedEnd ? targetMinutesForDay(settings, date) : 0)
     balanceByKey.set(dateKey, balanceMinutes)
   }
   const rows = days.map((day) => {

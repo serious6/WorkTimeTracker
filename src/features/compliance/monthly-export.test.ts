@@ -84,6 +84,19 @@ describe('monthlyExport', () => {
     expect(totals.balanceMinutes).toBe(rows[0].balanceMinutes)
   })
 
+  it('includes future-dated records without charging future targets', () => {
+    const { rows, totals } = monthlyExport(
+      [entry('2026-03-20', '08:00', '16:00')],
+      DEFAULT_WORK_SETTINGS,
+      new Date(2026, 2, 15),
+      'first@example.com',
+      new Date('2026-03-03T12:00:00.000Z').getTime(),
+    )
+
+    expect(rows[0].balanceMinutes).toBe(480 - rows[0].targetMinutes * 2)
+    expect(totals.balanceMinutes).toBe(rows[0].balanceMinutes)
+  })
+
   it('ignores days outside of the selected month', () => {
     const { rows } = report([...ENTRIES, entry('2026-04-01', '08:00', '12:00')])
 
