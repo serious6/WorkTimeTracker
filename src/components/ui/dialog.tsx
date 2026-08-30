@@ -48,20 +48,22 @@ export function Dialog({
 
   useEffect(() => {
     if (!open) return
+    const panelEl = panel.current
+    if (!panelEl) return
     previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const focusable = () =>
       Array.from(
-        panel.current?.querySelectorAll<HTMLElement>(
+        panelEl.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((element) => (panel.current ? isVisible(element, panel.current) : false))
-    function onKeyDown(event: KeyboardEvent) {
+        ),
+      ).filter((element) => isVisible(element, panelEl))
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closeRef.current()
       if (event.key !== 'Tab') return
       const elements = focusable()
       if (elements.length === 0) {
         event.preventDefault()
-        panel.current?.focus()
+        panelEl.focus()
         return
       }
       const first = elements[0]
@@ -78,16 +80,16 @@ export function Dialog({
     document.addEventListener('keydown', onKeyDown)
     const autofocusCandidates = Array.from(new Set([
       ...Array.from(
-        panel.current?.querySelectorAll<HTMLElement>(
+        panelEl.querySelectorAll<HTMLElement>(
           'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
-        ) ?? [],
+        ),
       ),
       ...focusable(),
-      ...(panel.current ? [panel.current] : []),
+      panelEl,
     ]))
 
     for (const element of autofocusCandidates) {
-      if ((panel.current && !isVisible(element, panel.current)) || !tryFocus(element)) continue
+      if (!isVisible(element, panelEl) || !tryFocus(element)) continue
       break
     }
     return () => {
