@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { auditKeys } from '@/features/audit/audit-queries'
 import { repository } from '@/features/storage'
+import { timeEntryKeys } from './time-entry-keys'
 import type { SaveTimeEntry } from './time-entry-schema'
 
-export const timeEntryKeys = { all: ['time-entries'] as const }
+export { timeEntryKeys }
 
 /** Every write of a time entry also appends to the audit trail. */
 async function invalidate(queryClient: QueryClient): Promise<void> {

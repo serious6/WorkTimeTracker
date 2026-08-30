@@ -7,7 +7,7 @@ import { useAbsenceIndex } from '@/features/absences/absence-queries'
 import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { absenceWorkWarnings } from '@/features/absences/absence-warnings'
 import { useSession } from '@/features/auth/session-queries'
-import { useTimeEntryAudits } from '@/features/compliance/audit-queries'
+import { useTimeEntryAudits } from '@/features/audit/audit-queries'
 import { complianceWarningsForEntries, RETENTION_YEARS } from '@/features/compliance/compliance-rules'
 import { downloadFile } from '@/features/compliance/download-file'
 import {
@@ -18,13 +18,13 @@ import {
   toPdf,
 } from '@/features/compliance/monthly-export'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
-import { auditChanges, type TimeEntryAudit } from '@/features/time-entries/audit-schema'
+import { auditFieldChanges, type TimeEntryAudit } from '@/features/audit/audit-schema'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
 import { useTicker } from '@/features/timer/use-ticker'
 import { formatDay, formatDuration, fromDateKey } from '@/lib/date'
 
 function auditSummary(audit: TimeEntryAudit): string {
-  const changes = auditChanges(audit)
+  const changes = auditFieldChanges(audit)
   if (changes.length === 0) return audit.action
   return changes.map((change) => `${change.field}: ${change.from} → ${change.to}`).join(', ')
 }

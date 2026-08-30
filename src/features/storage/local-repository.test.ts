@@ -10,7 +10,7 @@ import {
   DEFAULT_WORK_SETTINGS,
   NO_WORKING_DAY_MESSAGE,
 } from '@/features/settings/work-settings-schema'
-import { auditChanges } from '@/features/time-entries/audit-schema'
+import { auditFieldChanges } from '@/features/audit/audit-schema'
 import {
   BREAK_PROJECT_MESSAGE,
   ORDER_MESSAGE,
@@ -461,7 +461,7 @@ describe('local repository time entries', () => {
     expect(audits.every(({ actor }) => actor === 'first@example.com')).toBe(true)
     expect(audits.every(({ timeEntryId }) => timeEntryId === entry.id)).toBe(true)
     expect(audits[0].newValue).toBeNull()
-    expect(auditChanges(audits[1])).toEqual([
+    expect(auditFieldChanges(audits[1])).toEqual([
       { field: 'endTime', from: '2026-08-27T09:00:00.000Z', to: '2026-08-27T10:00:00.000Z' },
     ])
     expect(audits[2].oldValue).toBeNull()

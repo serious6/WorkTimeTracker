@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { auditChanges, timeEntryAuditSchema, type TimeEntryAudit } from './audit-schema'
+import { auditFieldChanges, timeEntryAuditSchema, type TimeEntryAudit } from './audit-schema'
 
 function audit(oldValue: string | null, newValue: string | null): TimeEntryAudit {
   return timeEntryAuditSchema.parse({
@@ -33,9 +33,9 @@ describe('timeEntryAuditSchema', () => {
   })
 })
 
-describe('auditChanges', () => {
+describe('auditFieldChanges', () => {
   it('lists only the fields that differ', () => {
-    const changes = auditChanges(
+    const changes = auditFieldChanges(
       audit(
         JSON.stringify({ projectId: 1, startTime: 'a', endTime: 'b', entryType: 'work' }),
         JSON.stringify({ projectId: 2, startTime: 'a', endTime: 'b', entryType: 'break' }),
@@ -49,14 +49,14 @@ describe('auditChanges', () => {
   })
 
   it('shows a creation and a deletion as changes against nothing', () => {
-    const created = auditChanges(audit(null, JSON.stringify({ note: 'Kickoff' })))
-    const deleted = auditChanges(audit(JSON.stringify({ note: 'Kickoff' }), null))
+    const created = auditFieldChanges(audit(null, JSON.stringify({ note: 'Kickoff' })))
+    const deleted = auditFieldChanges(audit(JSON.stringify({ note: 'Kickoff' }), null))
 
     expect(created).toEqual([{ field: 'note', from: '—', to: 'Kickoff' }])
     expect(deleted).toEqual([{ field: 'note', from: 'Kickoff', to: '—' }])
   })
 
   it('ignores a value that is not readable JSON', () => {
-    expect(auditChanges(audit('not json', 'null'))).toEqual([])
+    expect(auditFieldChanges(audit('not json', 'null'))).toEqual([])
   })
 })

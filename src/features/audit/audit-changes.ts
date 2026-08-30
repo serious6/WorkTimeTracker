@@ -1,7 +1,8 @@
 import { formatShortDay, formatTimeOfDay } from '@/lib/date'
-import type { AuditAction, AuditSnapshot } from './audit-schema'
+import type { AuditChange } from './audit-schema'
+import type { AuditLogAction, AuditSnapshot } from './audit-schema'
 
-export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
+export const AUDIT_ACTION_LABEL: Record<AuditLogAction, string> = {
   create: 'Created',
   update: 'Edited',
   delete: 'Deleted',
@@ -9,9 +10,6 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
 
 const RUNNING = 'running'
 const NO_NOTE = 'no note'
-
-/** One changed field of an edited time entry. */
-export type AuditChange = { field: string; from: string; to: string }
 
 export function formatMoment(value: string | null): string {
   if (!value) return RUNNING

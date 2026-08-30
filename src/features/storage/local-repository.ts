@@ -10,7 +10,10 @@ import {
 import {
   TIME_ENTRY_ENTITY,
   auditLogEntrySchema,
+  timeEntryAuditSchema,
+  type AuditAction,
   type AuditLogEntry,
+  type TimeEntryAudit,
 } from '@/features/audit/audit-schema'
 import {
   DUPLICATE_EMAIL_MESSAGE,
@@ -45,11 +48,6 @@ import {
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
-import {
-  timeEntryAuditSchema,
-  type AuditAction,
-  type TimeEntryAudit,
-} from '@/features/time-entries/audit-schema'
 import {
   OVERLAP_MESSAGE,
   saveTimeEntrySchema,

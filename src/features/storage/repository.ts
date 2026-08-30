@@ -1,10 +1,9 @@
 import type { Absence, AbsenceAudit, SaveAbsence } from '@/features/absences/absence-schema'
 import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
-import type { AuditLogEntry } from '@/features/audit/audit-schema'
+import type { AuditLogEntry, TimeEntryAudit } from '@/features/audit/audit-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { SaveWorkSettings, WorkSettings } from '@/features/settings/work-settings-schema'
-import type { TimeEntryAudit } from '@/features/time-entries/audit-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
 
 export type Repository = {
