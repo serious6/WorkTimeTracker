@@ -12,6 +12,11 @@
     },
     "pbkdf2Sha256Iterations": 210000
   },
+  "listRanges": {
+    "defaultLimit": 1000,
+    "maxLimit": 5000,
+    "auditLogLimit": 200
+  },
   "credentials": [
     {
       "name": "accepts a login",

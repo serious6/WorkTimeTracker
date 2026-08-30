@@ -56,6 +56,14 @@ import {
   type SaveTimeEntry,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
+import {
+  AUDIT_LOG_LIMIT,
+  filterListRange,
+  filterPointRange,
+  limitAscending,
+  limitDescending,
+  listLimit,
+} from './list-range'
 import { AppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
@@ -466,8 +474,15 @@ const fallbackRepository: Repository = {
     )
     writeEntryState(updatedEntries, updatedAudits)
   },
-  listTimeEntries: async () =>
-    readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
+  listTimeEntries: async (range) =>
+    limitAscending(
+      filterListRange(
+        readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
+        range,
+        (entry) => ({ start: entry.startTime, end: entry.endTime }),
+      ),
+      listLimit(range),
+    ),
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
     if (parsed.entryType !== 'break' && parsed.projectId === null) {
@@ -557,13 +572,20 @@ const fallbackRepository: Repository = {
       current ? appendAudit(audits, id, 'deleted', current, null) : audits,
     )
   },
-  listTimeEntryAudits: async () =>
-    readAudits().sort(
-      (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+  listTimeEntryAudits: async (range) =>
+    limitDescending(
+      filterPointRange(
+        readAudits().sort(
+          (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+        ),
+        range,
+        (audit) => audit.recordedAt,
+      ),
+      listLimit(range),
     ),
-  listAuditLog: async () =>
-    readAudits()
-      .map((audit): AuditLogEntry => ({
+  listAuditLog: async (range) =>
+    limitDescending(
+      filterPointRange(readAudits(), range, (audit) => audit.recordedAt).map((audit): AuditLogEntry => ({
         id: audit.id,
         entity: TIME_ENTRY_ENTITY,
         entityId: audit.timeEntryId,
@@ -572,8 +594,9 @@ const fallbackRepository: Repository = {
         newValue: audit.newValue,
         createdAt: audit.recordedAt,
       }))
-      .sort((left, right) => right.id - left.id)
-      .slice(0, 200),
+        .sort((left, right) => right.id - left.id),
+      Math.min(listLimit(range, AUDIT_LOG_LIMIT), AUDIT_LOG_LIMIT),
+    ),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {
@@ -613,8 +636,15 @@ const fallbackRepository: Repository = {
       readBudgets().filter((budget) => budget.id !== id),
     )
   },
-  listAbsences: async () =>
-    readAbsenceState().absences.sort((left, right) => left.date.localeCompare(right.date)),
+  listAbsences: async (range) =>
+    limitAscending(
+      filterPointRange(
+        readAbsenceState().absences.sort((left, right) => left.date.localeCompare(right.date)),
+        range,
+        (absence) => absence.date,
+      ),
+      listLimit(range),
+    ),
   createAbsence: async (input) => {
     const parsed = validate(saveAbsenceSchema, input)
     const { absences, audits } = readAbsenceState()

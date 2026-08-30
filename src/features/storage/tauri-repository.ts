@@ -73,7 +73,7 @@ export const tauriRepository: Repository = {
   deleteProject: async (id) => {
     await run('delete_project', { id })
   },
-  listTimeEntries: () => call('list_time_entries', {}, timeEntrySchema.array()),
+  listTimeEntries: (range) => call('list_time_entries', { range }, timeEntrySchema.array()),
   createTimeEntry: (input) => call('create_time_entry', { input }, timeEntrySchema),
   updateTimeEntry: (id, input) => call('update_time_entry', { id, input }, timeEntrySchema),
   updateTimeEntryNote: (id, note) => call('update_time_entry_note', { id, note }, timeEntrySchema),
@@ -82,9 +82,9 @@ export const tauriRepository: Repository = {
   deleteTimeEntry: async (id) => {
     await run('delete_time_entry', { id })
   },
-  listTimeEntryAudits: () =>
-    call('list_time_entry_audits', {}, timeEntryAuditSchema.array()),
-  listAuditLog: () => call('list_audit_log', {}, auditLogEntrySchema.array()),
+  listTimeEntryAudits: (range) =>
+    call('list_time_entry_audits', { range }, timeEntryAuditSchema.array()),
+  listAuditLog: (range) => call('list_audit_log', { range }, auditLogEntrySchema.array()),
   listProjectBudgets: () => call('list_project_budgets', {}, projectBudgetSchema.array()),
   createProjectBudget: (input) => call('create_project_budget', { input }, projectBudgetSchema),
   updateProjectBudget: (id, input) =>
@@ -92,7 +92,7 @@ export const tauriRepository: Repository = {
   deleteProjectBudget: async (id) => {
     await run('delete_project_budget', { id })
   },
-  listAbsences: () => call('list_absences', {}, absenceSchema.array()),
+  listAbsences: (range) => call('list_absences', { range }, absenceSchema.array()),
   createAbsence: (input) => call('create_absence', { input }, absenceSchema),
   updateAbsence: (id, input) => call('update_absence', { id, input }, absenceSchema),
   saveAbsences: (inputs, replacementIds, updateId) =>

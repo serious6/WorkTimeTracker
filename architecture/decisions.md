@@ -118,3 +118,16 @@ by the macro nor public.
 Input validation that belongs to the domain stays in `models.rs`: `SaveAbsence::validate_range`
 holds the rule that a saved range is not empty, is valid per day and never repeats a day, instead of
 the command spelling it out.
+
+## 9. List commands answer a bounded window
+
+`list_time_entries`, `list_time_entry_audits`, `list_audit_log` and `list_absences` take an optional
+range: `from` inclusive, `to` exclusive, plus a `limit`. The filter is pushed into SQL, so a query
+costs what the view shows instead of the whole account history. Without a range a command still
+answers at most `DEFAULT_LIST_LIMIT` rows, newest first, and the combined audit log stays at
+`AUDIT_LOG_LIMIT`. All three numbers live in `contract/domain-rules.json`, so
+`src/features/storage/list-range.ts` and `src-tauri/src/models.rs` cannot drift apart.
+
+The calendar reads only the six weeks of its grid. The dashboard, the week view and the reports keep
+the bounded default on purpose: the cumulative balance and the budget progress count every day since
+the first tracked entry, so a window would change the number they show.

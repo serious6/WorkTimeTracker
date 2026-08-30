@@ -268,6 +268,28 @@ describe('local repository time entries', () => {
     ])
   })
 
+  it('lists only the entries of the asked window', async () => {
+    await createEntry('2026-08-25T08:00:00.000Z', '2026-08-25T09:00:00.000Z')
+    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await createEntry('2026-08-29T08:00:00.000Z', '2026-08-29T09:00:00.000Z')
+
+    const window = await createLocalRepository().listTimeEntries({
+      from: '2026-08-26',
+      to: '2026-08-28',
+    })
+
+    expect(window.map(({ startTime }) => startTime)).toEqual(['2026-08-27T08:00:00.000Z'])
+  })
+
+  it('answers the newest entries when the limit is reached', async () => {
+    await createEntry('2026-08-25T08:00:00.000Z', '2026-08-25T09:00:00.000Z')
+    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+
+    const limited = await createLocalRepository().listTimeEntries({ limit: 1 })
+
+    expect(limited.map(({ startTime }) => startTime)).toEqual(['2026-08-27T08:00:00.000Z'])
+  })
+
   it('requires a project', async () => {
     await expect(
       createLocalRepository().createTimeEntry({

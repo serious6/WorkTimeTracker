@@ -5,9 +5,9 @@ use crate::{
     error::{AppError, AppResult},
     logging,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, Credentials, Project, ProjectBudget, SaveAbsence,
-        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
-        WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, Project, ProjectBudget,
+        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
+        User, WorkSettings,
     },
     store::{Database, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
@@ -63,6 +63,14 @@ pub const PUBLIC_COMMANDS: [&str; 6] = [
     "get_app_version",
     "log_client_error",
 ];
+
+/// A list command without a window still answers a bounded number of rows, so
+/// its cost never grows with the age of the account.
+fn list_range(range: Option<ListRange>) -> AppResult<ListRange> {
+    let mut range = range.unwrap_or_default();
+    range.validate()?;
+    Ok(range)
+}
 
 /// Answer of `register` and `login`: the account plus the id of the started
 /// session, which the caller repeats with every following command.
@@ -204,8 +212,11 @@ authed_command!(
 );
 
 authed_command!(
-    fn list_time_entries() -> Vec<TimeEntry>,
-    |db, user| Ok(db.0.list_time_entries(user)?)
+    fn list_time_entries(range: Option<ListRange>) -> Vec<TimeEntry>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_time_entries(user, &range)?)
+    }
 );
 
 authed_command!(
@@ -265,13 +276,19 @@ authed_command!(
 
 authed_command!(
     /// The audit trail is read only, it has no command that changes or removes it.
-    fn list_time_entry_audits() -> Vec<TimeEntryAudit>,
-    |db, user| Ok(db.0.list_time_entry_audits(user)?)
+    fn list_time_entry_audits(range: Option<ListRange>) -> Vec<TimeEntryAudit>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_time_entry_audits(user, &range)?)
+    }
 );
 
 authed_command!(
-    fn list_audit_log() -> Vec<AuditLogEntry>,
-    |db, user| Ok(db.0.list_audit_log(user)?)
+    fn list_audit_log(range: Option<ListRange>) -> Vec<AuditLogEntry>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_audit_log(user, &range)?)
+    }
 );
 
 authed_command!(
@@ -303,8 +320,11 @@ authed_command!(
 );
 
 authed_command!(
-    fn list_absences() -> Vec<Absence>,
-    |db, user| Ok(db.0.list_absences(user)?)
+    fn list_absences(range: Option<ListRange>) -> Vec<Absence>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_absences(user, &range)?)
+    }
 );
 
 authed_command!(

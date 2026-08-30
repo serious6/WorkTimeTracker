@@ -116,7 +116,16 @@ describe('tauriRepository – time entries', () => {
   test('listTimeEntries invokes list_time_entries', async () => {
     mockInvoke.mockResolvedValue([TIME_ENTRY])
     await tauriRepository.listTimeEntries()
-    invokedWith('list_time_entries', {})
+    invokedWith('list_time_entries', { range: undefined })
+  })
+
+  test('listTimeEntries passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { from: '2026-08-01', to: '2026-09-01' }
+
+    await tauriRepository.listTimeEntries(range)
+
+    invokedWith('list_time_entries', { range })
   })
 
   test('createTimeEntry invokes create_time_entry', async () => {

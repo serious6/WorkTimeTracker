@@ -17,6 +17,12 @@ import { adjustedDailyTarget } from '@/features/settings/work-schedule'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { findOverlap } from '@/features/time-entries/overlap'
 import { saveTimeEntrySchema, type TimeEntry } from '@/features/time-entries/time-entry-schema'
+import {
+  AUDIT_LOG_LIMIT,
+  DEFAULT_LIST_LIMIT,
+  listLimit,
+  MAX_LIST_LIMIT,
+} from './list-range'
 import { createLocalRepository } from './local-repository'
 
 type Case = {
@@ -67,6 +73,7 @@ const rules = domainRules as unknown as {
     argon2id: { memoryKib: number; iterations: number; parallelism: number }
     pbkdf2Sha256Iterations: number
   }
+  listRanges: { defaultLimit: number; maxLimit: number; auditLogLimit: number }
   credentials: Case[]
   projects: Case[]
   timeEntries: Case[]
@@ -107,6 +114,16 @@ describe('domain rule contract', () => {
 
   it('pins the key derivation of the browser fallback', () => {
     expect(rules.keyDerivation.pbkdf2Sha256Iterations).toBe(PBKDF2_ITERATIONS)
+  })
+
+  it('bounds the list queries like the Rust backend', () => {
+    expect(rules.listRanges).toEqual({
+      defaultLimit: DEFAULT_LIST_LIMIT,
+      maxLimit: MAX_LIST_LIMIT,
+      auditLogLimit: AUDIT_LOG_LIMIT,
+    })
+    expect(listLimit(undefined)).toBe(DEFAULT_LIST_LIMIT)
+    expect(listLimit({ limit: MAX_LIST_LIMIT + 1 })).toBe(MAX_LIST_LIMIT)
   })
 
   it.each(rules.credentials)('credentials: $name', (testCase) => {

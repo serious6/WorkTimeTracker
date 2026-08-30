@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import { auditKeys } from '@/features/audit/audit-queries'
 import { getRepository } from '@/features/storage'
 import { timeEntryKeys } from './time-entry-keys'
+import type { ListRange } from '@/features/storage/list-range'
 import type { SaveTimeEntry } from './time-entry-schema'
 
 export { timeEntryKeys }
@@ -14,8 +15,16 @@ async function invalidate(queryClient: QueryClient): Promise<void> {
   ])
 }
 
-export function useTimeEntries() {
-  return useQuery({ queryKey: timeEntryKeys.all, queryFn: () => getRepository().listTimeEntries() })
+/**
+ * The tracked entries, by default the bounded newest ones. A view that only
+ * renders a period passes it as `range`, so the query costs what the view shows
+ * instead of the whole account history.
+ */
+export function useTimeEntries(range?: ListRange) {
+  return useQuery({
+    queryKey: timeEntryKeys.range(range),
+    queryFn: () => getRepository().listTimeEntries(range),
+  })
 }
 
 export function useCreateTimeEntry() {

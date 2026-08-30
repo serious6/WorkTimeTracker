@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
+import type { ListRange } from '@/features/storage/list-range'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
 import type { SaveAbsence } from './absence-schema'
 
 export const absenceKeys = {
   all: ['absences'] as const,
+  /** One cache entry per window, invalidating `all` still refreshes them all. */
+  range: (range?: ListRange) => ['absences', range ?? null] as const,
   audits: ['absence-audits'] as const,
 }
 
@@ -16,13 +19,16 @@ async function invalidate(queryClient: QueryClient): Promise<void> {
   ])
 }
 
-export function useAbsences() {
-  return useQuery({ queryKey: absenceKeys.all, queryFn: () => getRepository().listAbsences() })
+export function useAbsences(range?: ListRange) {
+  return useQuery({
+    queryKey: absenceKeys.range(range),
+    queryFn: () => getRepository().listAbsences(range),
+  })
 }
 
 /** Absence type per day, ready for every target and balance calculation. */
-export function useAbsenceIndex(): AbsenceIndex {
-  const { data } = useAbsences()
+export function useAbsenceIndex(range?: ListRange): AbsenceIndex {
+  const { data } = useAbsences(range)
   return data ? absenceIndex(data) : NO_ABSENCES
 }
 

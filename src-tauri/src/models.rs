@@ -31,6 +31,57 @@ fn is_date(value: &str) -> bool {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok_and(|date| date.to_string() == value)
 }
 
+/// Rows a list command returns when the caller names no limit.
+pub const DEFAULT_LIST_LIMIT: i64 = 1000;
+/// Hard ceiling of a list command, a larger limit is capped to it.
+pub const MAX_LIST_LIMIT: i64 = 5000;
+/// Rows the combined audit log returns, it only feeds the recent-changes card.
+pub const AUDIT_LOG_LIMIT: i64 = 200;
+
+/// Window of a list command: `from` is inclusive, `to` is exclusive, both an
+/// ISO date or timestamp. Without a window the command still answers at most
+/// [`DEFAULT_LIST_LIMIT`] rows, so the cost of a list never grows with the age
+/// of the account. `contract/domain-rules.json` pins all three numbers.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRange {
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub limit: Option<i64>,
+}
+
+fn is_range_bound(value: &str) -> bool {
+    value.len() >= 10 && value.is_char_boundary(10) && is_date(&value[..10])
+}
+
+impl ListRange {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize_optional(&mut self.from);
+        normalize_optional(&mut self.to);
+        if [&self.from, &self.to]
+            .into_iter()
+            .flatten()
+            .any(|bound| !is_range_bound(bound))
+        {
+            return Err("invalid list range");
+        }
+        if let (Some(from), Some(to)) = (&self.from, &self.to) {
+            if from > to {
+                return Err("invalid list range");
+            }
+        }
+        if self.limit.is_some_and(|limit| limit <= 0) {
+            return Err("invalid list range");
+        }
+        Ok(())
+    }
+
+    /// The bounded number of rows, never above [`MAX_LIST_LIMIT`].
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(DEFAULT_LIST_LIMIT).min(MAX_LIST_LIMIT)
+    }
+}
+
 const MAX_EMAIL: usize = 254;
 
 /// Minimum length required by the password policy.
@@ -665,6 +716,32 @@ mod tests {
             absence("vacation", "01.09.2026"),
             Err("invalid absence date")
         );
+    }
+
+    #[test]
+    fn bounds_and_validates_a_list_range() {
+        let range = |from: Option<&str>, to: Option<&str>, limit: Option<i64>| {
+            let mut range = ListRange {
+                from: from.map(str::to_owned),
+                to: to.map(str::to_owned),
+                limit,
+            };
+            range.validate().map(|()| range)
+        };
+
+        assert_eq!(range(None, None, None).unwrap().limit(), DEFAULT_LIST_LIMIT);
+        assert_eq!(
+            range(None, None, Some(MAX_LIST_LIMIT + 1)).unwrap().limit(),
+            MAX_LIST_LIMIT
+        );
+        assert_eq!(range(None, None, Some(10)).unwrap().limit(), 10);
+
+        let window = range(Some(" 2026-09-01 "), Some("2026-10-01T00:00:00.000Z"), None).unwrap();
+        assert_eq!(window.from.as_deref(), Some("2026-09-01"));
+
+        assert!(range(Some("2026-13-01"), None, None).is_err());
+        assert!(range(Some("2026-10-01"), Some("2026-09-01"), None).is_err());
+        assert!(range(None, None, Some(0)).is_err());
     }
 
     #[test]

@@ -13,8 +13,9 @@ use crate::{
         MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES,
     },
     models::{
-        adjusted_daily_target, Credentials, SaveAbsence, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, WorkSettings,
+        adjusted_daily_target, Credentials, ListRange, SaveAbsence, SaveProject,
+        SaveProjectBudget, SaveTimeEntry, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_LIST_LIMIT,
+        MAX_LIST_LIMIT,
     },
     store::{Store, StoreError},
     test_support::{test_store, unique_email, unique_tag},
@@ -44,6 +45,14 @@ struct KeyDerivation {
     argon2id: Argon2Params,
     #[allow(dead_code)]
     pbkdf2_sha256_iterations: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListRanges {
+    default_limit: i64,
+    max_limit: i64,
+    audit_log_limit: i64,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +140,23 @@ fn pins_the_key_derivation_parameters_of_the_contract() {
     assert_eq!(derivation.argon2id.memory_kib, ARGON2_MEMORY_KIB);
     assert_eq!(derivation.argon2id.iterations, ARGON2_ITERATIONS);
     assert_eq!(derivation.argon2id.parallelism, ARGON2_PARALLELISM);
+}
+
+#[test]
+fn bounds_the_list_commands_like_the_contract() {
+    let limits: ListRanges = serde_json::from_value(rules()["listRanges"].clone()).unwrap();
+
+    assert_eq!(limits.default_limit, DEFAULT_LIST_LIMIT);
+    assert_eq!(limits.max_limit, MAX_LIST_LIMIT);
+    assert_eq!(limits.audit_log_limit, AUDIT_LOG_LIMIT);
+
+    let mut range = ListRange {
+        limit: Some(limits.max_limit + 1),
+        ..ListRange::default()
+    };
+    range.validate().unwrap();
+    assert_eq!(range.limit(), limits.max_limit);
+    assert_eq!(ListRange::default().limit(), limits.default_limit);
 }
 
 #[test]
@@ -331,7 +357,7 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .new_value
         .as_deref()
         .is_some_and(|value| value.contains("sick")));
-    assert!(store.list_absences(second_user.id).unwrap().is_empty());
+    assert!(store.list_absences(second_user.id, &ListRange::default()).unwrap().is_empty());
     assert!(store
         .list_absence_audits(second_user.id)
         .unwrap()
