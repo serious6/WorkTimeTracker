@@ -1,6 +1,6 @@
 /** Offers generated export data as a file download in the current window. */
-export function downloadFile(name: string, data: string | Uint8Array, mimeType: string): void {
-  const blob = new Blob([data as BlobPart], { type: mimeType })
+export function downloadFile(name: string, data: string | Uint8Array<ArrayBuffer>, mimeType: string): void {
+  const blob = new Blob([data], { type: mimeType })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

@@ -182,7 +182,7 @@ function chunk(lines: string[]): string[][] {
  * Minimal, dependency free PDF with one monospaced text column per page. The
  * generated file is a valid PDF 1.4 document with a cross reference table.
  */
-export function toPdf(report: MonthlyExport): Uint8Array {
+export function toPdf(report: MonthlyExport): Uint8Array<ArrayBuffer> {
   const pages = chunk(reportLines(report))
   const fontId = 3
   const pageIds = pages.map((_, index) => fontId + 1 + index * 2)
@@ -199,19 +199,19 @@ export function toPdf(report: MonthlyExport): Uint8Array {
     )
   }
 
-  let document = '%PDF-1.4\n'
+  let pdf = '%PDF-1.4\n'
   const offsets: number[] = []
   for (const [index, object] of objects.entries()) {
-    offsets.push(document.length)
-    document += `${index + 1} 0 obj\n${object}\nendobj\n`
+    offsets.push(pdf.length)
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
   }
-  const startxref = document.length
-  document += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  const startxref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
   for (const offset of offsets) {
-    document += `${`${offset}`.padStart(10, '0')} 00000 n \n`
+    pdf += `${`${offset}`.padStart(10, '0')} 00000 n \n`
   }
-  document += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`
-  return new TextEncoder().encode(document)
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`
+  return new TextEncoder().encode(pdf)
 }
 
 export function exportFileName(report: MonthlyExport, extension: 'csv' | 'pdf'): string {
