@@ -12,6 +12,8 @@ import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
 import { useTicker } from '@/features/timer/use-ticker'
 import { useTimer } from '@/features/timer/use-timer'
 import { formatDay, startOfWeek } from '@/lib/date'
+import { cumulativeBalance } from './balance'
+import { CumulativeBalanceCard } from './components/cumulative-balance-card'
 import { CurrentlyTrackingCard } from './components/currently-tracking-card'
 import { DateNavigation } from './components/date-navigation'
 import { DayEntriesCard } from './components/day-entries-card'
@@ -46,6 +48,7 @@ export function DashboardPage() {
   const trackedWeekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
   const dailyTargetMinutes = targetMinutesForDay(settings, selectedDate)
   const weeklyTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange)
+  const balance = cumulativeBalance({ entries, settings, throughDate: selectedDate, now })
 
   function toggleTimer() {
     if (timer.status.running) void timer.stop()
@@ -124,6 +127,7 @@ export function DashboardPage() {
             weekStart={startOfWeek(selectedDate, settings.weekStartsOn)}
             weeklyTargetMinutes={weeklyTargetMinutes}
           />
+          <CumulativeBalanceCard balance={balance} onOpenWeek={() => navigate('week')} />
           <RecentProjectsCard
             entries={entries}
             now={now}

@@ -95,6 +95,27 @@ describe('week metrics', () => {
     expect(metrics.forecastMinutes).toBe(2_400)
   })
 
+  it('distinguishes tracked, zero-hour, untracked, upcoming and non-working days', () => {
+    const entries = [
+      entry(1, 1, at(24, 9), at(24, 12)),
+      entry(2, 1, at(27, 9), null), // timer just started, no elapsed time yet
+    ]
+    const metrics = weekMetrics({
+      entries,
+      projects: [project(1, 'Project')],
+      settings,
+      selectedDate: at(27, 9),
+      now: at(27, 9).getTime(),
+    })
+    const statusOf = (dateKey: string) => metrics.days.find((day) => day.dateKey === dateKey)?.status
+
+    expect(statusOf('2026-08-24')).toBe('tracked')
+    expect(statusOf('2026-08-26')).toBe('untracked')
+    expect(statusOf('2026-08-27')).toBe('zero')
+    expect(statusOf('2026-08-28')).toBe('upcoming')
+    expect(statusOf('2026-08-29')).toBe('non-working')
+  })
+
   it('returns safe zero values for empty or zero-target ranges', () => {
     const emptyTargetSettings = { ...settings, weeklyTargetMinutes: 1, workingDays: [] }
     const metrics = weekMetrics({
