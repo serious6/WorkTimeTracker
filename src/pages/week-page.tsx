@@ -228,7 +228,9 @@ export function WeekPage() {
                       <span
                         className={cn(
                           'rounded-full px-2 py-0.5 text-xs',
-                          day.status === 'non-working' ? 'bg-muted text-muted-foreground' : 'text-warning',
+                          day.status === 'non-working' || day.status === 'upcoming'
+                            ? 'bg-muted text-muted-foreground'
+                            : 'text-warning',
                         )}
                       >
                         {DAY_STATUS_LABELS[day.status]}

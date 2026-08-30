@@ -7,9 +7,10 @@ import { addDays, formatDuration, formatShortDay, startOfDay, startOfWeek, toDat
 
 /**
  * `zero` marks a day that has bookings adding up to no time at all, which is
- * different from `untracked`, a working day without any booking.
+ * different from `untracked`, a working day without any booking. `upcoming`
+ * marks a working day that has not started yet, so it is not warned about.
  */
-export type DayStatus = 'tracked' | 'zero' | 'untracked' | 'non-working'
+export type DayStatus = 'tracked' | 'zero' | 'untracked' | 'upcoming' | 'non-working'
 
 export type RangeMetricsDay = {
   date: Date
@@ -25,13 +26,20 @@ export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   tracked: 'Tracked',
   zero: 'Booked without time',
   untracked: 'Not tracked',
+  upcoming: 'Upcoming',
   'non-working': 'Non-working day',
 }
 
-function dayStatus(trackedMinutes: number, hasEntries: boolean, workingDay: boolean): DayStatus {
+function dayStatus(
+  trackedMinutes: number,
+  hasEntries: boolean,
+  workingDay: boolean,
+  hasStarted: boolean,
+): DayStatus {
   if (trackedMinutes > 0) return 'tracked'
   if (hasEntries) return 'zero'
-  return workingDay ? 'untracked' : 'non-working'
+  if (!workingDay) return 'non-working'
+  return hasStarted ? 'untracked' : 'upcoming'
 }
 
 export type RangeMetricsProject = {
@@ -138,6 +146,7 @@ export function rangeMetrics({
   now?: number
 }): RangeMetrics {
   const nowDate = new Date(now)
+  const today = startOfDay(nowDate)
   const inRange = entriesInRange(entries, range, now)
   const dayList = timeline(range)
   const projectById = new Map(projects.map((project) => [project.id, project] as const))
@@ -160,6 +169,7 @@ export function rangeMetrics({
     const targetMinutesForDay = isWorkingDay(settings, day) ? dailyTarget : 0
     const hasEntries = inRange.some((entry) => touchesDay(entry, dayInterval, now))
     const workingDay = targetMinutesForDay > 0
+    const hasStarted = day <= today
     return {
       date: day,
       dateKey: toDateKey(day),
@@ -167,7 +177,7 @@ export function rangeMetrics({
       targetMinutes: targetMinutesForDay,
       workingDay,
       hasEntries,
-      status: dayStatus(trackedMinutes, hasEntries, workingDay),
+      status: dayStatus(trackedMinutes, hasEntries, workingDay, hasStarted),
     }
   })
 
