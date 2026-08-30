@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input, Select } from '@/components/ui/input'
+import { Checkbox, Input, Select } from '@/components/ui/input'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import {
@@ -131,12 +131,10 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Working days</legend>
             {WEEKDAYS.map((day) => (
-              <label className="flex items-center gap-2 text-sm" key={day}>
-                <input
+              <label className="flex min-h-10 items-center gap-2 text-sm" key={day}>
+                <Checkbox
                   checked={workingDays.includes(day)}
-                  className="size-4 accent-primary"
                   onChange={(event) => toggleWorkingDay(day, event.target.checked)}
-                  type="checkbox"
                 />
                 {WEEKDAY_LABELS[day]}
               </label>

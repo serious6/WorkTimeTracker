@@ -39,6 +39,23 @@ describe('Dialog', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  test('labels the dialog with the title and describes it with the description', () => {
+    renderDialog(true)
+    const dialog = screen.getByRole('dialog', { name: 'Test Dialog' })
+    const describedBy = dialog.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy as string)).toHaveTextContent('Dialog description')
+  })
+
+  test('does not describe the dialog when no description is provided', () => {
+    render(
+      <Dialog onClose={vi.fn()} open title="No Desc">
+        <span>content</span>
+      </Dialog>,
+    )
+    expect(screen.getByRole('dialog', { name: 'No Desc' })).not.toHaveAttribute('aria-describedby')
+  })
+
   test('does not render description when not provided', () => {
     render(
       <Dialog onClose={vi.fn()} open title="No Desc">

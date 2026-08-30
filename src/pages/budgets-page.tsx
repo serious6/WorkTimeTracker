@@ -3,17 +3,47 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Progress } from '@/components/ui/progress'
 import { toast } from '@/components/ui/toast-store'
 import { BudgetDialog } from '@/features/budgets/components/budget-dialog'
+import { budgetReport } from '@/features/budgets/budget-metrics'
 import { useDeleteProjectBudget, useProjectBudgets } from '@/features/budgets/budget-queries'
 import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import { useProjects } from '@/features/projects/project-queries'
-import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
+import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
+import { DELETED_PROJECT_NAME, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { formatDay, formatDuration, fromDateKey } from '@/lib/date'
+
+/** Goal-Gradient Effect: a budget is easier to judge as progress than as a total. */
+function BudgetProgress({
+  budget,
+  entries,
+  projectName,
+}: {
+  budget: ProjectBudget
+  entries: TimeEntry[]
+  projectName: string
+}) {
+  const report = budgetReport(budget, entries)
+  return (
+    <div className="flex items-center gap-3">
+      <Progress
+        indicatorClassName={report.exceeded ? 'bg-destructive' : undefined}
+        label={`Budget consumption for ${projectName}`}
+        value={report.consumptionPercentage}
+      />
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+        {formatDuration(report.trackedMinutes)} tracked ({report.consumptionPercentage}%
+        {report.exceeded ? ', exceeded' : ''})
+      </span>
+    </div>
+  )
+}
 
 export function BudgetsPage() {
   const { data: budgets = [] } = useProjectBudgets()
   const { data: projects = [] } = useProjects()
+  const { data: entries = [] } = useTimeEntries()
   const deleteBudget = useDeleteProjectBudget()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProjectBudget>()
@@ -57,33 +87,41 @@ export function BudgetsPage() {
           ) : (
             <ul className="divide-y divide-border">
               {budgets.map((budget) => (
-                <li className="flex items-center gap-3 py-2 text-sm" key={budget.id}>
-                  <span className="min-w-0 flex-1 truncate font-medium">
-                    {projectName(budget.projectId)}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {formatDuration(budget.budgetMinutes)} until{' '}
-                    {formatDay(fromDateKey(budget.dueDate))}
-                  </span>
-                  <Button
-                    aria-label={`Edit budget for ${projectName(budget.projectId)}`}
-                    onClick={() => {
-                      setEditing(budget)
-                      setDialogOpen(true)
-                    }}
-                    size="icon"
-                    variant="ghost"
-                  >
-                    <Pencil className="size-4" />
-                  </Button>
-                  <Button
-                    aria-label={`Delete budget for ${projectName(budget.projectId)}`}
-                    onClick={() => setDeleting(budget)}
-                    size="icon"
-                    variant="ghost"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                <li className="space-y-2 py-3 text-sm" key={budget.id}>
+                  <div className="flex items-center gap-3">
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {projectName(budget.projectId)}
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {formatDuration(budget.budgetMinutes)} until{' '}
+                      {formatDay(fromDateKey(budget.dueDate))}
+                    </span>
+                    <Button
+                      aria-label={`Edit budget for ${projectName(budget.projectId)}`}
+                      onClick={() => {
+                        setEditing(budget)
+                        setDialogOpen(true)
+                      }}
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <Pencil aria-hidden className="size-4" />
+                    </Button>
+                    <Button
+                      aria-label={`Delete budget for ${projectName(budget.projectId)}`}
+                      className="ml-2 text-destructive hover:bg-destructive/10"
+                      onClick={() => setDeleting(budget)}
+                      size="icon"
+                      variant="ghost"
+                    >
+                      <Trash2 aria-hidden className="size-4" />
+                    </Button>
+                  </div>
+                  <BudgetProgress
+                    budget={budget}
+                    entries={entries}
+                    projectName={projectName(budget.projectId)}
+                  />
                 </li>
               ))}
             </ul>

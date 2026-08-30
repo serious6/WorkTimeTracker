@@ -1,4 +1,5 @@
 import { ArrowRight } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { Project } from '@/features/projects/project-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -24,14 +25,10 @@ export function RecentProjectsCard({
     <Card>
       <CardHeader>
         <CardTitle>Recent Projects</CardTitle>
-        <button
-          className="inline-flex items-center gap-1 rounded-md text-xs text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onViewAll}
-          type="button"
-        >
+        <Button onClick={onViewAll} size="inline" variant="link">
           View all
-          <ArrowRight className="size-3" />
-        </button>
+          <ArrowRight aria-hidden className="size-3" />
+        </Button>
       </CardHeader>
       <CardContent>
         {recent.length === 0 ? (

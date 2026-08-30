@@ -34,7 +34,7 @@ export function Menu({ trigger, items, label }: { trigger: ReactNode; items: Men
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={label}
-        className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex size-10 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >

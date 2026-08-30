@@ -9,6 +9,7 @@ import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
+import { cn } from '@/lib/utils'
 
 export function CurrentlyTrackingCard({
   timer,
@@ -31,6 +32,9 @@ export function CurrentlyTrackingCard({
   const [note, setNoteValue] = useState('')
   const active = Boolean(status.running) || status.paused
   const project = projects.find((candidate) => candidate.id === status.projectId)
+  /** The running state is named, not only coloured, so it does not rely on colour alone. */
+  const state = status.paused ? 'Paused' : 'Running'
+  const statusLabel = project?.description ? `${state} · ${project.description}` : state
 
   const [noteSource, setNoteSource] = useState(status.running?.note ?? null)
   if (noteSource !== (status.running?.note ?? null)) {
@@ -41,7 +45,7 @@ export function CurrentlyTrackingCard({
   if (!active) {
     return (
       <Card aria-label="Currently Tracking" className="p-5" role="region">
-        <p className="text-sm font-medium text-primary">Currently Tracking</p>
+        <h2 className="text-sm font-medium text-primary">Currently Tracking</h2>
         {projects.length === 0 ? (
           <div className="flex flex-col items-start gap-3 pt-3">
             <p className="text-sm text-muted-foreground">Create your first project to start tracking.</p>
@@ -70,8 +74,12 @@ export function CurrentlyTrackingCard({
   }
 
   return (
-    <Card aria-label="Currently Tracking" className="p-5" role="region">
-      <p className="text-sm font-medium text-primary">Currently Tracking</p>
+    <Card
+      aria-label="Currently Tracking"
+      className={cn('p-5', status.running && 'border-success/60')}
+      role="region"
+    >
+      <h2 className="text-sm font-medium text-primary">Currently Tracking</h2>
       <div className="flex flex-col gap-4 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span
@@ -81,9 +89,7 @@ export function CurrentlyTrackingCard({
           />
           <div className="min-w-0">
             <p className="truncate text-xl font-semibold">{project?.name ?? DELETED_PROJECT_NAME}</p>
-            <p className="text-sm text-muted-foreground">
-              {status.paused ? 'Paused' : (project?.description ?? 'Tracking')}
-            </p>
+            <p className="text-sm text-muted-foreground">{statusLabel}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">

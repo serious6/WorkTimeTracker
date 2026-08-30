@@ -7,16 +7,20 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        outline: 'border border-border bg-transparent hover:bg-muted',
+        default: 'bg-primary-strong text-primary-foreground hover:bg-primary-strong/90',
+        outline: 'border border-input bg-transparent hover:bg-muted',
         ghost: 'bg-transparent hover:bg-muted',
         subtle: 'bg-muted text-foreground hover:bg-muted/70',
-        destructive: 'bg-destructive text-primary-foreground hover:bg-destructive/90',
+        destructive: 'bg-destructive-strong text-primary-foreground hover:bg-destructive-strong/90',
+        link: 'bg-transparent text-primary hover:underline',
       },
+      // Every size keeps a 40px minimum hit area (Fitts's Law); `sm` and `link`
+      // extend it past their visual box with a transparent pseudo element.
       size: {
         default: 'h-10 px-4',
-        sm: 'h-8 px-3 text-xs',
-        icon: 'size-9',
+        sm: "relative h-8 px-3 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",
+        icon: 'size-10',
+        inline: "relative h-6 text-xs after:absolute after:-inset-x-2 after:-inset-y-2 after:content-['']",
       },
     },
     defaultVariants: { variant: 'default', size: 'default' },

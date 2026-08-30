@@ -103,6 +103,21 @@ describe('CurrentlyTrackingCard – running state', () => {
     expect(screen.getByLabelText('Elapsed time')).toBeInTheDocument()
   })
 
+  it('names the running state instead of relying on the accent colour alone', () => {
+    const running = makeRunningEntry()
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ status: { running, paused: false, projectId: 1, elapsedMs: 0 } })}
+      />,
+    )
+    expect(screen.getByText('Running')).toBeInTheDocument()
+  })
+
   it('calls stop when Stop timer is clicked', () => {
     const stop = vi.fn()
     const running = makeRunningEntry()

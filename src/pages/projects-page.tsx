@@ -87,6 +87,7 @@ export function ProjectsPage() {
                   </Button>
                   <Button
                     aria-label={`Delete ${project.name}`}
+                    className="ml-2 text-destructive hover:bg-destructive/10"
                     onClick={() => setDeleting(project)}
                     size="icon"
                     variant="ghost"

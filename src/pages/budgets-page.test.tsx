@@ -36,6 +36,15 @@ describe('BudgetsPage', () => {
     expect(await screen.findByText('Alpha')).toBeInTheDocument()
   })
 
+  it('shows budget consumption as progress towards the goal', async () => {
+    const project = await seedProject('Alpha')
+    await seedBudget({ projectId: project.id, budgetMinutes: 4800, dueDate: FUTURE_DATE })
+    renderWithProviders(<BudgetsPage />)
+    expect(
+      await screen.findByRole('progressbar', { name: 'Budget consumption for Alpha' }),
+    ).toBeInTheDocument()
+  })
+
   it('disabled "Create budget" button when no projects', async () => {
     renderWithProviders(<BudgetsPage />)
     expect(await screen.findByRole('button', { name: /create budget/i })).toBeDisabled()

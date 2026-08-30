@@ -30,6 +30,23 @@ describe('AppSidebar', () => {
     expect(useNavigationStore.getState().view).toBe('reports')
   })
 
+  test('keeps navigation labels available to assistive technology when collapsed', () => {
+    renderWithProviders(<AppSidebar />)
+    const label = screen.getByText('Dashboard')
+    expect(label.className).toContain('sr-only')
+    expect(label.className).not.toContain('hidden')
+  })
+
+  test('lists the most used views first and Settings last', () => {
+    renderWithProviders(<AppSidebar />)
+    const labels = screen
+      .getAllByRole('button')
+      .map((item) => item.textContent?.trim())
+    expect(labels[0]).toBe('Dashboard')
+    expect(labels[1]).toBe('Time Entries')
+    expect(labels.at(-1)).toBe('Settings')
+  })
+
   test('shows local data notice', () => {
     renderWithProviders(<AppSidebar />)
     expect(screen.getByText('Local data')).toBeInTheDocument()
