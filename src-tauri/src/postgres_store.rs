@@ -31,7 +31,7 @@ pub struct PostgresStore {
 /// Timestamp string in the same ISO 8601 UTC/millisecond format that the
 /// SQLite backend produces via `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`.
 fn now_iso() -> String {
-    Utc::now().format("%Y-%m-%dT%H:%M:%.3fZ").to_string()
+    Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 impl From<postgres::Error> for StoreError {
@@ -529,7 +529,11 @@ impl Store for PostgresStore {
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = read_entry(&mut transaction, id, user_id).ok();
+        let current = match read_entry(&mut transaction, id, user_id) {
+            Ok(entry) => Some(entry),
+            Err(StoreError::NotFound) => None,
+            Err(error) => return Err(error),
+        };
         transaction.execute(
             "DELETE FROM time_entries WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
@@ -778,6 +782,35 @@ mod tests {
             "postgres-store-test-{}-{id}@example.com",
             std::process::id()
         )
+    }
+
+    /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
+    /// the frontend expects (matches SQLite's `strftime('%Y-%m-%dT%H:%M:%fZ')`),
+    /// e.g. `2024-01-01T12:34:56.789Z`. Regression test for a bug where a
+    /// missing `%S` dropped the whole-seconds field.
+    #[test]
+    fn now_iso_matches_the_sqlite_timestamp_format() {
+        let timestamp = now_iso();
+        assert_eq!(timestamp.len(), "2024-01-01T12:34:56.789Z".len());
+        assert_eq!(&timestamp[4..5], "-");
+        assert_eq!(&timestamp[7..8], "-");
+        assert_eq!(&timestamp[10..11], "T");
+        assert_eq!(&timestamp[13..14], ":");
+        assert_eq!(&timestamp[16..17], ":");
+        assert_eq!(&timestamp[19..20], ".");
+        assert_eq!(&timestamp[23..24], "Z");
+        assert!(
+            timestamp[0..4]
+                .chars()
+                .chain(timestamp[5..7].chars())
+                .chain(timestamp[8..10].chars())
+                .chain(timestamp[11..13].chars())
+                .chain(timestamp[14..16].chars())
+                .chain(timestamp[17..19].chars())
+                .chain(timestamp[20..23].chars())
+                .all(|c| c.is_ascii_digit()),
+            "expected only digits in the numeric fields of {timestamp}"
+        );
     }
 
     #[test]

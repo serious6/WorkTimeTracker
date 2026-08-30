@@ -7,7 +7,7 @@ import { defineConfig } from 'drizzle-kit'
  */
 const backend = process.env.WTT_DB_BACKEND === 'postgres' ? 'postgres' : 'sqlite'
 // Matches compose.yaml's `db` service (POSTGRES_USER/PASSWORD/DB=worktimetracker).
-const defaultPostgresUrl = `postgresql://worktimetracker${':'}worktimetracker@localhost:5432/worktimetracker`
+const defaultPostgresUrl = 'postgresql://worktimetracker:worktimetracker@localhost:5432/worktimetracker'
 
 export default backend === 'postgres'
   ? defineConfig({
