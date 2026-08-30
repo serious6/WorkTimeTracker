@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input, Select } from '@/components/ui/input'
+import { Field, Input, Select } from '@/components/ui/input'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { dayRange, entriesInRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
@@ -70,8 +70,7 @@ export function TimeManagementPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row">
-            <label className="block flex-1 space-y-1 text-sm font-medium">
-              Project
+            <Field className="flex-1" label="Project">
               <Select
                 name="projectId"
                 onChange={(event) => setProjectValue(event.target.value)}
@@ -84,16 +83,15 @@ export function TimeManagementPage() {
                   </option>
                 ))}
               </Select>
-            </label>
-            <label className="block space-y-1 text-sm font-medium sm:w-48">
-              Date
+            </Field>
+            <Field className="sm:w-48" label="Date">
               <Input
                 name="date"
                 onChange={(event) => setDateKey(event.target.value)}
                 type="date"
                 value={dateKey}
               />
-            </label>
+            </Field>
           </div>
 
           <div className="flex flex-wrap gap-2">

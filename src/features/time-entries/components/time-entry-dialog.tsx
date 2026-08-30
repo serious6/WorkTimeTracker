@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
-import { Input, Select } from '@/components/ui/input'
+import { Field, Input, Select } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast-store'
 import { useProjects } from '@/features/projects/project-queries'
 import { combineDateAndTime, formatDuration, toDateKey, toTimeKey } from '@/lib/date'
@@ -15,6 +15,8 @@ import {
   timeEntryFormSchema,
   type TimeEntry,
 } from '../time-entry-schema'
+
+type FieldError = { field: string | null; message: string }
 
 function emptyForm(dateKey: string) {
   const now = new Date()
@@ -45,7 +47,7 @@ export function TimeEntryDialog({
   const createEntry = useCreateTimeEntry()
   const updateEntry = useUpdateTimeEntry()
   const [values, setValues] = useState(() => emptyForm(toDateKey(date ?? new Date())))
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<FieldError>()
 
   const [openedFor, setOpenedFor] = useState<number | null>(null)
   const sourceEntry = entry ?? initialEntry
@@ -92,7 +94,8 @@ export function TimeEntryDialog({
       note: values.note || undefined,
     })
     if (!result.success) {
-      setError(result.error.issues[0]?.message)
+      const issue = result.error.issues[0]
+      setError({ field: typeof issue?.path[0] === 'string' ? issue.path[0] : null, message: issue?.message ?? '' })
       return
     }
 
@@ -107,8 +110,12 @@ export function TimeEntryDialog({
       }
       onClose()
     } catch (failure) {
-      setError(errorMessage(failure, 'The entry could not be saved.'))
+      setError({ field: null, message: errorMessage(failure, 'The entry could not be saved.') })
     }
+  }
+
+  function fieldError(field: string): string | undefined {
+    return error?.field === field ? error.message : undefined
   }
 
   return (
@@ -118,8 +125,7 @@ export function TimeEntryDialog({
       title={entry ? 'Edit time entry' : initialEntry ? 'Duplicate time entry' : 'Add time entry'}
     >
       <form className="space-y-4" onSubmit={submit}>
-        <label className="block space-y-1 text-sm font-medium">
-          Entry type
+        <Field error={fieldError('entryType')} label="Entry type">
           <Select
             name="entryType"
             onChange={(event) => update('entryType', event.target.value)}
@@ -128,9 +134,8 @@ export function TimeEntryDialog({
             <option value="work">Work</option>
             <option value="break">{BREAK_LABEL}</option>
           </Select>
-        </label>
-        <label className="block space-y-1 text-sm font-medium">
-          Project
+        </Field>
+        <Field error={fieldError('projectId')} label="Project">
           <Select
             disabled={isBreakEntry}
             name="projectId"
@@ -144,19 +149,17 @@ export function TimeEntryDialog({
               </option>
             ))}
           </Select>
-        </label>
-        <label className="block space-y-1 text-sm font-medium">
-          Date
+        </Field>
+        <Field error={fieldError('date')} label="Date">
           <Input
             name="date"
             onChange={(event) => update('date', event.target.value)}
             type="date"
             value={values.date}
           />
-        </label>
+        </Field>
         <div className="grid grid-cols-3 gap-3">
-          <label className="block space-y-1 text-sm font-medium">
-            Start time
+          <Field error={fieldError('startTime')} label="Start time">
             <Input
               name="startTime"
               onBlur={(event) => {
@@ -168,9 +171,8 @@ export function TimeEntryDialog({
               type="text"
               value={values.startTime}
             />
-          </label>
-          <label className="block space-y-1 text-sm font-medium">
-            End time
+          </Field>
+          <Field error={fieldError('endTime')} label="End time">
             <Input
               name="endTime"
               onBlur={(event) => {
@@ -182,22 +184,24 @@ export function TimeEntryDialog({
               type="text"
               value={values.endTime}
             />
-          </label>
-          <label className="block space-y-1 text-sm font-medium">
-            Duration
+          </Field>
+          <Field label="Duration">
             <Input name="duration" readOnly value={formatDuration(Math.max(0, durationMinutes))} />
-          </label>
+          </Field>
         </div>
-        <label className="block space-y-1 text-sm font-medium">
-          Note
+        <Field error={fieldError('note')} label="Note">
           <Input
             name="note"
             onChange={(event) => update('note', event.target.value)}
             placeholder="Optional"
             value={values.note}
           />
-        </label>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        </Field>
+        {error?.field === null && (
+          <p className="text-sm text-destructive" role="alert">
+            {error.message}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button onClick={onClose} variant="outline">
             Cancel

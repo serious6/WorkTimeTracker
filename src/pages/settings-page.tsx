@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox, Input, Select } from '@/components/ui/input'
+import { Checkbox, Field, Input, Select } from '@/components/ui/input'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import {
@@ -116,8 +116,7 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
           <CardTitle>Work schedule</CardTitle>
         </CardHeader>
         <CardContent className="max-w-md space-y-4">
-          <label className="block space-y-1 text-sm font-medium">
-            Weekly working time (hours)
+          <Field label="Weekly working time (hours)">
             <Input
               max="168"
               min="0"
@@ -127,17 +126,16 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
               type="number"
               value={weeklyHours}
             />
-          </label>
+          </Field>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Working days</legend>
             {WEEKDAYS.map((day) => (
-              <label className="flex min-h-10 items-center gap-2 text-sm" key={day}>
-                <Checkbox
-                  checked={workingDays.includes(day)}
-                  onChange={(event) => toggleWorkingDay(day, event.target.checked)}
-                />
-                {WEEKDAY_LABELS[day]}
-              </label>
+              <Checkbox
+                checked={workingDays.includes(day)}
+                key={day}
+                label={WEEKDAY_LABELS[day]}
+                onChange={(event) => toggleWorkingDay(day, event.target.checked)}
+              />
             ))}
           </fieldset>
           <p className="text-sm text-muted-foreground">
@@ -152,8 +150,7 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
           <CardTitle>Calendar</CardTitle>
         </CardHeader>
         <CardContent className="max-w-md">
-          <label className="block space-y-1 text-sm font-medium">
-            Week starts on
+          <Field label="Week starts on">
             <Select
               name="weekStartsOn"
               onChange={(event) => setWeekStartsOn(event.target.value as WorkSettings['weekStartsOn'])}
@@ -162,7 +159,7 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
               <option value="monday">Monday</option>
               <option value="sunday">Sunday</option>
             </Select>
-          </label>
+          </Field>
         </CardContent>
       </Card>
 
@@ -184,8 +181,14 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
             Arbeitszeitgesetz.
           </p>
           {LIMIT_FIELDS.map(({ field, label, hint }) => (
-            <label className="block space-y-1 text-sm font-medium" key={field}>
-              {label} <span className="font-normal text-muted-foreground">({hint})</span>
+            <Field
+              key={field}
+              label={
+                <>
+                  {label} <span className="font-normal text-muted-foreground">({hint})</span>
+                </>
+              }
+            >
               <Input
                 max="1440"
                 min="1"
@@ -197,7 +200,7 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
                 type="number"
                 value={limits[field]}
               />
-            </label>
+            </Field>
           ))}
         </CardContent>
       </Card>

@@ -2,7 +2,7 @@ import { Clock } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
 import { registrationSchema } from './auth-schema'
 import { PasswordPolicyChecklist } from './components/password-policy-checklist'
@@ -17,14 +17,15 @@ interface UserCreationPageProps {
 export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps) {
   const register = useRegister()
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<{ field: string | null; message: string }>()
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const result = registrationSchema.safeParse({ email: form.get('email'), password })
     if (!result.success) {
-      setError(result.error.issues[0]?.message)
+      const issue = result.error.issues[0]
+      setError({ field: typeof issue?.path[0] === 'string' ? issue.path[0] : null, message: issue?.message ?? '' })
       return
     }
 
@@ -32,7 +33,7 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
       await register.mutateAsync(result.data)
       onSuccess?.()
     } catch (failure) {
-      setError(errorMessage(failure, 'The account could not be created.'))
+      setError({ field: null, message: errorMessage(failure, 'The account could not be created.') })
     }
   }
 
@@ -45,12 +46,10 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
             <h1 className="text-lg font-semibold">Create your account</h1>
           </div>
           <form className="space-y-4" onSubmit={submit}>
-            <label className="block space-y-1 text-sm font-medium">
-              Email
+            <Field error={error?.field === 'email' ? error.message : undefined} label="Email">
               <Input autoComplete="username" name="email" placeholder="you@example.com" type="email" />
-            </label>
-            <label className="block space-y-1 text-sm font-medium">
-              Password
+            </Field>
+            <Field error={error?.field === 'password' ? error.message : undefined} label="Password">
               <Input
                 autoComplete="new-password"
                 name="password"
@@ -58,11 +57,11 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
                 type="password"
                 value={password}
               />
-            </label>
+            </Field>
             <PasswordPolicyChecklist password={password} />
-            {error && (
+            {error?.field === null && (
               <p className="text-sm text-destructive" role="alert">
-                {error}
+                {error.message}
               </p>
             )}
             <div className="flex justify-end gap-2">

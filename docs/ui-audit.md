@@ -37,12 +37,43 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 | `components/ui/menu.tsx` | Fitts's Law | 36×36 px trigger | **fixed**: 40×40 px |
 | `components/ui/dialog.tsx` | Accessibility | modal was named with `aria-label`, duplicating the visible title | **fixed**: `aria-labelledby`/`aria-describedby` point at the rendered title and description; focus trap, `Esc` and focus restore already existed |
 | `components/ui/input.tsx` | Consistency | no shared checkbox, so option lists styled their own | **fixed**: added `Checkbox` |
+| `components/ui/input.tsx` | Accessibility | `Input`/`Select`/`Textarea`/`Checkbox` were bare `className` wrappers: no generated `id`, no `aria-invalid`/`aria-describedby`, so validation errors were never announced | **fixed**: added a `Field` wrapper (`label`/`hint`/`error`) that generates the id with `useId()`, links `htmlFor`/`aria-describedby` and announces the error with `role="alert"`; `Checkbox` gained an optional `label` that renders a 40 px hit-area row. See "Field pattern" below. |
+| `components/ui/input.tsx` | Consistency | `Select` is a native `<select>` while the rest of the kit is custom-styled, and the deviation was undocumented | **accepted**, now documented: native `<select>` keeps the OS picker on mobile and free keyboard behaviour; see the comment above `Select` in `input.tsx` |
 | `components/ui/toast.tsx` | Accessibility, Peak-End | toasts already render in an `aria-live="polite"` region with `role="status"` | no change |
 | All icons | Accessibility | most decorative `lucide` icons are not marked `aria-hidden` | **accepted**: they carry no accessible name, so assistive technology ignores them; new code follows the rule in `CONTRIBUTING.md` |
 | Row triggers | Consistency | clickable list rows and grid cells used one-off `<button>` markup | **fixed**: they use the shared `Button` ghost variant with a 40 px minimum target |
 | In-card range selects | Consistency, Fitts's Law | `time-by-project-card.tsx` and `weekly-summary-card.tsx` shrank the shared field to 32 px | **fixed**: they use the shared field height |
 | `recent-projects-card.tsx` | Consistency | hand-written link button in the card header | **fixed**: `Button variant="link" size="inline"` |
 | `project-dialog.tsx` | Fitts's Law | 28 px colour swatches sitting 8 px apart | **fixed**: 40 px hit area, gap widened so the areas do not overlap |
+
+### Field pattern (`components/ui/input.tsx`)
+
+`Field` wraps one `Input`/`Select`/`Textarea` child with a linked `label`, an optional `hint` and
+an optional `error`:
+
+```tsx
+<Field error={error} label="Duration">
+  <Input name="duration" onChange={...} value={values.duration} />
+</Field>
+```
+
+- The control id is generated with `useId()` unless the child already has one; `label` gets a
+  matching `htmlFor` so `getByLabelText` finds the control.
+- `hint` renders as muted text linked through `aria-describedby`; it is replaced by `error` while
+  the field is invalid so only one message is read at a time.
+- `error` sets `aria-invalid="true"` on the control, appends the error paragraph's id to
+  `aria-describedby`, and renders the message with `role="alert"` so screen readers announce it
+  immediately. The `destructive` border and ring tokens apply automatically through the
+  `aria-invalid:` Tailwind variant on the shared field classes — no extra prop needed on the
+  control.
+- `Field` clones its child, so `Input`/`Select`/`Textarea` stay usable standalone; the wrapper is
+  additive.
+- `Checkbox` takes an optional `label` instead, rendering the control and text together in a
+  ≥40 px row (`min-h-10`), matching the working-day checkboxes on the Settings page.
+
+Migrated: the quick-add and custom-duration fields on Time Management, the manual entry dialog on
+Time Entries (including per-field zod error routing instead of one banner for every issue), the
+login and registration forms, and the Settings work-schedule fields.
 
 ## Per-view audit
 
@@ -89,12 +120,18 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 - Serial Position Effect: the view moved to the second sidebar slot — **fixed** (see Sidebar).
 - Postel's Law: manual start/end fields normalise `9`, `0900`, `09:00` and `9.5h`, while invalid
   values produce an inline error.
+- Accessibility: `TimeEntryDialog` routes each zod issue to the `Field` of the field it names
+  (`startTime`, `endTime`, `projectId`, …) — **fixed**, so the message sits next to the control it
+  describes and is announced through it, instead of one shared banner for every issue.
 
 ### Time Management (`pages/time-management-page.tsx`)
 
 - Postel's Law: the quick-add duration field accepts `2h 45m`, `90m`, `1.5h` and similar formats
   (`parseDurationMinutes`) and previews the parsed value before saving; invalid input produces the
   inline `DURATION_ERROR_MESSAGE` instead of a silent correction.
+- Accessibility: the duration and date fields in the quick-add row and the custom-duration dialog
+  use `Field` — **fixed**, `DURATION_ERROR_MESSAGE` is now linked via `aria-describedby` and
+  announced (`role="alert"`) instead of only being visible text.
 - Progressive disclosure: the custom duration lives in a dialog, the common presets stay on the page.
 - Tesler's Law: free-slot placement (`findFreeSlot`) resolves overlaps instead of asking the user.
 
@@ -131,7 +168,8 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 ### Settings (`pages/settings-page.tsx`)
 
 - Consistency: the working-day checkboxes were raw `<input type="checkbox">` — **fixed**, they use
-  the shared `Checkbox` and sit in 40 px high rows.
+  the shared `Checkbox` and sit in 40 px high rows; they now use `Checkbox`'s `label` prop instead
+  of a hand-wrapped `<label>`.
 - Hick's Law and Chunking: work schedule, calendar and working-time limits are three `Card`
   sections instead of one long form.
 - Progressive disclosure: German defaults are restorable with one action, so the limits do not have
@@ -144,7 +182,9 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 - Hierarchy: each page renders a single `h1` inside the auth card; the heading is `text-lg` because
   the card is the whole page.
 - Accessibility: password rules are a checklist with icon and text per rule, not a colour-coded bar;
-  errors are announced in text below the field.
+  the email/password fields use `Field` — **fixed**, so a validation error is linked to its field
+  via `aria-describedby`/`aria-invalid` and announced (`role="alert"`), not only visible text below
+  the form.
 - Progressive disclosure: registration is a separate page reached from the login page, so first-time
   use is not blocked by extra fields.
 
