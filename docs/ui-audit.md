@@ -35,7 +35,7 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 | `components/ui/button.tsx` | Fitts's Law | `size="icon"` was 36×36 px and `size="sm"` 32 px high | **fixed**: icon buttons are 40×40 px; `sm` and the new `inline` size extend their hit area with a transparent pseudo element |
 | `components/ui/button.tsx` | Consistency | inline text actions had no variant, so cards used hand-written markup | **fixed**: added the `link` variant and `inline` size |
 | `components/ui/menu.tsx` | Fitts's Law | 36×36 px trigger | **fixed**: 40×40 px |
-| `components/ui/dialog.tsx` | Accessibility | modal was named with `aria-label`, duplicating the visible title | **fixed**: `aria-labelledby`/`aria-describedby` point at the rendered title and description; focus trap, `Esc` and focus restore already existed |
+| `components/ui/dialog.tsx` | Accessibility, Consistency | modal behavior was inline and left the application reachable behind it | **fixed**: dialogs are portalled, inert the app root (with an `aria-hidden` fallback), trap and restore focus, lock body scroll, and close on `Esc`, close button, or a backdrop click |
 | `components/ui/input.tsx` | Consistency | no shared checkbox, so option lists styled their own | **fixed**: added `Checkbox` |
 | `components/ui/toast.tsx` | Accessibility, Peak-End | toasts already render in an `aria-live="polite"` region with `role="status"` | no change |
 | All icons | Accessibility | most decorative `lucide` icons are not marked `aria-hidden` | **accepted**: they carry no accessible name, so assistive technology ignores them; new code follows the rule in `CONTRIBUTING.md` |

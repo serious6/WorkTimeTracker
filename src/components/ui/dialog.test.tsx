@@ -3,16 +3,24 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { Dialog } from './dialog'
 
 function renderDialog(open: boolean, onClose = vi.fn()) {
+  const appRoot = document.createElement('div')
+  appRoot.id = 'root'
+  document.body.append(appRoot)
   render(
     <Dialog description="Dialog description" onClose={onClose} open={open} title="Test Dialog">
       <button type="button">First</button>
       <button type="button">Last</button>
     </Dialog>,
+    { container: appRoot },
   )
   return onClose
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  document.querySelectorAll('#root').forEach((element) => element.remove())
+  document.body.style.overflow = ''
+})
 
 describe('Dialog', () => {
   test('renders nothing when closed', () => {
@@ -23,6 +31,7 @@ describe('Dialog', () => {
   test('renders title and description when open', () => {
     renderDialog(true)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByTestId('dialog-backdrop').parentElement).toBe(document.body)
     expect(screen.getByText('Test Dialog')).toBeInTheDocument()
     expect(screen.getByText('Dialog description')).toBeInTheDocument()
   })
@@ -37,6 +46,20 @@ describe('Dialog', () => {
     const onClose = renderDialog(true)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  test('calls onClose when the backdrop is clicked', () => {
+    const onClose = renderDialog(true)
+    fireEvent.mouseDown(screen.getByTestId('dialog-backdrop'))
+    fireEvent.click(screen.getByTestId('dialog-backdrop'))
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  test('does not close when a drag starts in the panel and ends on the backdrop', () => {
+    const onClose = renderDialog(true)
+    fireEvent.mouseDown(screen.getByRole('dialog'))
+    fireEvent.click(screen.getByTestId('dialog-backdrop'))
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   test('a new onClose identity does not move focus from an input', () => {
@@ -138,6 +161,70 @@ describe('Dialog', () => {
     screen.getByRole('button', { name: 'Close dialog' }).focus()
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })
     expect(last).toHaveFocus()
+  })
+
+  test('returns stray focus to the dialog', () => {
+    renderDialog(true)
+    const outside = document.createElement('button')
+    document.body.append(outside)
+    outside.focus()
+    fireEvent.focusIn(outside)
+    expect(screen.getByRole('button', { name: 'Close dialog' })).toHaveFocus()
+  })
+
+  test('keeps the application root unavailable while open and restores trigger focus on close', () => {
+    const appRoot = document.createElement('div')
+    appRoot.id = 'root'
+    document.body.append(appRoot)
+    const content = (open: boolean) => (
+      <>
+        <button type="button">Trigger</button>
+        <Dialog onClose={vi.fn()} open={open} title="Modal">
+          <span>content</span>
+        </Dialog>
+      </>
+    )
+    const { rerender } = render(
+      content(false),
+      { container: appRoot },
+    )
+    const trigger = screen.getByRole('button', { name: 'Trigger' })
+    trigger.focus()
+    rerender(content(true))
+
+    if ('inert' in appRoot) {
+      expect(appRoot).toHaveAttribute('inert')
+    } else {
+      expect(appRoot).toHaveAttribute('aria-hidden', 'true')
+    }
+    expect(document.body).toHaveStyle({ overflow: 'hidden' })
+
+    rerender(content(false))
+    expect(trigger).toHaveFocus()
+    expect(document.body).not.toHaveStyle({ overflow: 'hidden' })
+  })
+
+  test('keeps body scroll locked until every stacked dialog closes', () => {
+    const appRoot = document.createElement('div')
+    appRoot.id = 'root'
+    document.body.append(appRoot)
+    const content = (firstOpen: boolean, secondOpen: boolean) => (
+      <>
+        <Dialog onClose={vi.fn()} open={firstOpen} title="First">
+          <span>content</span>
+        </Dialog>
+        <Dialog onClose={vi.fn()} open={secondOpen} title="Second">
+          <span>content</span>
+        </Dialog>
+      </>
+    )
+    const { rerender } = render(content(true, true), { container: appRoot })
+
+    rerender(content(false, true))
+    expect(document.body).toHaveStyle({ overflow: 'hidden' })
+
+    rerender(content(false, false))
+    expect(document.body).not.toHaveStyle({ overflow: 'hidden' })
   })
 
   test('non-escape/tab keys are ignored', () => {
