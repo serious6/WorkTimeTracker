@@ -221,6 +221,10 @@ fn read_entry(connection: &Connection, id: i64, user_id: i64) -> Result<TimeEntr
     )
 }
 
+pub fn entry_is_break(connection: &Connection, id: i64, user_id: i64) -> Result<bool> {
+    Ok(read_entry(connection, id, user_id)?.entry_type == "break")
+}
+
 pub fn overlaps(
     connection: &Connection,
     user_id: i64,

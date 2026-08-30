@@ -54,6 +54,7 @@ const SCOPED_KEYS = [
   'project-budgets',
   'work-settings',
   'time-entry-audits',
+  'time-entry-state',
 ] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
@@ -168,7 +169,7 @@ function readAudits(): TimeEntryAudit[] {
 }
 
 function entryStateKey(): string {
-  return `work-time-tracker.${requireUserId()}.time-entry-state`
+  return scopedKey('time-entry-state')
 }
 
 function readEntryState(): EntryState {

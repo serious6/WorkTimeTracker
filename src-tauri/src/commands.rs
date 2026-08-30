@@ -227,6 +227,12 @@ pub fn update_time_entry(
         input.validate()?;
         let user_id = current_user(&session)?;
         let connection = database.0.lock()?;
+        if input.project_id.is_some()
+            && input.entry_type.is_none()
+            && database::entry_is_break(&connection, id, user_id)?
+        {
+            return Err(AppError::validation("a break is not booked on a project"));
+        }
         if database::overlaps(
             &connection,
             user_id,
