@@ -1,6 +1,16 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
+/**
+ * Node's experimental Web Storage globals shadow the ones jsdom provides and
+ * warn ("localStorage is not available because --localstorage-file was not
+ * provided") as soon as Vitest sets up the test environment. Turning the
+ * feature off in the forked workers keeps jsdom's storage and the output clean.
+ */
+process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, '--no-experimental-webstorage']
+  .filter(Boolean)
+  .join(' ')
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
