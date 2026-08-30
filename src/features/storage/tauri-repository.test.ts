@@ -13,6 +13,7 @@ const { tauriRepository } = await import('./tauri-repository')
 const USER = { id: 1, email: 'user@example.com', createdAt: '2024-01-01T00:00:00Z' }
 const PROJECT = { id: 1, name: 'Test', description: null, color: '#22c55e', active: true, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
 const TIME_ENTRY = { id: 1, projectId: 1, startTime: '2024-01-01T09:00:00Z', endTime: '2024-01-01T10:00:00Z', note: null, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
+const AUDIT_RECORD = { id: 1, entity: 'timeEntry', entityId: 1, action: 'update', oldValue: '{"projectId":1,"startTime":"2024-01-01T09:00:00Z","endTime":null,"note":null}', newValue: '{"projectId":1,"startTime":"2024-01-01T09:00:00Z","endTime":"2024-01-01T10:00:00Z","note":null}', createdAt: '2024-01-01T10:00:00Z' }
 const BUDGET = { id: 1, projectId: 1, budgetMinutes: 6000, dueDate: '2024-12-31', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
 const SETTINGS = { weeklyTargetMinutes: 2400, workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], weekStartsOn: 'monday' }
 
@@ -103,6 +104,13 @@ describe('tauriRepository – time entries', () => {
     const input = { projectId: 1, startTime: '2024-01-01T09:00:00Z', endTime: '2024-01-01T10:00:00Z', note: null }
     await tauriRepository.updateTimeEntry(1, input)
     expect(mockInvoke).toHaveBeenCalledWith('update_time_entry', { id: 1, input })
+  })
+
+  test('listAuditLog invokes list_audit_log', async () => {
+    mockInvoke.mockResolvedValue([AUDIT_RECORD])
+    const result = await tauriRepository.listAuditLog()
+    expect(mockInvoke).toHaveBeenCalledWith('list_audit_log', {})
+    expect(result[0].action).toBe('update')
   })
 
   test('deleteTimeEntry invokes delete_time_entry', async () => {

@@ -38,6 +38,7 @@ flowchart TB
     entries_t["time_entries"]
     budgets_t["project_budgets"]
     audits_t["time_entry_audits"]
+    audit_log_t["audit_log"]
     settings_t["work_settings"]
     meta_t["app_metadata"]
     version_t["user_version pragma<br/>rusqlite_migration"]
@@ -64,6 +65,7 @@ flowchart TB
 | --- | --- | --- |
 | `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_create_schema.sql`, `drizzle/0001_create_project_budgets.sql`, `drizzle/0003_create_users.sql` |
 | `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0004_working_time_records.sql` |
+| `audit_log` | Compatibility table for the generic audit interface | `drizzle/0004_create_audit_log.sql` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0002_create_app_metadata.sql`, `src-tauri/src/database.rs` |
 | SQLite `user_version` | Number of applied migrations, managed by `rusqlite_migration` | `src-tauri/src/database.rs` (`migrations`) |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
@@ -86,6 +88,7 @@ erDiagram
   USERS o|--o| WORK_SETTINGS : configures
   USERS o|--o{ TIME_ENTRY_AUDITS : owns
   TIME_ENTRIES ||..o{ TIME_ENTRY_AUDITS : "changes recorded in"
+  USERS o|--o{ AUDIT_LOG : owns
   PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
 
@@ -93,6 +96,16 @@ erDiagram
     integer id PK
     text email UK
     text password_hash
+    text created_at
+  }
+  AUDIT_LOG {
+    integer id PK
+    integer user_id FK
+    text entity
+    integer entity_id
+    text action
+    text old_value
+    text new_value
     text created_at
   }
   PROJECTS {
@@ -296,6 +309,7 @@ applied migrations is stored in the SQLite `user_version` pragma by `rusqlite_mi
 | 5 | `0002_work_settings_working_days.sql` | Replaces `daily_target_minutes` with `working_days` |
 | 6 | `0003_create_users.sql` | Adds `users`, the `user_id` columns with indexes, and per-user `work_settings` |
 | 7 | `0004_working_time_records.sql` | Adds `time_entries.entry_type` and `time_entry_audits` |
+| 9 | `0004_create_audit_log.sql` | Adds the generic audit compatibility table |
 | 8 | `0005_work_settings_compliance_limits.sql` | Adds the eight working time limits to `work_settings` |
 
 Rows that predate migration 6 keep `user_id IS NULL` until the first registration claims them

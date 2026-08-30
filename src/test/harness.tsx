@@ -35,7 +35,7 @@ export async function resetAppState(): Promise<void> {
   await localRepository.logout()
   globalThis.localStorage?.clear()
   globalThis.sessionStorage?.clear()
-  useTimerStore.setState({ session: null })
+  useTimerStore.setState({ session: null, recovered: false })
   useNavigationStore.getState().navigate('dashboard')
   useDashboardStore.setState({ selectedDate: toDateKey(new Date()) })
   useToastStore.setState({ toasts: [] })

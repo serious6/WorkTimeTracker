@@ -4,8 +4,9 @@ use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use rusqlite_migration::{Migrations, M};
 
 use crate::models::{
-    ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
-    TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS, GERMAN_COMPLIANCE_LIMITS,
+    AuditLogEntry, ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget,
+    SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS,
+    GERMAN_COMPLIANCE_LIMITS,
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -42,6 +43,7 @@ fn migrations() -> Migrations<'static> {
         M::up(include_str!(
             "../../drizzle/0006_break_project_constraint.sql"
         )),
+        M::up(include_str!("../../drizzle/0004_create_audit_log.sql")),
     ])
 }
 
@@ -482,6 +484,22 @@ pub fn list_time_entry_audits(
     ))?;
     let audits = statement.query_map([user_id], audit_from_row)?;
     audits.collect()
+}
+
+pub fn list_audit_log(connection: &Connection, user_id: i64) -> Result<Vec<AuditLogEntry>> {
+    Ok(list_time_entry_audits(connection, user_id)?
+        .into_iter()
+        .take(200)
+        .map(|audit| AuditLogEntry {
+            id: audit.id,
+            entity: "timeEntry".into(),
+            entity_id: audit.time_entry_id,
+            action: audit.action.trim_end_matches('d').into(),
+            old_value: audit.old_value,
+            new_value: audit.new_value,
+            created_at: audit.recorded_at,
+        })
+        .collect())
 }
 
 const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
@@ -962,7 +980,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(8)
+            Ok(9)
         );
     }
 
@@ -978,7 +996,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(8)
+            Ok(9)
         );
         let user_id = user(&connection, "first@example.com");
         assert!(list_projects(&connection, user_id).unwrap().is_empty());

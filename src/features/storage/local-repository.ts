@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TIME_ENTRY_ENTITY, type AuditLogEntry } from '@/features/audit/audit-schema'
 import {
   DUPLICATE_EMAIL_MESSAGE,
   INVALID_CREDENTIALS_MESSAGE,
@@ -469,6 +470,19 @@ export const localRepository: Repository = {
     readAudits().sort(
       (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
     ),
+  listAuditLog: async () =>
+    readAudits()
+      .map((audit): AuditLogEntry => ({
+        id: audit.id,
+        entity: TIME_ENTRY_ENTITY,
+        entityId: audit.timeEntryId,
+        action: audit.action.slice(0, -1) as AuditLogEntry['action'],
+        oldValue: audit.oldValue,
+        newValue: audit.newValue,
+        createdAt: audit.recordedAt,
+      }))
+      .sort((left, right) => right.id - left.id)
+      .slice(0, 200),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {

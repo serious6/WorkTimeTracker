@@ -3,6 +3,7 @@ import { combineDateAndTime, toDateKey, toTimeKey } from '@/lib/date'
 
 export const OVERLAP_MESSAGE = 'This time overlaps with another time entry'
 export const ORDER_MESSAGE = 'End time must be later than start time'
+export const FUTURE_START_MESSAGE = 'The start time cannot be in the future'
 export const TIMER_ERROR_MESSAGE = 'Unable to start the timer. Please try again'
 export const DELETED_PROJECT_NAME = 'Deleted project'
 export const BREAK_PROJECT_MESSAGE = 'A break is not booked on a project'

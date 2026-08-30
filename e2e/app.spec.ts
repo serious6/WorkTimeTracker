@@ -183,6 +183,54 @@ test('adds, edits and deletes a manual time entry', async ({ page }) => {
   await expect(page.getByText('No time tracked today')).toBeVisible()
 })
 
+test('records every change of a time entry in the change history', async ({ page }) => {
+  await createProject(page, 'Mobile App')
+  await addEntry(page, 'Mobile App', '09:00', '11:30')
+  await expect(dialog(page)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Actions for Mobile App' }).click()
+  await page.getByRole('menuitem', { name: 'Edit' }).click()
+  await dialog(page).getByLabel('End time').fill('12:00')
+  await dialog(page).getByRole('button', { name: 'Save entry' }).click()
+  await expect(page.getByText('Entry updated')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Time Entries' }).click()
+  const history = page.getByRole('region', { name: 'Change History' })
+  await expect(history.getByText('Edited', { exact: true })).toBeVisible()
+  await expect(history.getByText('Created', { exact: true })).toBeVisible()
+  await expect(history.getByText(/^End: /)).toBeVisible()
+  await expect(history.getByText('first@example.com').first()).toBeVisible()
+})
+
+test('corrects the start of a running timer retroactively', async ({ page }) => {
+  await createProject(page, 'Mobile App')
+
+  await page.getByRole('button', { name: 'Select a project' }).click()
+  await page.getByRole('option', { name: 'Mobile App' }).click()
+  await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
+  await expect(page.getByText('Timer started')).toBeVisible()
+  const elapsed = page.getByLabel('Elapsed time')
+  await expect(elapsed).toBeVisible()
+
+  // An hour earlier, clamped to midnight so the correction never lands in the future.
+  const earlier = await page.evaluate(() => {
+    const now = new Date()
+    const target = now.getHours() > 0 ? new Date(now.getTime() - 60 * 60_000) : now
+    return `${`${target.getHours()}`.padStart(2, '0')}:00`
+  })
+
+  await page.getByRole('button', { name: 'Correct start time' }).click()
+  await dialog(page).getByLabel('Start time').fill(earlier)
+  await dialog(page).getByRole('button', { name: 'Save start time' }).click()
+  await expect(page.getByText('Start time updated')).toBeVisible()
+  await expect(elapsed).not.toHaveText('00:00:00')
+
+  await page.getByRole('button', { name: 'Time Entries' }).click()
+  const history = page.getByRole('region', { name: 'Change History' })
+  await expect(history.getByText('Edited', { exact: true })).toBeVisible()
+  await expect(history.getByText(/^Start: /)).toBeVisible()
+})
+
 test('rejects overlapping entries and invalid times', async ({ page }) => {
   await createProject(page, 'Research')
 

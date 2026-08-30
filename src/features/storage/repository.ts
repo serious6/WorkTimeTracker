@@ -1,4 +1,5 @@
 import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
+import type { AuditLogEntry } from '@/features/audit/audit-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { SaveWorkSettings, WorkSettings } from '@/features/settings/work-settings-schema'
@@ -21,6 +22,7 @@ export type Repository = {
   switchRunningTimeEntry: (id: number, input: SaveTimeEntry) => Promise<TimeEntry>
   deleteTimeEntry: (id: number) => Promise<void>
   listTimeEntryAudits: () => Promise<TimeEntryAudit[]>
+  listAuditLog: () => Promise<AuditLogEntry[]>
   listProjectBudgets: () => Promise<ProjectBudget[]>
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>

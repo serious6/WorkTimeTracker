@@ -4,6 +4,7 @@ import { useNavigationStore } from '@/app/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/input'
+import { AuditTrailCard } from '@/features/audit/components/audit-trail-card'
 import { dayRange, entriesInRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
 import { TimeEntryDialog } from '@/features/time-entries/components/time-entry-dialog'
@@ -111,6 +112,8 @@ export function TimeEntriesPage() {
           </Card>
         ))
       )}
+
+      <AuditTrailCard projectId={filter ? Number(filter) : null} />
 
       <TimeEntryDialog onClose={() => setDialogOpen(false)} open={dialogOpen} />
     </div>

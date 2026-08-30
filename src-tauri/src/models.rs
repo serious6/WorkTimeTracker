@@ -243,6 +243,18 @@ pub struct TimeEntryAudit {
     pub recorded_at: String,
 }
 
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditLogEntry {
+    pub id: i64,
+    pub entity: String,
+    pub entity_id: i64,
+    pub action: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveProjectBudget {
