@@ -137,12 +137,23 @@ fn validates_work_settings_like_the_contract() {
     }
 }
 
-fn email_exists(existing: &[String], candidate: &str) -> bool {
-    existing.iter().any(|email| email == candidate)
+fn insert_unique_email(existing: &mut Vec<String>, candidate: String) -> bool {
+    if existing.iter().any(|email| email == &candidate) {
+        return false;
+    }
+    existing.push(candidate);
+    true
 }
 
-fn project_budget_exists(existing_project_ids: &[i64], candidate_project_id: i64) -> bool {
-    existing_project_ids.contains(&candidate_project_id)
+fn insert_unique_project_budget(
+    existing_project_ids: &mut Vec<i64>,
+    candidate_project_id: i64,
+) -> bool {
+    if existing_project_ids.contains(&candidate_project_id) {
+        return false;
+    }
+    existing_project_ids.push(candidate_project_id);
+    true
 }
 
 #[test]
@@ -154,16 +165,28 @@ fn enforces_uniqueness_like_the_contract() {
         match case.kind.as_str() {
             "email" => {
                 let credentials: Credentials = serde_json::from_value(case.input).unwrap();
+                let mut existing = Vec::new();
                 assert!(
-                    email_exists(&[credentials.email.clone()], &credentials.email),
+                    insert_unique_email(&mut existing, credentials.email.clone()),
+                    "{}",
+                    case.name
+                );
+                assert!(
+                    !insert_unique_email(&mut existing, credentials.email),
                     "{}",
                     case.name
                 );
             }
             "projectBudget" => {
                 let budget: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
+                let mut existing = Vec::new();
                 assert!(
-                    project_budget_exists(&[budget.project_id], budget.project_id),
+                    insert_unique_project_budget(&mut existing, budget.project_id),
+                    "{}",
+                    case.name
+                );
+                assert!(
+                    !insert_unique_project_budget(&mut existing, budget.project_id),
                     "{}",
                     case.name
                 );
