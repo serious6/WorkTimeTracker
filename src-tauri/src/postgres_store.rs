@@ -920,6 +920,37 @@ mod tests {
 
     #[test]
     #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
+    fn maps_a_duplicate_project_budget_to_a_unique_violation() {
+        let Some(store) = test_store() else {
+            eprintln!("skipping: DATABASE_URL is not reachable");
+            return;
+        };
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let project = store
+            .insert_project(
+                user.id,
+                &SaveProject {
+                    name: "Budget project".into(),
+                    description: None,
+                    color: "#336699".into(),
+                    active: true,
+                },
+            )
+            .unwrap();
+        let budget = SaveProjectBudget {
+            project_id: project.id,
+            budget_minutes: 120,
+            due_date: "2026-09-01".into(),
+        };
+        store.insert_project_budget(user.id, &budget).unwrap();
+
+        let error = store.insert_project_budget(user.id, &budget).unwrap_err();
+
+        assert!(matches!(error, StoreError::UniqueViolation));
+    }
+
+    #[test]
+    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
     fn round_trips_a_project_through_postgres() {
         let Some(store) = test_store() else {
             eprintln!("skipping: DATABASE_URL is not reachable");

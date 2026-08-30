@@ -145,6 +145,9 @@ fn insert_if_unique<T: PartialEq>(existing: &mut Vec<T>, candidate: T) -> bool {
     true
 }
 
+// Database-level uniqueness constraints are exercised by the ignored live
+// Postgres tests in postgres_store; this regular contract test keeps the
+// shared uniqueness fixtures covered without requiring a running database.
 #[test]
 fn enforces_uniqueness_like_the_contract() {
     let uniqueness: Vec<UniquenessCase> =
