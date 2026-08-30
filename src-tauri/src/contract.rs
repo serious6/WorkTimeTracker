@@ -170,6 +170,7 @@ fn overlaps_existing(
 ) -> bool {
     let candidate_end = candidate.end_time.as_deref().unwrap_or(OPEN_END);
     existing.iter().enumerate().any(|(index, entry)| {
+        // Contract fixtures use 1-based indices to mirror persisted record IDs.
         if exclude_index.is_some_and(|exclude| exclude == index + 1) {
             return false;
         }

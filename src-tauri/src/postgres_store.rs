@@ -166,13 +166,13 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
 fn write_app_version(
     client: &mut impl postgres::GenericClient,
     version: &str,
-) -> Result<String, StoreError> {
+) -> Result<(), StoreError> {
     client.execute(
         "INSERT INTO app_metadata (key, value) VALUES ($1, $2)
          ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
         &[&APP_VERSION_KEY, &version],
     )?;
-    Ok(version.to_owned())
+    Ok(())
 }
 
 fn record_audit(
