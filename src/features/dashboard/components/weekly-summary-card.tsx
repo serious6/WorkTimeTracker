@@ -46,7 +46,7 @@ export function WeeklySummaryCard({
         <CardTitle>Weekly Summary</CardTitle>
         <Select
           aria-label="Summary range"
-          className="h-8 w-36 text-xs"
+          className="w-36 text-xs"
           onChange={(event) => setRange(event.target.value as SummaryRange)}
           value={range}
         >

@@ -42,7 +42,7 @@ export function TimeByProjectCard({
         <CardTitle>Time by Project</CardTitle>
         <Select
           aria-label="Chart range"
-          className="h-8 w-32 text-xs"
+          className="w-32 text-xs"
           onChange={(event) => setRange(event.target.value as RangeKey)}
           value={range}
         >

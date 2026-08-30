@@ -95,7 +95,8 @@ verifies it is current. Development-only npm tools are excluded because they are
 
 ## Documentation
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, and quality checks
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, and the UI design principles
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
 - [`docs/data-model.md`](docs/data-model.md) — logical data model of the persistence layer in C4 style
 - [`docs/security-advisories.md`](docs/security-advisories.md) — accepted dependency advisories and why
+- [`docs/ui-audit.md`](docs/ui-audit.md) — audit of every view against the UI design principles
