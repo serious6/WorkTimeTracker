@@ -11,7 +11,10 @@ const REQUIRED_ENV: &str = "REQUIRE_POSTGRES_TESTS";
 static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
 
 fn postgres_required() -> bool {
-    std::env::var(REQUIRED_ENV).is_ok_and(|value| !value.trim().is_empty() && value != "0")
+    std::env::var(REQUIRED_ENV).is_ok_and(|value| {
+        let value = value.trim();
+        !value.is_empty() && value != "0"
+    })
 }
 
 /// Connects to `DATABASE_URL`. Without a reachable server the test is skipped
