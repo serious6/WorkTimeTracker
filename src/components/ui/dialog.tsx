@@ -88,10 +88,7 @@ export function Dialog({
       panelEl,
     ]))
 
-    for (const element of autofocusCandidates) {
-      if (!isVisible(element, panelEl) || !tryFocus(element)) continue
-      break
-    }
+    autofocusCandidates.find((element) => isVisible(element, panelEl) && tryFocus(element))
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       previousFocus.current?.focus()
