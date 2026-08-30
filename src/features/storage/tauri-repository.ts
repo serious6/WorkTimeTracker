@@ -1,25 +1,54 @@
 import { invoke } from '@tauri-apps/api/core'
 import { z } from 'zod'
 import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
-import { auditLogEntrySchema } from '@/features/audit/audit-schema'
+import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
-import { timeEntryAuditSchema } from '@/features/time-entries/audit-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
 import { toAppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
 const appVersionSchema = z.string().min(1).nullable()
 
+/** Answer of `register` and `login`: the account and the id of the session. */
+const signedInSchema = z.object({ user: authUserSchema, sessionId: z.string().min(1) })
+
+const SESSION_ID_KEY = 'work-time-tracker.session-id'
+
+/**
+ * The backend keys its sessions by an opaque id instead of holding one ambient
+ * session, so every command names the session it acts for. The id is kept in
+ * `sessionStorage`: a reload of the window keeps the session, a restart of the
+ * application starts at the login page, just like the backend map.
+ */
+function sessionId(): string {
+  return globalThis.sessionStorage?.getItem(SESSION_ID_KEY) ?? ''
+}
+
+function rememberSession(id: string): void {
+  globalThis.sessionStorage?.setItem(SESSION_ID_KEY, id)
+}
+
+function forgetSession(): void {
+  globalThis.sessionStorage?.removeItem(SESSION_ID_KEY)
+}
+
 /** Rejected commands carry a serialized `AppError`, everything else is unexpected. */
 async function run(command: string, args: Record<string, unknown> = {}): Promise<unknown> {
   try {
-    return await invoke(command, args)
+    return await invoke(command, { sessionId: sessionId(), ...args })
   } catch (error) {
     throw toAppError(error) ?? (error instanceof Error ? error : new Error(String(error)))
   }
+}
+
+/** Starts a session and keeps its id for the following commands. */
+async function signIn(command: string, credentials: unknown) {
+  const { user, sessionId: id } = signedInSchema.parse(await run(command, { credentials }))
+  rememberSession(id)
+  return user
 }
 
 async function call<Schema extends z.ZodType>(
@@ -32,10 +61,11 @@ async function call<Schema extends z.ZodType>(
 
 export const tauriRepository: Repository = {
   currentSession: () => call('current_session', {}, authUserSchema.nullable()),
-  register: (credentials) => call('register', { credentials }, authUserSchema),
-  login: (credentials) => call('login', { credentials }, authUserSchema),
+  register: (credentials) => signIn('register', credentials),
+  login: (credentials) => signIn('login', credentials),
   logout: async () => {
     await run('logout')
+    forgetSession()
   },
   listProjects: () => call('list_projects', {}, projectSchema.array()),
   createProject: (input) => call('create_project', { input }, projectSchema),
@@ -43,7 +73,7 @@ export const tauriRepository: Repository = {
   deleteProject: async (id) => {
     await run('delete_project', { id })
   },
-  listTimeEntries: () => call('list_time_entries', {}, timeEntrySchema.array()),
+  listTimeEntries: (range) => call('list_time_entries', { range }, timeEntrySchema.array()),
   createTimeEntry: (input) => call('create_time_entry', { input }, timeEntrySchema),
   updateTimeEntry: (id, input) => call('update_time_entry', { id, input }, timeEntrySchema),
   updateTimeEntryNote: (id, note) => call('update_time_entry_note', { id, note }, timeEntrySchema),
@@ -52,9 +82,9 @@ export const tauriRepository: Repository = {
   deleteTimeEntry: async (id) => {
     await run('delete_time_entry', { id })
   },
-  listTimeEntryAudits: () =>
-    call('list_time_entry_audits', {}, timeEntryAuditSchema.array()),
-  listAuditLog: () => call('list_audit_log', {}, auditLogEntrySchema.array()),
+  listTimeEntryAudits: (range) =>
+    call('list_time_entry_audits', { range }, timeEntryAuditSchema.array()),
+  listAuditLog: (range) => call('list_audit_log', { range }, auditLogEntrySchema.array()),
   listProjectBudgets: () => call('list_project_budgets', {}, projectBudgetSchema.array()),
   createProjectBudget: (input) => call('create_project_budget', { input }, projectBudgetSchema),
   updateProjectBudget: (id, input) =>
@@ -62,7 +92,7 @@ export const tauriRepository: Repository = {
   deleteProjectBudget: async (id) => {
     await run('delete_project_budget', { id })
   },
-  listAbsences: () => call('list_absences', {}, absenceSchema.array()),
+  listAbsences: (range) => call('list_absences', { range }, absenceSchema.array()),
   createAbsence: (input) => call('create_absence', { input }, absenceSchema),
   updateAbsence: (id, input) => call('update_absence', { id, input }, absenceSchema),
   saveAbsences: (inputs, replacementIds, updateId) =>

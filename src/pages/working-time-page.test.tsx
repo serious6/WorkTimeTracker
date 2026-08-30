@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { localRepository } from '@/features/storage/local-repository'
+import { createLocalRepository } from '@/features/storage/local-repository'
 import {
   atTime,
   renderWithProviders,
@@ -83,7 +83,7 @@ describe('WorkingTimePage', () => {
       startTime: atTime(TODAY, 9),
       endTime: atTime(TODAY, 12),
     })
-    await localRepository.updateTimeEntryNote(entry.id, 'Corrected')
+    await createLocalRepository().updateTimeEntryNote(entry.id, 'Corrected')
 
     renderWithProviders(<WorkingTimePage />)
 

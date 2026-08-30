@@ -14,8 +14,6 @@ import { cn } from '@/lib/utils'
 export function CalendarPage() {
   const selectedDate = useSelectedDate()
   const settings = useWorkSettings()
-  const { data: entries = [] } = useTimeEntries()
-  const absences = useAbsenceIndex()
   const now = useTicker(true)
   const setSelectedDate = useDashboardStore((state) => state.setSelectedDate)
   const navigate = useNavigationStore((state) => state.navigate)
@@ -23,6 +21,14 @@ export function CalendarPage() {
   const month = monthRange(selectedDate)
   const gridStart = startOfWeek(month.start, settings.weekStartsOn)
   const days = Array.from({ length: 42 }, (_, index) => addDays(gridStart, index))
+  const gridEnd = addDays(gridStart, 42)
+  // The grid only shows these six weeks, so only they are read. A time entry
+  // carries a UTC timestamp, so its window is sent as instants of the local
+  // grid; an absence is keyed by its local date, so its window stays date keys.
+  const entryWindow = { from: gridStart.toISOString(), to: gridEnd.toISOString() }
+  const absenceWindow = { from: toDateKey(gridStart), to: toDateKey(gridEnd) }
+  const { data: entries = [] } = useTimeEntries(entryWindow)
+  const absences = useAbsenceIndex(absenceWindow)
   const weekdays = Array.from({ length: 7 }, (_, index) =>
     addDays(gridStart, index).toLocaleDateString('en-US', { weekday: 'short' }),
   )

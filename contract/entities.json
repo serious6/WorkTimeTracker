@@ -1,0 +1,396 @@
+{
+  "$comment": "Field names, types and nullability of every entity that crosses the IPC boundary. This file is the authority: src-tauri/src/contract.rs checks the Rust models in src-tauri/src/models.rs against it, src/features/storage/entities.contract.test.ts checks the Zod schemas. A field added on one side only fails one of the two suites. A field with defaultsFromNull is never null on the wire, the frontend schema still accepts null for rows written before the field existed and falls back to that value.",
+  "entities": {
+    "user": {
+      "rust": "User",
+      "zod": "authUserSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "project": {
+      "rust": "Project",
+      "zod": "projectSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "active",
+          "type": "boolean",
+          "nullable": false
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "timeEntry": {
+      "rust": "TimeEntry",
+      "zod": "timeEntrySchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "projectId",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "startTime",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "endTime",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "entryType",
+          "type": "string",
+          "nullable": false,
+          "sample": "work",
+          "defaultsFromNull": "work"
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "timeEntryAudit": {
+      "rust": "TimeEntryAudit",
+      "zod": "timeEntryAuditSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "timeEntryId",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "nullable": false,
+          "sample": "created"
+        },
+        {
+          "name": "actor",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "oldValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "newValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "recordedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "auditLogEntry": {
+      "rust": "AuditLogEntry",
+      "zod": "auditLogEntrySchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "nullable": false,
+          "sample": "timeEntry"
+        },
+        {
+          "name": "entityId",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "nullable": false,
+          "sample": "create"
+        },
+        {
+          "name": "oldValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "newValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "projectBudget": {
+      "rust": "ProjectBudget",
+      "zod": "projectBudgetSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "projectId",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "budgetMinutes",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "dueDate",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "absence": {
+      "rust": "Absence",
+      "zod": "absenceSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "type",
+          "type": "string",
+          "nullable": false,
+          "sample": "vacation"
+        },
+        {
+          "name": "date",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "absenceAudit": {
+      "rust": "AbsenceAudit",
+      "zod": "absenceAuditSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "absenceId",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "nullable": false,
+          "sample": "created"
+        },
+        {
+          "name": "actor",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "oldValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "newValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "recordedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "workSettings": {
+      "rust": "WorkSettings",
+      "zod": "workSettingsSchema",
+      "fields": [
+        {
+          "name": "weeklyTargetMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 2400
+        },
+        {
+          "name": "workingDays",
+          "type": "array",
+          "nullable": false,
+          "sample": [
+            "monday"
+          ]
+        },
+        {
+          "name": "weekStartsOn",
+          "type": "string",
+          "nullable": false,
+          "sample": "monday"
+        },
+        {
+          "name": "complianceLimits",
+          "type": "object",
+          "nullable": false,
+          "entity": "complianceLimits"
+        }
+      ]
+    },
+    "complianceLimits": {
+      "rust": "ComplianceLimits",
+      "zod": "complianceLimitsSchema",
+      "fields": [
+        {
+          "name": "breakThresholdMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 360
+        },
+        {
+          "name": "requiredBreakMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 30
+        },
+        {
+          "name": "longBreakThresholdMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 540
+        },
+        {
+          "name": "requiredLongBreakMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 45
+        },
+        {
+          "name": "minBreakBlockMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 15
+        },
+        {
+          "name": "maxContinuousWorkMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 360
+        },
+        {
+          "name": "maxDailyWorkMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 600
+        },
+        {
+          "name": "minRestMinutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": 660
+        }
+      ]
+    }
+  }
+}

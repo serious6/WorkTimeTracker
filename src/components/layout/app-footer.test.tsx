@@ -6,7 +6,9 @@ import { AppFooter } from './app-footer'
 
 const getAppVersion = vi.fn<() => Promise<string | null>>()
 
-vi.mock('@/features/storage', () => ({ repository: { getAppVersion: () => getAppVersion() } }))
+vi.mock('@/features/storage', () => ({
+  getRepository: () => ({ getAppVersion: () => getAppVersion() }),
+}))
 
 function renderFooter() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })

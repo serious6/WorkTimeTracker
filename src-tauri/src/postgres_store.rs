@@ -12,15 +12,17 @@ use r2d2_postgres::PostgresConnectionManager;
 
 use crate::{
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Project, ProjectBudget,
+        Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, Project, ProjectBudget,
         SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
-        User, WorkSettings, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
+        User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK,
+        GERMAN_COMPLIANCE_LIMITS,
     },
-    store::{Store, StoreError, SwitchEntryError, TimeEntryWriteError},
+    store::{
+        LoginAttempt, LoginAttemptStore, Store, StoreError, SwitchEntryError, TimeEntryWriteError,
+    },
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
-const AUDIT_LOG_LIMIT: i64 = 200;
 const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -36,6 +38,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0001_absences",
         include_str!("../../drizzle/0001_absences.sql"),
+    ),
+    (
+        "0002_login_attempts",
+        include_str!("../../drizzle/0002_login_attempts.sql"),
     ),
 ];
 
@@ -160,6 +166,30 @@ fn audit_from_row(row: &postgres::Row) -> TimeEntryAudit {
         old_value: row.get(4),
         new_value: row.get(5),
         recorded_at: row.get(6),
+    }
+}
+
+/// Collects the parameters of a list query. `$1` is always the user and `$2`
+/// the row limit, the optional range bounds follow from `$3` on.
+struct Params<'a> {
+    values: Vec<&'a (dyn postgres::types::ToSql + Sync)>,
+}
+
+impl<'a> Params<'a> {
+    fn new(user_id: &'a i64, limit: &'a i64) -> Self {
+        Self {
+            values: vec![user_id, limit],
+        }
+    }
+
+    /// Adds a value and answers its placeholder number.
+    fn push(&mut self, value: &'a String) -> usize {
+        self.values.push(value);
+        self.values.len()
+    }
+
+    fn as_slice(&self) -> &[&'a (dyn postgres::types::ToSql + Sync)] {
+        &self.values
     }
 }
 
@@ -369,6 +399,61 @@ fn overlaps_tx(
     Ok(row.get(0))
 }
 
+impl LoginAttemptStore for PostgresStore {
+    fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError> {
+        let mut client = self.conn()?;
+        Ok(client
+            .query_opt(
+                "SELECT failures, last_failure FROM login_attempts WHERE email = $1",
+                &[&email],
+            )?
+            .map(|row| LoginAttempt {
+                failures: row.get(0),
+                last_failure: row.get(1),
+            }))
+    }
+
+    fn reserve_login_attempt(
+        &self,
+        email: &str,
+        now: &str,
+        expired_before: &str,
+        limit: i64,
+    ) -> Result<i64, StoreError> {
+        let mut client = self.conn()?;
+        // One transaction, so the counter another login reads already contains
+        // this attempt. The upsert takes the row lock of the email, which
+        // serializes the concurrent attempts of one account.
+        let mut transaction = client.transaction()?;
+        transaction.execute(
+            "DELETE FROM login_attempts WHERE last_failure <= $1",
+            &[&expired_before],
+        )?;
+        let row = transaction.query_one(
+            "INSERT INTO login_attempts (email, failures, last_failure) VALUES ($1, 1, $2)
+             ON CONFLICT (email) DO UPDATE SET
+               failures = CASE
+                 WHEN login_attempts.failures > $3 THEN login_attempts.failures
+                 ELSE login_attempts.failures + 1
+               END,
+               last_failure = CASE
+                 WHEN login_attempts.failures > $3 THEN login_attempts.last_failure
+                 ELSE EXCLUDED.last_failure
+               END
+             RETURNING failures",
+            &[&email, &now, &limit],
+        )?;
+        transaction.commit()?;
+        Ok(row.get(0))
+    }
+
+    fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        client.execute("DELETE FROM login_attempts WHERE email = $1", &[&email])?;
+        Ok(())
+    }
+}
+
 impl Store for PostgresStore {
     fn list_projects(&self, user_id: i64) -> Result<Vec<Project>, StoreError> {
         let mut client = self.conn()?;
@@ -458,13 +543,36 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_time_entries(&self, user_id: i64) -> Result<Vec<TimeEntry>, StoreError> {
+    fn list_time_entries(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<TimeEntry>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        // An entry counts for the window when it overlaps it, so an entry that
+        // started before `from` and still runs is part of the answer.
+        let mut filter = String::new();
+        if let Some(from) = &range.from {
+            filter.push_str(&format!(
+                " AND (end_time IS NULL OR end_time > ${})",
+                params.push(from)
+            ));
+        }
+        if let Some(to) = &range.to {
+            filter.push_str(&format!(" AND start_time < ${}", params.push(to)));
+        }
         let mut client = self.conn()?;
+        // The newest rows are the interesting ones, the outer order stays
+        // ascending so that callers keep their chronological list.
         let rows = client.query(
             &format!(
-                "SELECT {ENTRY_COLUMNS} FROM time_entries WHERE user_id = $1 ORDER BY start_time"
+                "SELECT * FROM (
+                     SELECT {ENTRY_COLUMNS} FROM time_entries WHERE user_id = $1{filter}
+                     ORDER BY start_time DESC LIMIT $2
+                 ) AS ranged ORDER BY start_time"
             ),
-            &[&user_id],
+            params.as_slice(),
         )?;
         Ok(rows.iter().map(entry_from_row).collect())
     }
@@ -714,23 +822,44 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_time_entry_audits(&self, user_id: i64) -> Result<Vec<TimeEntryAudit>, StoreError> {
+    fn list_time_entry_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<TimeEntryAudit>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let mut filter = String::new();
+        if let Some(from) = &range.from {
+            filter.push_str(&format!(" AND recorded_at >= ${}", params.push(from)));
+        }
+        if let Some(to) = &range.to {
+            filter.push_str(&format!(" AND recorded_at < ${}", params.push(to)));
+        }
         let mut client = self.conn()?;
         let rows = client.query(
             &format!(
-                "SELECT {AUDIT_COLUMNS} FROM time_entry_audits WHERE user_id = $1
-                 ORDER BY recorded_at DESC, id DESC"
+                "SELECT {AUDIT_COLUMNS} FROM time_entry_audits WHERE user_id = $1{filter}
+                 ORDER BY recorded_at DESC, id DESC LIMIT $2"
             ),
-            &[&user_id],
+            params.as_slice(),
         )?;
         Ok(rows.iter().map(audit_from_row).collect())
     }
 
-    fn list_audit_log(&self, user_id: i64) -> Result<Vec<AuditLogEntry>, StoreError> {
+    fn list_audit_log(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<AuditLogEntry>, StoreError> {
+        let range = ListRange {
+            from: range.from.clone(),
+            to: range.to.clone(),
+            limit: Some(range.limit.unwrap_or(AUDIT_LOG_LIMIT).min(AUDIT_LOG_LIMIT)),
+        };
         Ok(self
-            .list_time_entry_audits(user_id)?
+            .list_time_entry_audits(user_id, &range)?
             .into_iter()
-            .take(AUDIT_LOG_LIMIT as usize)
             .map(|audit| AuditLogEntry {
                 id: audit.id,
                 entity: "timeEntry".into(),
@@ -812,13 +941,25 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_absences(&self, user_id: i64) -> Result<Vec<Absence>, StoreError> {
+    fn list_absences(&self, user_id: i64, range: &ListRange) -> Result<Vec<Absence>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let mut filter = String::new();
+        if let Some(from) = &range.from {
+            filter.push_str(&format!(" AND absence_date >= ${}", params.push(from)));
+        }
+        if let Some(to) = &range.to {
+            filter.push_str(&format!(" AND absence_date < ${}", params.push(to)));
+        }
         let mut client = self.conn()?;
         let rows = client.query(
             &format!(
-                "SELECT {ABSENCE_COLUMNS} FROM absences WHERE user_id = $1 ORDER BY absence_date"
+                "SELECT * FROM (
+                     SELECT {ABSENCE_COLUMNS} FROM absences WHERE user_id = $1{filter}
+                     ORDER BY absence_date DESC LIMIT $2
+                 ) AS ranged ORDER BY absence_date"
             ),
-            &[&user_id],
+            params.as_slice(),
         )?;
         Ok(rows.iter().map(absence_from_row).collect())
     }
@@ -1189,6 +1330,167 @@ mod tests {
                 .all(|c| c.is_ascii_digit()),
             "expected only digits in the numeric fields of {timestamp}"
         );
+    }
+
+    /// The counters behind the login lockout survive a restart of the process,
+    /// so they must be readable through a second connection and disappear once
+    /// their lockout has been served. The timestamps lie before every other
+    /// test of this file, so the eviction cannot reach their rows.
+    #[test]
+    fn counts_and_evicts_login_attempts_in_postgres() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let kept = "1971-01-01T09:00:00.000Z";
+
+        assert_eq!(
+            store
+                .reserve_login_attempt(&email, "1971-01-01T10:00:00.000Z", kept, 5)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            store
+                .reserve_login_attempt(&email, "1971-01-01T10:01:00.000Z", kept, 5)
+                .unwrap(),
+            2
+        );
+
+        assert_eq!(
+            store.read_login_attempt(&email).unwrap(),
+            Some(LoginAttempt {
+                failures: 2,
+                last_failure: "1971-01-01T10:01:00.000Z".to_owned(),
+            })
+        );
+
+        // An attempt of another email evicts the counters that served their
+        // lockout, so the table cannot grow without bound.
+        store
+            .reserve_login_attempt(
+                &unique_email(),
+                "1971-01-01T10:31:00.000Z",
+                "1971-01-01T10:30:00.000Z",
+                5,
+            )
+            .unwrap();
+        assert_eq!(store.read_login_attempt(&email).unwrap(), None);
+    }
+
+    /// The check and the count are one operation, so parallel logins of one
+    /// email cannot pass the limit together.
+    #[test]
+    fn counts_concurrent_login_attempts_exactly_once_each() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let store = &store;
+        let email = &email;
+
+        let mut counted: Vec<i64> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        store
+                            .reserve_login_attempt(
+                                email,
+                                "1971-01-01T10:00:00.000Z",
+                                "1971-01-01T09:00:00.000Z",
+                                1000,
+                            )
+                            .unwrap()
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+        counted.sort_unstable();
+
+        assert_eq!(counted, (1..=8).collect::<Vec<i64>>());
+    }
+
+    /// A list command must not answer with the whole table: the window is
+    /// pushed into SQL and the limit bounds what is left.
+    #[test]
+    fn lists_only_the_entries_of_the_asked_window() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let project = store
+            .insert_project(
+                user.id,
+                &SaveProject {
+                    name: "Range".into(),
+                    description: None,
+                    color: "#112233".into(),
+                    active: true,
+                },
+            )
+            .unwrap();
+        let entry = |day: &str| SaveTimeEntry {
+            project_id: Some(project.id),
+            start_time: format!("{day}T08:00:00.000Z"),
+            end_time: Some(format!("{day}T09:00:00.000Z")),
+            note: None,
+            entry_type: None,
+        };
+        for day in ["2026-01-05", "2026-02-05", "2026-03-05"] {
+            store.create_time_entry(user.id, &entry(day)).unwrap();
+        }
+
+        let window = ListRange {
+            from: Some("2026-02-01".into()),
+            to: Some("2026-03-01".into()),
+            limit: None,
+        };
+        let found = store.list_time_entries(user.id, &window).unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].start_time.starts_with("2026-02-05"));
+
+        let all = store
+            .list_time_entries(user.id, &ListRange::default())
+            .unwrap();
+        assert_eq!(all.len(), 3);
+
+        let newest = store
+            .list_time_entries(
+                user.id,
+                &ListRange {
+                    limit: Some(2),
+                    ..ListRange::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(newest.len(), 2);
+        assert!(newest[0].start_time.starts_with("2026-02-05"));
+        assert!(newest[1].start_time.starts_with("2026-03-05"));
+    }
+
+    #[test]
+    fn forgets_the_login_attempts_of_one_email_only() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let other = unique_email();
+        let kept = "1971-01-01T00:00:00.000Z";
+        store
+            .reserve_login_attempt(&email, "2026-08-30T10:00:00.000Z", kept, 5)
+            .unwrap();
+        store
+            .reserve_login_attempt(&other, "2026-08-30T10:00:00.000Z", kept, 5)
+            .unwrap();
+
+        store.clear_login_attempts(&email).unwrap();
+
+        assert_eq!(store.read_login_attempt(&email).unwrap(), None);
+        assert!(store.read_login_attempt(&other).unwrap().is_some());
     }
 
     /// `CREATE TABLE IF NOT EXISTS` is not race free in Postgres, so several

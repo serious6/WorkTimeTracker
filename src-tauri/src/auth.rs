@@ -1,15 +1,25 @@
 use std::{
     collections::HashMap,
-    sync::Mutex,
+    fmt::Write as _,
+    sync::{LazyLock, Mutex},
     time::{Duration, Instant},
 };
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    password_hash::{
+        rand_core::{OsRng, RngCore},
+        PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+    },
+    Algorithm, Argon2, Params, Version,
 };
+use serde::Serialize;
 
-use crate::error::{AppError, AppResult};
+use chrono::{DateTime, Utc};
+
+use crate::{
+    error::{AppError, AppResult},
+    store::LoginAttemptStore,
+};
 
 /// Idle timeout of a session. Every command resets it, an idle session ends.
 pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
@@ -17,6 +27,16 @@ pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
 pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
 /// Duration of the lockout that follows the last allowed attempt.
 pub const LOGIN_LOCKOUT_MINUTES: u64 = 15;
+
+/// Argon2id cost parameters, pinned instead of taken from `Argon2::default()`
+/// so a dependency update cannot silently weaken or slow down the hashing.
+/// They follow the OWASP recommendation for Argon2id (19 MiB of memory, two
+/// passes, one lane), which keeps a hash well below a second on a desktop
+/// machine while staying expensive for an attacker. The same numbers are part
+/// of `contract/domain-rules.json`.
+pub const ARGON2_MEMORY_KIB: u32 = 19_456;
+pub const ARGON2_ITERATIONS: u32 = 2;
+pub const ARGON2_PARALLELISM: u32 = 1;
 
 const LOCKED_OUT: &str = "Too many failed sign in attempts, please try again later";
 
@@ -29,104 +49,175 @@ struct ActiveSession {
     last_seen: Instant,
 }
 
-/// The user of the running application. Sessions are only kept in memory, so a
-/// restart always returns to the login page.
-#[derive(Default)]
-pub struct Session(Mutex<Option<ActiveSession>>);
+/// Opaque identifier of one signed in session. It is generated from the
+/// operating system RNG and never derived from the user, so it identifies a
+/// session in the command layer without carrying any account data.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct SessionId(String);
 
-impl Session {
-    pub fn user_id(&self) -> AppResult<Option<i64>> {
-        self.user_id_at(Instant::now())
+impl SessionId {
+    fn generate() -> Self {
+        let mut bytes = [0_u8; 32];
+        OsRng.fill_bytes(&mut bytes);
+        Self(bytes.iter().fold(String::new(), |mut id, byte| {
+            let _ = write!(id, "{byte:02x}");
+            id
+        }))
     }
 
-    fn user_id_at(&self, now: Instant) -> AppResult<Option<i64>> {
-        let mut session = self.0.lock()?;
-        let Some(active) = session.as_mut() else {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for SessionId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+/// The signed in sessions of the running application, keyed by their id. They
+/// are only kept in memory, so a restart always returns to the login page, and
+/// two windows can hold two different identities instead of sharing one.
+#[derive(Default)]
+pub struct Sessions(Mutex<HashMap<SessionId, ActiveSession>>);
+
+impl Sessions {
+    /// Resolves a session id to its user and extends the session.
+    pub fn user_id(&self, id: &SessionId) -> AppResult<Option<i64>> {
+        self.user_id_at(id, Instant::now())
+    }
+
+    fn user_id_at(&self, id: &SessionId, now: Instant) -> AppResult<Option<i64>> {
+        let mut sessions = self.0.lock()?;
+        // An idle session ends; expired sessions never pile up in the map.
+        sessions.retain(|_, session| {
+            now.duration_since(session.last_seen) < minutes(SESSION_TIMEOUT_MINUTES)
+        });
+        let Some(active) = sessions.get_mut(id) else {
             return Ok(None);
         };
-        if now.duration_since(active.last_seen) >= minutes(SESSION_TIMEOUT_MINUTES) {
-            *session = None;
-            return Ok(None);
-        }
         active.last_seen = now;
         Ok(Some(active.user_id))
     }
 
-    pub fn set(&self, user_id: Option<i64>) -> AppResult<()> {
-        self.set_at(user_id, Instant::now())
+    /// Starts a session and returns its id. The caller hands the id back with
+    /// every following command.
+    pub fn start(&self, user_id: i64) -> AppResult<SessionId> {
+        self.start_at(user_id, Instant::now())
     }
 
-    fn set_at(&self, user_id: Option<i64>, now: Instant) -> AppResult<()> {
-        *self.0.lock()? = user_id.map(|user_id| ActiveSession {
-            user_id,
-            last_seen: now,
-        });
+    fn start_at(&self, user_id: i64, now: Instant) -> AppResult<SessionId> {
+        let id = SessionId::generate();
+        self.0.lock()?.insert(
+            id.clone(),
+            ActiveSession {
+                user_id,
+                last_seen: now,
+            },
+        );
+        Ok(id)
+    }
+
+    /// Ends one session; the other sessions of the process stay signed in.
+    pub fn end(&self, id: &SessionId) -> AppResult<()> {
+        self.0.lock()?.remove(id);
         Ok(())
     }
 }
 
-#[derive(Clone, Copy)]
-struct Attempts {
-    failures: u32,
-    last_failure: Instant,
-}
+/// Counts the login attempts per email to slow down password guessing. The
+/// counters are persisted, so restarting the application does not clear a
+/// lockout, and expired counters are evicted with every attempt.
+pub struct LoginAttempts<'store>(&'store dyn LoginAttemptStore);
 
-/// Counts failed logins per email to slow down password guessing. The counters
-/// live in memory only and are lost with the process.
-#[derive(Default)]
-pub struct LoginAttempts(Mutex<HashMap<String, Attempts>>);
-
-impl LoginAttempts {
-    /// Rejects further attempts while an email is locked out.
-    pub fn check(&self, email: &str) -> AppResult<()> {
-        self.check_at(email, Instant::now())
+impl<'store> LoginAttempts<'store> {
+    pub fn new(store: &'store dyn LoginAttemptStore) -> Self {
+        Self(store)
     }
 
-    fn check_at(&self, email: &str, now: Instant) -> AppResult<()> {
-        let mut attempts = self.0.lock()?;
-        let Some(attempt) = attempts.get(email).copied() else {
-            return Ok(());
-        };
-        if now.duration_since(attempt.last_failure) >= minutes(LOGIN_LOCKOUT_MINUTES) {
-            attempts.remove(email);
-            return Ok(());
-        }
-        if attempt.failures >= MAX_LOGIN_ATTEMPTS {
+    /// Counts this attempt and rejects it while the email is locked out.
+    /// Counting before the password is verified is what makes the limit hold:
+    /// a separate check would let concurrent logins all read the same count and
+    /// verify a password together. A successful login clears the counter again.
+    pub fn begin(&self, email: &str) -> AppResult<()> {
+        self.begin_at(email, Utc::now())
+    }
+
+    fn begin_at(&self, email: &str, now: DateTime<Utc>) -> AppResult<()> {
+        let limit = i64::from(MAX_LOGIN_ATTEMPTS);
+        let counted = self.0.reserve_login_attempt(
+            email,
+            &timestamp(now),
+            &self.expired_before(now),
+            limit,
+        )?;
+        if counted > limit {
             return Err(AppError::RateLimited(LOCKED_OUT.to_owned()));
         }
         Ok(())
     }
 
-    pub fn record_failure(&self, email: &str) -> AppResult<()> {
-        self.record_failure_at(email, Instant::now())
-    }
-
-    fn record_failure_at(&self, email: &str, now: Instant) -> AppResult<()> {
-        let mut attempts = self.0.lock()?;
-        let attempt = attempts.entry(email.to_owned()).or_insert(Attempts {
-            failures: 0,
-            last_failure: now,
-        });
-        attempt.failures += 1;
-        attempt.last_failure = now;
-        Ok(())
-    }
-
     pub fn record_success(&self, email: &str) -> AppResult<()> {
-        self.0.lock()?.remove(email);
+        self.0.clear_login_attempts(email)?;
         Ok(())
     }
+
+    /// Timestamp at which a counter has served its lockout.
+    fn expired_before(&self, now: DateTime<Utc>) -> String {
+        timestamp(now - chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64))
+    }
+}
+
+/// The ISO 8601 UTC format every timestamp of the backend is written in, so
+/// stored counters compare as strings.
+fn timestamp(time: DateTime<Utc>) -> String {
+    time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
+/// Argon2id with the pinned parameters above.
+fn argon2() -> AppResult<Argon2<'static>> {
+    let params = Params::new(
+        ARGON2_MEMORY_KIB,
+        ARGON2_ITERATIONS,
+        ARGON2_PARALLELISM,
+        None,
+    )
+    .map_err(|error| AppError::internal(format!("invalid argon2 parameters: {error}")))?;
+    Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
 }
 
 /// Passwords are never stored in plaintext; Argon2id derives a salted hash.
 pub fn hash_password(password: &str) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
+    argon2()?
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
-        .map_err(|error| AppError::Database(error.to_string()))
+        .map_err(|error| AppError::internal(format!("password hashing failed: {error}")))
 }
 
+/// Hash of a random password, verified when no user row exists. It is derived
+/// once with the same parameters as a real credential, so the work of a login
+/// with an unknown email matches the work of a login with a known one.
+static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
+    let secret = SaltString::generate(&mut OsRng);
+    hash_password(secret.as_str()).unwrap_or_default()
+});
+
+#[cfg(test)]
+pub static DUMMY_VERIFICATIONS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// Spends the work of a verification without a stored hash. Always false, the
+/// dummy password is never known to a caller.
+pub fn verify_dummy_password(password: &str) -> bool {
+    #[cfg(test)]
+    DUMMY_VERIFICATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    verify_password(password, &DUMMY_HASH)
+}
+
+/// Verification reads the cost parameters from the stored hash, so hashes
+/// written with earlier parameters keep working.
 pub fn verify_password(password: &str, hash: &str) -> bool {
     PasswordHash::new(hash).is_ok_and(|parsed| {
         Argon2::default()
@@ -138,6 +229,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::{LoginAttempt, StoreError};
 
     #[test]
     fn verifies_only_the_hashed_password() {
@@ -149,11 +241,30 @@ mod tests {
     }
 
     #[test]
+    fn hashes_with_the_pinned_parameters() {
+        let hash = hash_password("Str0ng-Passphrase!!x").unwrap();
+
+        assert!(hash.starts_with("$argon2id$v=19$"), "{hash}");
+        assert!(
+            hash.contains(&format!(
+                "m={ARGON2_MEMORY_KIB},t={ARGON2_ITERATIONS},p={ARGON2_PARALLELISM}"
+            )),
+            "{hash}"
+        );
+    }
+
+    #[test]
     fn salts_every_hash() {
         assert_ne!(
             hash_password("Str0ng-Passphrase!!x").unwrap(),
             hash_password("Str0ng-Passphrase!!x").unwrap()
         );
+    }
+
+    #[test]
+    fn spends_a_verification_on_an_unknown_email() {
+        assert!(DUMMY_HASH.starts_with("$argon2id$v=19$"), "{}", *DUMMY_HASH);
+        assert!(!verify_dummy_password("Str0ng-Passphrase!!x"));
     }
 
     #[test]
@@ -163,15 +274,15 @@ mod tests {
 
     #[test]
     fn keeps_a_used_session_alive() {
-        let session = Session::default();
+        let sessions = Sessions::default();
         let now = Instant::now();
-        session.set_at(Some(7), now).unwrap();
+        let id = sessions.start_at(7, now).unwrap();
         let later = now + minutes(SESSION_TIMEOUT_MINUTES) - Duration::from_secs(1);
 
-        assert_eq!(session.user_id_at(later).unwrap(), Some(7));
+        assert_eq!(sessions.user_id_at(&id, later).unwrap(), Some(7));
         assert_eq!(
-            session
-                .user_id_at(later + minutes(SESSION_TIMEOUT_MINUTES / 2))
+            sessions
+                .user_id_at(&id, later + minutes(SESSION_TIMEOUT_MINUTES / 2))
                 .unwrap(),
             Some(7)
         );
@@ -179,65 +290,235 @@ mod tests {
 
     #[test]
     fn ends_an_idle_session() {
-        let session = Session::default();
+        let sessions = Sessions::default();
         let now = Instant::now();
-        session.set_at(Some(7), now).unwrap();
+        let id = sessions.start_at(7, now).unwrap();
 
         assert_eq!(
-            session
-                .user_id_at(now + minutes(SESSION_TIMEOUT_MINUTES))
+            sessions
+                .user_id_at(&id, now + minutes(SESSION_TIMEOUT_MINUTES))
                 .unwrap(),
             None
         );
-        assert_eq!(session.user_id().unwrap(), None);
+        assert_eq!(sessions.user_id(&id).unwrap(), None);
     }
 
     #[test]
-    fn locks_out_an_email_after_too_many_failures() {
-        let attempts = LoginAttempts::default();
+    fn gives_every_session_its_own_identity() {
+        let sessions = Sessions::default();
         let now = Instant::now();
+        let first = sessions.start_at(7, now).unwrap();
+        let second = sessions.start_at(9, now).unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(sessions.user_id_at(&first, now).unwrap(), Some(7));
+        assert_eq!(sessions.user_id_at(&second, now).unwrap(), Some(9));
+
+        sessions.end(&first).unwrap();
+
+        assert_eq!(sessions.user_id_at(&first, now).unwrap(), None);
+        assert_eq!(sessions.user_id_at(&second, now).unwrap(), Some(9));
+    }
+
+    #[test]
+    fn rejects_an_unknown_session_id() {
+        let sessions = Sessions::default();
+        sessions.start(7).unwrap();
+
+        assert_eq!(
+            sessions
+                .user_id(&SessionId::from("not-a-session".to_owned()))
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn generates_an_opaque_random_id() {
+        let id = SessionId::generate();
+
+        assert_eq!(id.as_str().len(), 64);
+        assert!(id.as_str().chars().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(id, SessionId::generate());
+    }
+
+    /// In-memory stand-in for the persisted counters.
+    #[derive(Default)]
+    struct FakeAttempts(Mutex<HashMap<String, LoginAttempt>>);
+
+    impl LoginAttemptStore for FakeAttempts {
+        fn reserve_login_attempt(
+            &self,
+            email: &str,
+            now: &str,
+            expired_before: &str,
+            limit: i64,
+        ) -> Result<i64, StoreError> {
+            let mut attempts = self.0.lock().unwrap();
+            attempts.retain(|_, attempt| attempt.last_failure.as_str() > expired_before);
+            let attempt = attempts.entry(email.to_owned()).or_insert(LoginAttempt {
+                failures: 0,
+                last_failure: now.to_owned(),
+            });
+            if attempt.failures <= limit {
+                attempt.failures += 1;
+                attempt.last_failure = now.to_owned();
+            }
+            Ok(attempt.failures)
+        }
+
+        fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError> {
+            Ok(self.0.lock().unwrap().get(email).cloned())
+        }
+
+        fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError> {
+            self.0.lock().unwrap().remove(email);
+            Ok(())
+        }
+    }
+
+    fn moment() -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-08-30T10:00:00.000Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn locks_out_an_email_after_too_many_attempts() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
 
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts.check_at("first@example.com", now).unwrap();
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
         }
 
         assert_eq!(
-            attempts.check_at("first@example.com", now),
+            attempts.begin_at("first@example.com", now),
             Err(AppError::RateLimited(LOCKED_OUT.to_owned()))
         );
-        attempts.check_at("second@example.com", now).unwrap();
+        attempts.begin_at("second@example.com", now).unwrap();
+    }
+
+    #[test]
+    fn counts_every_attempt_before_the_password_is_verified() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+
+        attempts.begin_at("first@example.com", now).unwrap();
+
+        // The attempt is counted by the store operation itself, so a second
+        // login cannot read a count that does not contain it yet.
+        assert_eq!(
+            store
+                .read_login_attempt("first@example.com")
+                .unwrap()
+                .unwrap()
+                .failures,
+            1
+        );
+    }
+
+    #[test]
+    fn keeps_a_lockout_across_a_restart() {
+        let store = FakeAttempts::default();
+        let now = moment();
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            LoginAttempts::new(&store)
+                .begin_at("first@example.com", now)
+                .unwrap();
+        }
+
+        // A new instance stands for the restarted process; the counters live
+        // in the store, not in the instance.
+        assert!(LoginAttempts::new(&store)
+            .begin_at("first@example.com", now)
+            .is_err());
     }
 
     #[test]
     fn releases_the_lockout_after_the_waiting_time() {
-        let attempts = LoginAttempts::default();
-        let now = Instant::now();
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
         }
 
-        assert!(attempts.check_at("first@example.com", now).is_err());
-        attempts
-            .check_at("first@example.com", now + minutes(LOGIN_LOCKOUT_MINUTES))
-            .unwrap();
+        assert!(attempts.begin_at("first@example.com", now).is_err());
+        let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64);
+        attempts.begin_at("first@example.com", later).unwrap();
     }
 
     #[test]
-    fn forgets_the_failures_after_a_successful_login() {
-        let attempts = LoginAttempts::default();
-        let now = Instant::now();
+    fn does_not_let_a_locked_out_email_extend_its_own_lockout() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
         for _ in 0..MAX_LOGIN_ATTEMPTS {
-            attempts
-                .record_failure_at("first@example.com", now)
-                .unwrap();
+            attempts.begin_at("first@example.com", now).unwrap();
+        }
+
+        let blocked = now + chrono::Duration::minutes(1);
+        assert!(attempts.begin_at("first@example.com", blocked).is_err());
+        // The rejected attempt froze the counter instead of moving it on.
+        let attempt = store
+            .read_login_attempt("first@example.com")
+            .unwrap()
+            .unwrap();
+        assert_eq!(attempt.failures, i64::from(MAX_LOGIN_ATTEMPTS) + 1);
+        assert_eq!(attempt.last_failure, timestamp(blocked));
+
+        let later = blocked + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64);
+        attempts.begin_at("first@example.com", later).unwrap();
+    }
+
+    #[test]
+    fn evicts_expired_counters_instead_of_keeping_them() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        attempts.begin_at("first@example.com", now).unwrap();
+
+        let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
+        attempts.begin_at("second@example.com", later).unwrap();
+
+        assert_eq!(store.read_login_attempt("first@example.com").unwrap(), None);
+    }
+
+    #[test]
+    fn counts_a_new_lockout_from_one_after_the_waiting_time() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            attempts.begin_at("first@example.com", now).unwrap();
+        }
+
+        let later = now + chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64 + 1);
+        attempts.begin_at("first@example.com", later).unwrap();
+
+        assert_eq!(
+            store
+                .read_login_attempt("first@example.com")
+                .unwrap()
+                .unwrap()
+                .failures,
+            1
+        );
+    }
+
+    #[test]
+    fn forgets_the_attempts_after_a_successful_login() {
+        let store = FakeAttempts::default();
+        let attempts = LoginAttempts::new(&store);
+        let now = moment();
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            attempts.begin_at("first@example.com", now).unwrap();
         }
         attempts.record_success("first@example.com").unwrap();
 
-        attempts.check_at("first@example.com", now).unwrap();
+        attempts.begin_at("first@example.com", now).unwrap();
     }
 }

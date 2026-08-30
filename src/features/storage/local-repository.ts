@@ -10,7 +10,10 @@ import {
 import {
   TIME_ENTRY_ENTITY,
   auditLogEntrySchema,
+  timeEntryAuditSchema,
+  type AuditAction,
   type AuditLogEntry,
+  type TimeEntryAudit,
 } from '@/features/audit/audit-schema'
 import {
   DUPLICATE_EMAIL_MESSAGE,
@@ -42,14 +45,10 @@ import {
 import {
   LOCKED_OUT_MESSAGE,
   LoginAttempts,
+  PBKDF2_ITERATIONS,
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
-import {
-  timeEntryAuditSchema,
-  type AuditAction,
-  type TimeEntryAudit,
-} from '@/features/time-entries/audit-schema'
 import {
   OVERLAP_MESSAGE,
   saveTimeEntrySchema,
@@ -57,6 +56,15 @@ import {
   type SaveTimeEntry,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
+import {
+  AUDIT_LOG_LIMIT,
+  filterListRange,
+  filterPointRange,
+  limitAscending,
+  limitDescending,
+  listLimit,
+  validateListRange,
+} from './list-range'
 import { AppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
@@ -308,8 +316,6 @@ function nextId(records: { id: number }[]): number {
   return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
 }
 
-const PBKDF2_ITERATIONS = 210_000
-
 function toBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
 }
@@ -370,11 +376,14 @@ function claimLegacyData(userId: number): void {
   }
 }
 
+export const FALLBACK_NOT_ALLOWED_MESSAGE =
+  'The browser fallback repository is only available in development and test builds'
+
 /**
  * Browser fallback used for UI development and end-to-end tests. It mirrors the
  * behaviour of the Rust commands, including overlap rejection.
  */
-export const localRepository: Repository = {
+const fallbackRepository: Repository = {
   currentSession: async () => {
     const user = readUsers().find(({ id }) => id === sessionUserId())
     return user ? toAuthUser(user) : null
@@ -466,8 +475,17 @@ export const localRepository: Repository = {
     )
     writeEntryState(updatedEntries, updatedAudits)
   },
-  listTimeEntries: async () =>
-    readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
+  listTimeEntries: async (range) => {
+    const window = validateListRange(range)
+    return limitAscending(
+      filterListRange(
+        readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
+        window,
+        (entry) => ({ start: entry.startTime, end: entry.endTime }),
+      ),
+      listLimit(window),
+    )
+  },
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
     if (parsed.entryType !== 'break' && parsed.projectId === null) {
@@ -557,13 +575,23 @@ export const localRepository: Repository = {
       current ? appendAudit(audits, id, 'deleted', current, null) : audits,
     )
   },
-  listTimeEntryAudits: async () =>
-    readAudits().sort(
-      (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
-    ),
-  listAuditLog: async () =>
-    readAudits()
-      .map((audit): AuditLogEntry => ({
+  listTimeEntryAudits: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(
+        readAudits().sort(
+          (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+        ),
+        window,
+        (audit) => audit.recordedAt,
+      ),
+      listLimit(window),
+    )
+  },
+  listAuditLog: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(readAudits(), window, (audit) => audit.recordedAt).map((audit): AuditLogEntry => ({
         id: audit.id,
         entity: TIME_ENTRY_ENTITY,
         entityId: audit.timeEntryId,
@@ -572,8 +600,10 @@ export const localRepository: Repository = {
         newValue: audit.newValue,
         createdAt: audit.recordedAt,
       }))
-      .sort((left, right) => right.id - left.id)
-      .slice(0, 200),
+        .sort((left, right) => right.id - left.id),
+      Math.min(listLimit(window, AUDIT_LOG_LIMIT), AUDIT_LOG_LIMIT),
+    )
+  },
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {
@@ -613,8 +643,17 @@ export const localRepository: Repository = {
       readBudgets().filter((budget) => budget.id !== id),
     )
   },
-  listAbsences: async () =>
-    readAbsenceState().absences.sort((left, right) => left.date.localeCompare(right.date)),
+  listAbsences: async (range) => {
+    const window = validateListRange(range)
+    return limitAscending(
+      filterPointRange(
+        readAbsenceState().absences.sort((left, right) => left.date.localeCompare(right.date)),
+        window,
+        (absence) => absence.date,
+      ),
+      listLimit(window),
+    )
+  },
   createAbsence: async (input) => {
     const parsed = validate(saveAbsenceSchema, input)
     const { absences, audits } = readAbsenceState()
@@ -709,4 +748,16 @@ export const localRepository: Repository = {
     return parsed
   },
   getAppVersion: async () => null,
+}
+
+/**
+ * Builds the fallback. Client-side storage is readable and writable by the user,
+ * so the fallback is a development and test tool and never a security boundary:
+ * constructing it in a production build is a bug and fails loudly.
+ */
+export function createLocalRepository(): Repository {
+  if (!import.meta.env.DEV && !import.meta.env.MODE.startsWith('test')) {
+    throw new Error(FALLBACK_NOT_ALLOWED_MESSAGE)
+  }
+  return fallbackRepository
 }

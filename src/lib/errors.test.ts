@@ -36,6 +36,9 @@ describe('structured errors', () => {
     expect(errorMessage({ kind: 'database', message: 'disk I/O error' }, 'fallback')).toBe(
       'fallback',
     )
+    expect(errorMessage({ kind: 'internal', message: 'password hashing failed' }, 'fallback')).toBe(
+      'fallback',
+    )
     expect(errorMessage(new AppError('validation', ''), 'fallback')).toBe('fallback')
   })
 

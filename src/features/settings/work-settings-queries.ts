@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { errorToast } from '@/components/ui/toast-store'
-import { repository } from '@/features/storage'
+import { getRepository } from '@/features/storage'
 import { errorMessage } from '@/lib/errors'
 import { DEFAULT_WORK_SETTINGS, type SaveWorkSettings, type WorkSettings } from './work-settings-schema'
 
@@ -14,7 +14,7 @@ export const WORK_SETTINGS_ERROR_MESSAGE =
 export function useWorkSettingsQuery() {
   return useQuery({
     queryKey: workSettingsKeys.all,
-    queryFn: repository.getWorkSettings,
+    queryFn: () => getRepository().getWorkSettings(),
   })
 }
 
@@ -36,7 +36,7 @@ export function useWorkSettings(): WorkSettings {
 export function useUpdateWorkSettings() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (settings: SaveWorkSettings) => repository.updateWorkSettings(settings),
+    mutationFn: (settings: SaveWorkSettings) => getRepository().updateWorkSettings(settings),
     onSuccess: (settings) => {
       queryClient.setQueryData(workSettingsKeys.all, settings)
     },

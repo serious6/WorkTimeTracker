@@ -1,13 +1,13 @@
 use tauri::State;
 
 use crate::{
-    auth::{self, LoginAttempts, Session},
+    auth::{self, LoginAttempts, SessionId, Sessions},
     error::{AppError, AppResult},
     logging,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, Credentials, Project, ProjectBudget, SaveAbsence,
-        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
-        WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, Project, ProjectBudget,
+        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
+        User, WorkSettings,
     },
     store::{Database, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
@@ -28,17 +28,65 @@ fn unique_error(message: &'static str) -> impl Fn(StoreError) -> AppError {
     }
 }
 
-/// Every command works on the data of the signed in user only.
-fn current_user(session: &State<'_, Session>) -> AppResult<i64> {
-    session.user_id()?.ok_or_else(AppError::not_signed_in)
+/// Verifies a password against the stored hash of the email. An unknown email
+/// verifies a dummy hash instead of returning early, so both paths cost the
+/// same Argon2 verification and cannot be told apart by their timing.
+fn verify_credentials(record: Option<(i64, String)>, password: &str) -> Option<i64> {
+    match record {
+        Some((user_id, hash)) => auth::verify_password(password, &hash).then_some(user_id),
+        None => {
+            auth::verify_dummy_password(password);
+            None
+        }
+    }
+}
+
+/// Every command works on the data of the signed in user only. The session is
+/// named by the command instead of read from an ambient singleton, so a command
+/// without an identity cannot compile.
+fn current_user(sessions: &State<'_, Sessions>, session_id: &SessionId) -> AppResult<i64> {
+    sessions
+        .user_id(session_id)?
+        .ok_or_else(AppError::not_signed_in)
+}
+
+/// Commands that run without a signed in user, each one deliberately public:
+/// the three that create or end a session, the session probe that answers
+/// `null` when nobody is signed in, the application version and the log sink of
+/// the user interface. Every other command is written with `authed_command!`,
+/// and the tests below fail when a hand written command is not listed here.
+pub const PUBLIC_COMMANDS: [&str; 6] = [
+    "register",
+    "login",
+    "logout",
+    "current_session",
+    "get_app_version",
+    "log_client_error",
+];
+
+/// A list command without a window still answers a bounded number of rows, so
+/// its cost never grows with the age of the account.
+fn list_range(range: Option<ListRange>) -> AppResult<ListRange> {
+    let mut range = range.unwrap_or_default();
+    range.validate()?;
+    Ok(range)
+}
+
+/// Answer of `register` and `login`: the account plus the id of the started
+/// session, which the caller repeats with every following command.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedIn {
+    user: User,
+    session_id: SessionId,
 }
 
 #[tauri::command]
 pub fn register(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
     mut credentials: Credentials,
-) -> AppResult<User> {
+) -> AppResult<SignedIn> {
     logging::logged("register", || {
         credentials.validate_registration()?;
         let password_hash = auth::hash_password(&credentials.password)?;
@@ -46,121 +94,54 @@ pub fn register(
             .0
             .register_user(&credentials.email, &password_hash)
             .map_err(unique_error(DUPLICATE_EMAIL))?;
-        session.set(Some(user.id))?;
-        Ok(user)
+        let session_id = sessions.start(user.id)?;
+        Ok(SignedIn { user, session_id })
     })
 }
 
 #[tauri::command]
 pub fn login(
     database: State<'_, Database>,
-    session: State<'_, Session>,
-    attempts: State<'_, LoginAttempts>,
+    sessions: State<'_, Sessions>,
     mut credentials: Credentials,
-) -> AppResult<User> {
+) -> AppResult<SignedIn> {
     logging::logged("login", || {
+        let attempts = LoginAttempts::new(database.0.as_ref());
         credentials
             .validate()
             .map_err(|_| AppError::validation(INVALID_CREDENTIALS))?;
-        attempts.check(&credentials.email)?;
-        let user = database
-            .0
-            .read_password_hash(&credentials.email)?
-            .filter(|(_, hash)| auth::verify_password(&credentials.password, hash))
-            .map(|(id, _)| id);
-        let user = match user {
-            Some(user) => user,
-            None => {
-                attempts.record_failure(&credentials.email)?;
-                return Err(AppError::validation(INVALID_CREDENTIALS));
-            }
-        };
+        // The attempt is counted before the password is verified, so parallel
+        // logins cannot verify more passwords together than the limit allows.
+        attempts.begin(&credentials.email)?;
+        let record = database.0.read_password_hash(&credentials.email)?;
+        let user = verify_credentials(record, &credentials.password)
+            .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
         let user = database
             .0
             .read_user(user)?
             .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
         attempts.record_success(&credentials.email)?;
-        session.set(Some(user.id))?;
-        Ok(user)
+        let session_id = sessions.start(user.id)?;
+        Ok(SignedIn { user, session_id })
     })
 }
 
 #[tauri::command]
-pub fn logout(session: State<'_, Session>) -> AppResult<()> {
-    logging::logged("logout", || session.set(None))
+pub fn logout(sessions: State<'_, Sessions>, session_id: String) -> AppResult<()> {
+    logging::logged("logout", || sessions.end(&SessionId::from(session_id)))
 }
 
 #[tauri::command]
 pub fn current_session(
     database: State<'_, Database>,
-    session: State<'_, Session>,
+    sessions: State<'_, Sessions>,
+    session_id: String,
 ) -> AppResult<Option<User>> {
     logging::logged("current_session", || {
-        let Some(user_id) = session.user_id()? else {
+        let Some(user_id) = sessions.user_id(&SessionId::from(session_id))? else {
             return Ok(None);
         };
         Ok(database.0.read_user(user_id)?)
-    })
-}
-
-#[tauri::command]
-pub fn list_projects(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<Project>> {
-    logging::logged("list_projects", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_projects(user_id)?)
-    })
-}
-
-#[tauri::command]
-pub fn create_project(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    mut input: SaveProject,
-) -> AppResult<Project> {
-    logging::logged("create_project", || {
-        input.validate()?;
-        let user_id = current_user(&session)?;
-        Ok(database.0.insert_project(user_id, &input)?)
-    })
-}
-
-#[tauri::command]
-pub fn update_project(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-    mut input: SaveProject,
-) -> AppResult<Project> {
-    logging::logged("update_project", || {
-        input.validate()?;
-        let user_id = current_user(&session)?;
-        Ok(database.0.update_project(id, user_id, &input)?)
-    })
-}
-
-#[tauri::command]
-pub fn delete_project(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-) -> AppResult<()> {
-    logging::logged("delete_project", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.delete_project(id, user_id)?)
-    })
-}
-
-#[tauri::command]
-pub fn list_time_entries(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<TimeEntry>> {
-    logging::logged("list_time_entries", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_time_entries(user_id)?)
     })
 }
 
@@ -174,296 +155,228 @@ fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
     }
 }
 
-#[tauri::command]
-pub fn create_time_entry(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    mut input: SaveTimeEntry,
-) -> AppResult<TimeEntry> {
-    logging::logged("create_time_entry", || {
+/// Wraps a command with the two things every command needs: the log frame and
+/// the lookup of the signed in user. The body only runs for a live session, so
+/// an authorisation check cannot be forgotten. A command that runs without a
+/// session has to be written by hand and named in [`PUBLIC_COMMANDS`].
+macro_rules! authed_command {
+    (
+        $(#[$meta:meta])*
+        fn $name:ident($($params:tt)*) -> $ret:ty,
+        |$db:ident, $user:ident| $body:expr
+    ) => {
+        $(#[$meta])*
+        #[tauri::command]
+        pub fn $name(
+            database: State<'_, Database>,
+            sessions: State<'_, Sessions>,
+            session_id: String,
+            $($params)*
+        ) -> AppResult<$ret> {
+            logging::logged(stringify!($name), || {
+                let $user = current_user(&sessions, &SessionId::from(session_id))?;
+                let $db = &database;
+                $body
+            })
+        }
+    };
+}
+
+authed_command!(
+    fn list_projects() -> Vec<Project>,
+    |db, user| Ok(db.0.list_projects(user)?)
+);
+
+authed_command!(
+    fn create_project(mut input: SaveProject) -> Project,
+    |db, user| {
+        input.validate()?;
+        Ok(db.0.insert_project(user, &input)?)
+    }
+);
+
+authed_command!(
+    fn update_project(id: i64, mut input: SaveProject) -> Project,
+    |db, user| {
+        input.validate()?;
+        Ok(db.0.update_project(id, user, &input)?)
+    }
+);
+
+authed_command!(
+    fn delete_project(id: i64) -> (),
+    |db, user| Ok(db.0.delete_project(id, user)?)
+);
+
+authed_command!(
+    fn list_time_entries(range: Option<ListRange>) -> Vec<TimeEntry>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_time_entries(user, &range)?)
+    }
+);
+
+authed_command!(
+    fn create_time_entry(mut input: SaveTimeEntry) -> TimeEntry,
+    |db, user| {
         input.validate()?;
         if input.project_id.is_none() && !input.is_break() {
             return Err(AppError::validation("Project is required"));
         }
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .create_time_entry(user_id, &input)
+        db.0.create_time_entry(user, &input)
             .map_err(map_time_entry_write_error)
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn update_time_entry(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-    mut input: SaveTimeEntry,
-) -> AppResult<TimeEntry> {
-    logging::logged("update_time_entry", || {
+authed_command!(
+    fn update_time_entry(id: i64, mut input: SaveTimeEntry) -> TimeEntry,
+    |db, user| {
         input.validate()?;
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .update_time_entry(id, user_id, &input)
+        db.0.update_time_entry(id, user, &input)
             .map_err(map_time_entry_write_error)
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn update_time_entry_note(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-    note: Option<String>,
-) -> AppResult<TimeEntry> {
-    logging::logged("update_time_entry_note", || {
+authed_command!(
+    fn update_time_entry_note(id: i64, note: Option<String>) -> TimeEntry,
+    |db, user| {
         let note = note
             .map(|text| text.trim().to_owned())
             .filter(|text| !text.is_empty());
         if note.as_ref().is_some_and(|note| note.chars().count() > 500) {
             return Err(AppError::validation("invalid note"));
         }
-        let user_id = current_user(&session)?;
-        Ok(database
-            .0
-            .update_time_entry_note(id, user_id, note.as_deref())?)
-    })
-}
+        Ok(db.0.update_time_entry_note(id, user, note.as_deref())?)
+    }
+);
 
-#[tauri::command]
-pub fn switch_running_time_entry(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-    mut input: SaveTimeEntry,
-) -> AppResult<TimeEntry> {
-    logging::logged("switch_running_time_entry", || {
+authed_command!(
+    fn switch_running_time_entry(id: i64, mut input: SaveTimeEntry) -> TimeEntry,
+    |db, user| {
         input.validate()?;
         if input.project_id.is_none() || input.end_time.is_some() {
             return Err(AppError::validation("invalid timer switch"));
         }
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .switch_running_time_entry(id, user_id, &input)
+        db.0.switch_running_time_entry(id, user, &input)
             .map_err(|error| match error {
                 SwitchEntryError::InvalidTimer => AppError::validation("invalid timer switch"),
                 SwitchEntryError::Overlap => AppError::conflict(OVERLAP),
                 SwitchEntryError::Store(error) => AppError::from(error),
             })
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn delete_time_entry(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-) -> AppResult<()> {
-    logging::logged("delete_time_entry", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.delete_time_entry(id, user_id)?)
-    })
-}
+authed_command!(
+    fn delete_time_entry(id: i64) -> (),
+    |db, user| Ok(db.0.delete_time_entry(id, user)?)
+);
 
-/// The audit trail is read only, it has no command that changes or removes it.
-#[tauri::command]
-pub fn list_time_entry_audits(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<TimeEntryAudit>> {
-    logging::logged("list_time_entry_audits", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_time_entry_audits(user_id)?)
-    })
-}
+authed_command!(
+    /// The audit trail is read only, it has no command that changes or removes it.
+    fn list_time_entry_audits(range: Option<ListRange>) -> Vec<TimeEntryAudit>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_time_entry_audits(user, &range)?)
+    }
+);
 
-#[tauri::command]
-pub fn list_audit_log(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<AuditLogEntry>> {
-    logging::logged("list_audit_log", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_audit_log(user_id)?)
-    })
-}
+authed_command!(
+    fn list_audit_log(range: Option<ListRange>) -> Vec<AuditLogEntry>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_audit_log(user, &range)?)
+    }
+);
 
-#[tauri::command]
-pub fn list_project_budgets(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<ProjectBudget>> {
-    logging::logged("list_project_budgets", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_project_budgets(user_id)?)
-    })
-}
+authed_command!(
+    fn list_project_budgets() -> Vec<ProjectBudget>,
+    |db, user| Ok(db.0.list_project_budgets(user)?)
+);
 
-#[tauri::command]
-pub fn create_project_budget(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    mut input: SaveProjectBudget,
-) -> AppResult<ProjectBudget> {
-    logging::logged("create_project_budget", || {
+authed_command!(
+    fn create_project_budget(mut input: SaveProjectBudget) -> ProjectBudget,
+    |db, user| {
         input.validate()?;
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .insert_project_budget(user_id, &input)
+        db.0.insert_project_budget(user, &input)
             .map_err(unique_error(DUPLICATE_BUDGET))
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn update_project_budget(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-    mut input: SaveProjectBudget,
-) -> AppResult<ProjectBudget> {
-    logging::logged("update_project_budget", || {
+authed_command!(
+    fn update_project_budget(id: i64, mut input: SaveProjectBudget) -> ProjectBudget,
+    |db, user| {
         input.validate()?;
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .update_project_budget(id, user_id, &input)
+        db.0.update_project_budget(id, user, &input)
             .map_err(unique_error(DUPLICATE_BUDGET))
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn delete_project_budget(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-) -> AppResult<()> {
-    logging::logged("delete_project_budget", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.delete_project_budget(id, user_id)?)
-    })
-}
+authed_command!(
+    fn delete_project_budget(id: i64) -> (),
+    |db, user| Ok(db.0.delete_project_budget(id, user)?)
+);
 
-#[tauri::command]
-pub fn list_absences(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<Absence>> {
-    logging::logged("list_absences", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_absences(user_id)?)
-    })
-}
+authed_command!(
+    fn list_absences(range: Option<ListRange>) -> Vec<Absence>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_absences(user, &range)?)
+    }
+);
 
-#[tauri::command]
-pub fn create_absence(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    mut input: SaveAbsence,
-) -> AppResult<Absence> {
-    logging::logged("create_absence", || {
+authed_command!(
+    fn create_absence(mut input: SaveAbsence) -> Absence,
+    |db, user| {
         input.validate()?;
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .insert_absence(user_id, &input)
+        db.0.insert_absence(user, &input)
             .map_err(unique_error(DUPLICATE_ABSENCE))
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn update_absence(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-    mut input: SaveAbsence,
-) -> AppResult<Absence> {
-    logging::logged("update_absence", || {
+authed_command!(
+    fn update_absence(id: i64, mut input: SaveAbsence) -> Absence,
+    |db, user| {
         input.validate()?;
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .update_absence(id, user_id, &input)
+        db.0.update_absence(id, user, &input)
             .map_err(unique_error(DUPLICATE_ABSENCE))
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn save_absences(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    mut inputs: Vec<SaveAbsence>,
-    replacement_ids: Vec<i64>,
-    update_id: Option<i64>,
-) -> AppResult<Vec<Absence>> {
-    logging::logged("save_absences", || {
-        if inputs.is_empty()
-            || inputs.iter_mut().any(|input| input.validate().is_err())
-            || inputs
-                .iter()
-                .map(|input| &input.date)
-                .collect::<std::collections::HashSet<_>>()
-                .len()
-                != inputs.len()
-        {
-            return Err(AppError::validation("invalid absence range"));
-        }
-        let user_id = current_user(&session)?;
-        database
-            .0
-            .save_absences(user_id, &inputs, &replacement_ids, update_id)
+authed_command!(
+    fn save_absences(
+        mut inputs: Vec<SaveAbsence>,
+        replacement_ids: Vec<i64>,
+        update_id: Option<i64>,
+    ) -> Vec<Absence>,
+    |db, user| {
+        SaveAbsence::validate_range(&mut inputs).map_err(AppError::validation)?;
+        db.0.save_absences(user, &inputs, &replacement_ids, update_id)
             .map_err(unique_error(DUPLICATE_ABSENCE))
-    })
-}
+    }
+);
 
-#[tauri::command]
-pub fn delete_absence(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    id: i64,
-) -> AppResult<()> {
-    logging::logged("delete_absence", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.delete_absence(id, user_id)?)
-    })
-}
+authed_command!(
+    fn delete_absence(id: i64) -> (),
+    |db, user| Ok(db.0.delete_absence(id, user)?)
+);
 
-#[tauri::command]
-pub fn list_absence_audits(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<Vec<AbsenceAudit>> {
-    logging::logged("list_absence_audits", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.list_absence_audits(user_id)?)
-    })
-}
+authed_command!(
+    fn list_absence_audits() -> Vec<AbsenceAudit>,
+    |db, user| Ok(db.0.list_absence_audits(user)?)
+);
 
-#[tauri::command]
-pub fn get_work_settings(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-) -> AppResult<WorkSettings> {
-    logging::logged("get_work_settings", || {
-        let user_id = current_user(&session)?;
-        Ok(database.0.read_settings(user_id)?)
-    })
-}
+authed_command!(
+    fn get_work_settings() -> WorkSettings,
+    |db, user| Ok(db.0.read_settings(user)?)
+);
 
-#[tauri::command]
-pub fn update_work_settings(
-    database: State<'_, Database>,
-    session: State<'_, Session>,
-    mut settings: WorkSettings,
-) -> AppResult<WorkSettings> {
-    logging::logged("update_work_settings", || {
+authed_command!(
+    fn update_work_settings(mut settings: WorkSettings) -> WorkSettings,
+    |db, user| {
         settings.validate()?;
-        let user_id = current_user(&session)?;
-        Ok(database.0.write_settings(user_id, &settings)?)
-    })
-}
+        Ok(db.0.write_settings(user, &settings)?)
+    }
+);
 
 #[tauri::command]
 pub fn get_app_version(database: State<'_, Database>) -> AppResult<Option<String>> {
@@ -486,4 +399,132 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
         .collect();
     logging::error(&format!("ui/{source}"), &message);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    /// The command source without the test module, so that the scanning tests
+    /// below do not read their own string literals as commands.
+    fn command_source() -> &'static str {
+        include_str!("commands.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .expect("the command source always has a first part")
+    }
+
+    /// The name declared by the first `fn` of a source block, whatever
+    /// qualifiers (`pub`, `pub(crate)`, `async`, further attributes) stand in
+    /// front of it. `None` when the block declares no function at all.
+    fn declared_name(block: &str) -> Option<&str> {
+        // `(` ends the name, so `fn login(` yields the tokens `fn` and `login`.
+        let mut tokens = block
+            .split(|character: char| character.is_whitespace() || character == '(')
+            .filter(|token| !token.is_empty());
+        tokens.find(|token| *token == "fn")?;
+        tokens.next()
+    }
+
+    /// Names of the commands that are written by hand, that is every
+    /// `#[tauri::command]` that survives in the source instead of being
+    /// generated by `authed_command!`.
+    fn hand_written_commands() -> Vec<String> {
+        command_source()
+            .split("#[tauri::command]")
+            .skip(1)
+            .filter_map(|block| {
+                let name = declared_name(block).expect("a command attribute declares a function");
+                // `pub fn $name` is the template inside `authed_command!` itself.
+                (!name.starts_with('$')).then(|| name.to_owned())
+            })
+            .collect()
+    }
+
+    /// Names of the commands generated by `authed_command!`, read from the
+    /// `fn <name>(...)` line of every invocation of the macro. The definition
+    /// of the macro is written as `authed_command {`, so it is not an
+    /// invocation and cannot be mistaken for one.
+    fn generated_commands() -> Vec<String> {
+        command_source()
+            .split("authed_command!(")
+            .skip(1)
+            .map(|block| {
+                declared_name(block)
+                    .expect("an authed_command! invocation declares a function")
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_hand_written_commands_are_exactly_the_public_ones() {
+        let mut hand_written = hand_written_commands();
+        hand_written.sort();
+        let mut public: Vec<String> = PUBLIC_COMMANDS
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect();
+        public.sort();
+
+        assert_eq!(
+            hand_written, public,
+            "a command that skips authed_command! has to be listed in PUBLIC_COMMANDS, \
+             and PUBLIC_COMMANDS may not name anything else"
+        );
+    }
+
+    #[test]
+    fn every_registered_command_is_authenticated_or_public() {
+        let generated = generated_commands();
+        let registered: Vec<String> = include_str!("lib.rs")
+            .split("commands::")
+            .skip(1)
+            .filter_map(|rest| {
+                rest.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                    .next()
+                    .map(str::to_owned)
+            })
+            .filter(|name| !name.is_empty())
+            .collect();
+
+        assert!(
+            registered.len() > 20,
+            "the handler list was not found: {registered:?}"
+        );
+        for name in registered {
+            assert!(
+                generated.contains(&name) || PUBLIC_COMMANDS.contains(&name.as_str()),
+                "{name} is registered but neither wrapped by authed_command! nor public"
+            );
+        }
+    }
+
+    #[test]
+    fn verifies_a_dummy_hash_when_the_email_is_unknown() {
+        let before = auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst);
+
+        assert_eq!(verify_credentials(None, "Str0ng-Passphrase!!x"), None);
+
+        assert_eq!(
+            auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst),
+            before + 1,
+            "an unknown email must still verify a password"
+        );
+    }
+
+    #[test]
+    fn verifies_the_stored_hash_of_a_known_email() {
+        let hash = auth::hash_password("Str0ng-Passphrase!!x").unwrap();
+        let before = auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst);
+
+        assert_eq!(
+            verify_credentials(Some((7, hash.clone())), "Str0ng-Passphrase!!x"),
+            Some(7)
+        );
+        assert_eq!(verify_credentials(Some((7, hash)), "wrong-password"), None);
+
+        assert_eq!(auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst), before);
+    }
 }

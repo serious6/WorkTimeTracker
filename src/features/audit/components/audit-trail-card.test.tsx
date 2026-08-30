@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { localRepository } from '@/features/storage/local-repository'
+import { createLocalRepository } from '@/features/storage/local-repository'
 import { atTime, renderWithProviders, resetAppState, seedProject, seedTimeEntry, signIn } from '@/test/harness'
 import { AuditTrailCard } from './audit-trail-card'
 
@@ -16,7 +16,7 @@ describe('AuditTrailCard', () => {
   })
 
   it('shows a load error instead of the empty state', async () => {
-    vi.spyOn(localRepository, 'listAuditLog').mockRejectedValueOnce(new Error('unavailable'))
+    vi.spyOn(createLocalRepository(), 'listAuditLog').mockRejectedValueOnce(new Error('unavailable'))
 
     renderWithProviders(<AuditTrailCard />)
 
@@ -32,7 +32,7 @@ describe('AuditTrailCard', () => {
       startTime: atTime(reference, 9),
       endTime: atTime(reference, 10),
     })
-    await localRepository.updateTimeEntry(entry.id, {
+    await createLocalRepository().updateTimeEntry(entry.id, {
       projectId: project.id,
       startTime: atTime(reference, 9).toISOString(),
       endTime: atTime(reference, 11).toISOString(),

@@ -6,6 +6,13 @@ export const SESSION_TIMEOUT_MINUTES = 480
 export const MAX_LOGIN_ATTEMPTS = 5
 export const LOGIN_LOCKOUT_MINUTES = 15
 
+/**
+ * Iterations of the PBKDF2-SHA256 fallback hash. PBKDF2 is the strongest key
+ * derivation the browser offers; the count follows the OWASP recommendation for
+ * PBKDF2-HMAC-SHA256 and is pinned by `contract/domain-rules.json`.
+ */
+export const PBKDF2_ITERATIONS = 210_000
+
 export const LOCKED_OUT_MESSAGE = 'Too many failed sign in attempts, please try again later'
 
 const MINUTE = 60_000

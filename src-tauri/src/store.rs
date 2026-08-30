@@ -3,8 +3,9 @@
 use crate::{
     config::DbConfig,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, Project, ProjectBudget, SaveAbsence, SaveProject,
-        SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, ListRange, Project, ProjectBudget, SaveAbsence,
+        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
+        WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -57,8 +58,45 @@ impl From<StoreError> for SwitchEntryError {
     }
 }
 
+/// Failed logins of one email. Persisted, so a restart does not clear a lockout.
+/// Read by the tests of the counters only; the login itself works with the
+/// count that [`LoginAttemptStore::reserve_login_attempt`] answers.
+#[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
+pub struct LoginAttempt {
+    pub failures: i64,
+    /// ISO 8601 UTC timestamp of the last failure, as written by the backend.
+    pub last_failure: String,
+}
+
+/// Counters behind the login lockout, kept apart from `Store` so the rule can
+/// be tested without the rest of the storage.
+pub trait LoginAttemptStore {
+    /// Counts one login attempt of `email` and answers how many attempts are
+    /// counted for it since its last successful login, this one included.
+    ///
+    /// Evicting the expired counters, reading the counter and counting the
+    /// attempt are one atomic operation, so concurrent logins cannot all read
+    /// the same count before any of them is written and thereby exceed the
+    /// limit together. A counter whose last attempt lies at or before
+    /// `expired_before` has served its lockout and starts over at one, and a
+    /// counter that already passed `limit` is answered unchanged, so a locked
+    /// out email cannot extend its own lockout.
+    fn reserve_login_attempt(
+        &self,
+        email: &str,
+        now: &str,
+        expired_before: &str,
+        limit: i64,
+    ) -> Result<i64, StoreError>;
+    /// The stored counter, used by the tests of the lockout rule.
+    #[allow(dead_code)]
+    fn read_login_attempt(&self, email: &str) -> Result<Option<LoginAttempt>, StoreError>;
+    fn clear_login_attempts(&self, email: &str) -> Result<(), StoreError>;
+}
+
 /// Operations needed by the Tauri commands.
-pub trait Store {
+pub trait Store: LoginAttemptStore {
     fn list_projects(&self, user_id: i64) -> Result<Vec<Project>, StoreError>;
     fn insert_project(&self, user_id: i64, input: &SaveProject) -> Result<Project, StoreError>;
     fn update_project(
@@ -69,7 +107,11 @@ pub trait Store {
     ) -> Result<Project, StoreError>;
     fn delete_project(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
-    fn list_time_entries(&self, user_id: i64) -> Result<Vec<TimeEntry>, StoreError>;
+    fn list_time_entries(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<TimeEntry>, StoreError>;
     // Kept for backend parity with the operations named in the design (and
     // exercised directly by Postgres integration tests); overlap checks are
     // performed inline by write methods below to keep them atomic.
@@ -106,8 +148,16 @@ pub trait Store {
     ) -> Result<TimeEntry, SwitchEntryError>;
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
-    fn list_time_entry_audits(&self, user_id: i64) -> Result<Vec<TimeEntryAudit>, StoreError>;
-    fn list_audit_log(&self, user_id: i64) -> Result<Vec<AuditLogEntry>, StoreError>;
+    fn list_time_entry_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<TimeEntryAudit>, StoreError>;
+    fn list_audit_log(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<AuditLogEntry>, StoreError>;
 
     fn list_project_budgets(&self, user_id: i64) -> Result<Vec<ProjectBudget>, StoreError>;
     fn insert_project_budget(
@@ -123,7 +173,7 @@ pub trait Store {
     ) -> Result<ProjectBudget, StoreError>;
     fn delete_project_budget(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
-    fn list_absences(&self, user_id: i64) -> Result<Vec<Absence>, StoreError>;
+    fn list_absences(&self, user_id: i64, range: &ListRange) -> Result<Vec<Absence>, StoreError>;
     fn insert_absence(&self, user_id: i64, input: &SaveAbsence) -> Result<Absence, StoreError>;
     fn update_absence(
         &self,

@@ -31,6 +31,60 @@ fn is_date(value: &str) -> bool {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok_and(|date| date.to_string() == value)
 }
 
+/// Rows a list command returns when the caller names no limit.
+pub const DEFAULT_LIST_LIMIT: i64 = 1000;
+/// Hard ceiling of a list command, a larger limit is capped to it.
+pub const MAX_LIST_LIMIT: i64 = 5000;
+/// Rows the combined audit log returns, it only feeds the recent-changes card.
+pub const AUDIT_LOG_LIMIT: i64 = 200;
+
+/// Window of a list command: `from` is inclusive, `to` is exclusive, both an
+/// ISO date or timestamp. Without a window the command still answers at most
+/// [`DEFAULT_LIST_LIMIT`] rows, so the cost of a list never grows with the age
+/// of the account. `contract/domain-rules.json` pins all three numbers.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRange {
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub limit: Option<i64>,
+}
+
+/// A bound is either a whole ISO date or a whole ISO timestamp, checked by the
+/// same strict validators the entities use. A partly parsed value is rejected,
+/// because the bounds are compared against stored timestamps as text.
+fn is_range_bound(value: &str) -> bool {
+    is_date(value) || is_timestamp(value)
+}
+
+impl ListRange {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize_optional(&mut self.from);
+        normalize_optional(&mut self.to);
+        if [&self.from, &self.to]
+            .into_iter()
+            .flatten()
+            .any(|bound| !is_range_bound(bound))
+        {
+            return Err("invalid list range");
+        }
+        if let (Some(from), Some(to)) = (&self.from, &self.to) {
+            if from > to {
+                return Err("invalid list range");
+            }
+        }
+        if self.limit.is_some_and(|limit| limit <= 0) {
+            return Err("invalid list range");
+        }
+        Ok(())
+    }
+
+    /// The bounded number of rows, never above [`MAX_LIST_LIMIT`].
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(DEFAULT_LIST_LIMIT).min(MAX_LIST_LIMIT)
+    }
+}
+
 const MAX_EMAIL: usize = 254;
 
 /// Minimum length required by the password policy.
@@ -332,6 +386,23 @@ impl SaveAbsence {
         }
         if !is_date(&self.date) {
             return Err("invalid absence date");
+        }
+        Ok(())
+    }
+
+    /// A saved range must hold at least one day, every day must be valid and no
+    /// day may repeat, because one day can only carry one absence.
+    pub fn validate_range(inputs: &mut [SaveAbsence]) -> Result<(), &'static str> {
+        if inputs.is_empty() {
+            return Err("invalid absence range");
+        }
+        for input in inputs.iter_mut() {
+            input.validate().map_err(|_| "invalid absence range")?;
+        }
+        let days: std::collections::HashSet<&str> =
+            inputs.iter().map(|input| input.date.as_str()).collect();
+        if days.len() != inputs.len() {
+            return Err("invalid absence range");
         }
         Ok(())
     }
@@ -647,6 +718,67 @@ mod tests {
         assert_eq!(
             absence("vacation", "01.09.2026"),
             Err("invalid absence date")
+        );
+    }
+
+    #[test]
+    fn bounds_and_validates_a_list_range() {
+        let range = |from: Option<&str>, to: Option<&str>, limit: Option<i64>| {
+            let mut range = ListRange {
+                from: from.map(str::to_owned),
+                to: to.map(str::to_owned),
+                limit,
+            };
+            range.validate().map(|()| range)
+        };
+
+        assert_eq!(range(None, None, None).unwrap().limit(), DEFAULT_LIST_LIMIT);
+        assert_eq!(
+            range(None, None, Some(MAX_LIST_LIMIT + 1)).unwrap().limit(),
+            MAX_LIST_LIMIT
+        );
+        assert_eq!(range(None, None, Some(10)).unwrap().limit(), 10);
+
+        let window = range(Some(" 2026-09-01 "), Some("2026-10-01T00:00:00.000Z"), None).unwrap();
+        assert_eq!(window.from.as_deref(), Some("2026-09-01"));
+
+        assert!(range(Some("2026-13-01"), None, None).is_err());
+        assert!(range(Some("2026-10-01"), Some("2026-09-01"), None).is_err());
+        assert!(range(None, None, Some(0)).is_err());
+        assert!(
+            range(Some("2026-09-01garbage"), None, None).is_err(),
+            "a bound is a whole date or timestamp, not a date prefix"
+        );
+        assert!(range(Some("2026-09-01T25:00:00.000Z"), None, None).is_err());
+        assert!(range(Some("2026-09-01T00:00:00Z"), None, None).is_err());
+    }
+
+    #[test]
+    fn rejects_an_invalid_absence_range() {
+        let range = |days: &[(&str, &str)]| {
+            let mut inputs: Vec<SaveAbsence> = days
+                .iter()
+                .map(|(absence_type, date)| SaveAbsence {
+                    absence_type: (*absence_type).into(),
+                    date: (*date).into(),
+                })
+                .collect();
+            SaveAbsence::validate_range(&mut inputs)
+        };
+
+        assert_eq!(range(&[]), Err("invalid absence range"));
+        assert_eq!(
+            range(&[("vacation", "2026-09-01"), ("sick", "2026-09-01")]),
+            Err("invalid absence range"),
+            "a day can only carry one absence"
+        );
+        assert_eq!(
+            range(&[("holiday", "2026-09-01")]),
+            Err("invalid absence range")
+        );
+        assert_eq!(
+            range(&[("vacation", " 2026-09-01 "), ("sick", "2026-09-02")]),
+            Ok(())
         );
     }
 

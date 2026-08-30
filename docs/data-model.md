@@ -6,7 +6,7 @@ application and the browser storage fallback used only for UI development and en
 There is no remote application server and no external integration; the bundled compose database runs
 locally unless you point `DATABASE_URL` at another Postgres instance.
 
-Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
+Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `drizzle/0002_login_attempts.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
 `src-tauri/src/models.rs`, `src/features/storage/local-repository.ts`, and the Zod schemas under
 `src/features/*/*-schema.ts`.
 
@@ -68,6 +68,7 @@ flowchart TB
 | `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `absences` | One row per absent calendar day, scoped by user | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
 | `absence_audits` | Append-only trail of every change to an absence | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
+| `login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0002_login_attempts.sql`, `src-tauri/src/postgres_store.rs` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |

@@ -13,6 +13,7 @@ pub enum AppError {
     NotFound(String),
     RateLimited(String),
     Database(String),
+    Internal(String),
 }
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -30,6 +31,12 @@ impl AppError {
         Self::Conflict(message.into())
     }
 
+    /// A failure of the process itself, such as a key derivation or a poisoned
+    /// lock. It is not an infrastructure failure of the database.
+    pub fn internal(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
+    }
+
     /// Name of the variant, used as the category in the log file.
     pub fn kind(&self) -> &'static str {
         match self {
@@ -39,6 +46,7 @@ impl AppError {
             Self::NotFound(_) => "notFound",
             Self::RateLimited(_) => "rateLimited",
             Self::Database(_) => "database",
+            Self::Internal(_) => "internal",
         }
     }
 
@@ -49,7 +57,8 @@ impl AppError {
             | Self::Conflict(message)
             | Self::NotFound(message)
             | Self::RateLimited(message)
-            | Self::Database(message) => message,
+            | Self::Database(message)
+            | Self::Internal(message) => message,
         }
     }
 }
@@ -80,7 +89,7 @@ impl From<crate::store::StoreError> for AppError {
 /// A poisoned lock means another command panicked while holding it.
 impl<T> From<PoisonError<T>> for AppError {
     fn from(error: PoisonError<T>) -> Self {
-        Self::Database(error.to_string())
+        Self::internal(error.to_string())
     }
 }
 
@@ -125,11 +134,13 @@ mod tests {
         );
         assert_eq!(AppError::RateLimited(String::new()).kind(), "rateLimited");
         assert_eq!(AppError::Database(String::new()).kind(), "database");
+        assert_eq!(AppError::internal("kdf").kind(), "internal");
     }
 
     #[test]
     fn keeps_the_message_of_every_kind_readable() {
         assert_eq!(AppError::not_signed_in().message(), "Please sign in first");
         assert_eq!(AppError::conflict("taken").message(), "taken");
+        assert_eq!(AppError::internal("kdf failed").message(), "kdf failed");
     }
 }

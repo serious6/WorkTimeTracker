@@ -7,10 +7,17 @@ export const APP_ERROR_KINDS = [
   'notFound',
   'rateLimited',
   'database',
+  'internal',
 ] as const
 
 /** Mirrors the `AppError` variants returned by the Rust commands. */
 export type AppErrorKind = (typeof APP_ERROR_KINDS)[number]
+
+/**
+ * Kinds whose message describes infrastructure or process internals. The
+ * calling view replaces them with its own fallback text.
+ */
+const INFRASTRUCTURE_KINDS: readonly AppErrorKind[] = ['database', 'internal']
 
 export class AppError extends Error {
   readonly kind: AppErrorKind
@@ -45,7 +52,9 @@ export function isErrorKind(error: unknown, kind: AppErrorKind): boolean {
 /** Turns unknown failures into a message that can be shown to the user. */
 export function errorMessage(error: unknown, fallback: string): string {
   const appError = toAppError(error)
-  if (appError) return appError.kind === 'database' ? fallback : appError.message || fallback
+  if (appError) {
+    return INFRASTRUCTURE_KINDS.includes(appError.kind) ? fallback : appError.message || fallback
+  }
   if (error instanceof ZodError) return error.issues[0]?.message ?? fallback
   if (error instanceof Error && error.message) return error.message
   return fallback

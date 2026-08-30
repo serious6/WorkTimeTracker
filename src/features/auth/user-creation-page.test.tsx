@@ -55,9 +55,9 @@ describe('UserCreationPage', () => {
   })
 
   test('shows error when email is already taken', async () => {
-    const { localRepository } = await import('@/features/storage/local-repository')
-    await localRepository.register({ email: 'dup@example.com', password: 'Str0ng-Passphrase!!x' })
-    await localRepository.logout()
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    await createLocalRepository().register({ email: 'dup@example.com', password: 'Str0ng-Passphrase!!x' })
+    await createLocalRepository().logout()
 
     renderWithProviders(<UserCreationPage onCancel={() => {}} />)
     typeIntoForm('dup@example.com', 'Str0ng-Passphrase!!x')

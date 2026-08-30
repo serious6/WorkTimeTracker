@@ -8,6 +8,7 @@ import { credentialsSchema, registrationSchema } from '@/features/auth/auth-sche
 import {
   LOGIN_LOCKOUT_MINUTES,
   MAX_LOGIN_ATTEMPTS,
+  PBKDF2_ITERATIONS,
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { saveProjectBudgetSchema } from '@/features/budgets/budget-schema'
@@ -16,7 +17,13 @@ import { adjustedDailyTarget } from '@/features/settings/work-schedule'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { findOverlap } from '@/features/time-entries/overlap'
 import { saveTimeEntrySchema, type TimeEntry } from '@/features/time-entries/time-entry-schema'
-import { localRepository } from './local-repository'
+import {
+  AUDIT_LOG_LIMIT,
+  DEFAULT_LIST_LIMIT,
+  listLimit,
+  MAX_LIST_LIMIT,
+} from './list-range'
+import { createLocalRepository } from './local-repository'
 
 type Case = {
   name: string
@@ -62,6 +69,11 @@ const rules = domainRules as unknown as {
     maxLoginAttempts: number
     loginLockoutMinutes: number
   }
+  keyDerivation: {
+    argon2id: { memoryKib: number; iterations: number; parallelism: number }
+    pbkdf2Sha256Iterations: number
+  }
+  listRanges: { defaultLimit: number; maxLimit: number; auditLogLimit: number }
   credentials: Case[]
   projects: Case[]
   timeEntries: Case[]
@@ -98,6 +110,20 @@ describe('domain rule contract', () => {
       maxLoginAttempts: MAX_LOGIN_ATTEMPTS,
       loginLockoutMinutes: LOGIN_LOCKOUT_MINUTES,
     })
+  })
+
+  it('pins the key derivation of the browser fallback', () => {
+    expect(rules.keyDerivation.pbkdf2Sha256Iterations).toBe(PBKDF2_ITERATIONS)
+  })
+
+  it('bounds the list queries like the Rust backend', () => {
+    expect(rules.listRanges).toEqual({
+      defaultLimit: DEFAULT_LIST_LIMIT,
+      maxLimit: MAX_LIST_LIMIT,
+      auditLogLimit: AUDIT_LOG_LIMIT,
+    })
+    expect(listLimit(undefined)).toBe(DEFAULT_LIST_LIMIT)
+    expect(listLimit({ limit: MAX_LIST_LIMIT + 1 })).toBe(MAX_LIST_LIMIT)
   })
 
   it.each(rules.credentials)('credentials: $name', (testCase) => {
@@ -158,40 +184,40 @@ describe('domain rule contract', () => {
   it.each(rules.uniqueness)('uniqueness: $name', async (testCase) => {
     if (testCase.kind === 'email') {
       const credentials = registrationSchema.parse(testCase.input)
-      await localRepository.register(credentials)
+      await createLocalRepository().register(credentials)
 
-      await expect(localRepository.register(credentials)).rejects.toMatchObject({ kind: 'conflict' })
+      await expect(createLocalRepository().register(credentials)).rejects.toMatchObject({ kind: 'conflict' })
       return
     }
 
     if (testCase.kind === 'absenceDay') {
-      await localRepository.register({
+      await createLocalRepository().register({
         email: 'absence@example.com',
         password: 'Str0ng-Passphrase!!x',
       })
       const absence = saveAbsenceSchema.parse(testCase.input)
-      await localRepository.createAbsence(absence)
+      await createLocalRepository().createAbsence(absence)
 
-      await expect(localRepository.createAbsence(absence)).rejects.toMatchObject({
+      await expect(createLocalRepository().createAbsence(absence)).rejects.toMatchObject({
         kind: 'conflict',
       })
       return
     }
 
-    await localRepository.register({
+    await createLocalRepository().register({
       email: 'budget@example.com',
       password: 'Str0ng-Passphrase!!x',
     })
-    await localRepository.createProject({
+    await createLocalRepository().createProject({
       name: 'Website Redesign',
       description: null,
       color: '#22c55e',
       active: true,
     })
     const budget = saveProjectBudgetSchema.parse(testCase.input)
-    await localRepository.createProjectBudget(budget)
+    await createLocalRepository().createProjectBudget(budget)
 
-    await expect(localRepository.createProjectBudget(budget)).rejects.toMatchObject({
+    await expect(createLocalRepository().createProjectBudget(budget)).rejects.toMatchObject({
       kind: 'conflict',
     })
   })

@@ -8,16 +8,22 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    auth::{LOGIN_LOCKOUT_MINUTES, MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES},
+    auth::{
+        ARGON2_ITERATIONS, ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, LOGIN_LOCKOUT_MINUTES,
+        MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES,
+    },
     models::{
-        adjusted_daily_target, Credentials, SaveAbsence, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, WorkSettings,
+        adjusted_daily_target, Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Credentials,
+        ListRange, Project, ProjectBudget, SaveAbsence, SaveProject, SaveProjectBudget,
+        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT,
+        DEFAULT_LIST_LIMIT, GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
     },
     store::{Store, StoreError},
     test_support::{test_store, unique_email, unique_tag},
 };
 
 const RULES: &str = include_str!("../../contract/domain-rules.json");
+const ENTITIES: &str = include_str!("../../contract/entities.json");
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +31,30 @@ struct SecurityLimits {
     session_timeout_minutes: u64,
     max_login_attempts: u32,
     login_lockout_minutes: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Argon2Params {
+    memory_kib: u32,
+    iterations: u32,
+    parallelism: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyDerivation {
+    argon2id: Argon2Params,
+    #[allow(dead_code)]
+    pbkdf2_sha256_iterations: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListRanges {
+    default_limit: i64,
+    max_limit: i64,
+    audit_log_limit: i64,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +132,213 @@ fn shares_the_security_limits_with_the_browser_fallback() {
     assert_eq!(limits.session_timeout_minutes, SESSION_TIMEOUT_MINUTES);
     assert_eq!(limits.max_login_attempts, MAX_LOGIN_ATTEMPTS);
     assert_eq!(limits.login_lockout_minutes, LOGIN_LOCKOUT_MINUTES);
+}
+
+#[test]
+fn pins_the_key_derivation_parameters_of_the_contract() {
+    let derivation: KeyDerivation =
+        serde_json::from_value(rules()["keyDerivation"].clone()).unwrap();
+
+    assert_eq!(derivation.argon2id.memory_kib, ARGON2_MEMORY_KIB);
+    assert_eq!(derivation.argon2id.iterations, ARGON2_ITERATIONS);
+    assert_eq!(derivation.argon2id.parallelism, ARGON2_PARALLELISM);
+}
+
+#[test]
+fn bounds_the_list_commands_like_the_contract() {
+    let limits: ListRanges = serde_json::from_value(rules()["listRanges"].clone()).unwrap();
+
+    assert_eq!(limits.default_limit, DEFAULT_LIST_LIMIT);
+    assert_eq!(limits.max_limit, MAX_LIST_LIMIT);
+    assert_eq!(limits.audit_log_limit, AUDIT_LOG_LIMIT);
+
+    let mut range = ListRange {
+        limit: Some(limits.max_limit + 1),
+        ..ListRange::default()
+    };
+    range.validate().unwrap();
+    assert_eq!(range.limit(), limits.max_limit);
+    assert_eq!(ListRange::default().limit(), limits.default_limit);
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityField {
+    name: String,
+    #[serde(rename = "type")]
+    field_type: String,
+    nullable: bool,
+}
+
+#[derive(Deserialize)]
+struct Entity {
+    fields: Vec<EntityField>,
+}
+
+/// Asserts that a serialized model carries exactly the fields of the entity,
+/// with the declared type and nullability. Every optional field of the sample
+/// is `None`, so a field declared nullable has to serialize as `null`.
+fn assert_entity(name: &str, sample: Value) {
+    let entities: Value = serde_json::from_str(ENTITIES).expect("the entities are valid JSON");
+    let entity: Entity =
+        serde_json::from_value(entities["entities"][name].clone()).expect("the entity is declared");
+    let object = sample.as_object().expect("a model serializes to an object");
+
+    let mut declared: Vec<&str> = entity
+        .fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .collect();
+    let mut serialized: Vec<&str> = object.keys().map(String::as_str).collect();
+    declared.sort_unstable();
+    serialized.sort_unstable();
+    assert_eq!(
+        declared, serialized,
+        "{name} drifted from contract/entities.json"
+    );
+
+    for field in &entity.fields {
+        let value = &object[&field.name];
+        if field.nullable {
+            assert!(
+                value.is_null(),
+                "{name}.{} is declared nullable but did not serialize as null",
+                field.name
+            );
+            continue;
+        }
+        let matches = match field.field_type.as_str() {
+            "integer" => value.is_i64(),
+            "string" => value.is_string(),
+            "boolean" => value.is_boolean(),
+            "array" => value.is_array(),
+            "object" => value.is_object(),
+            other => panic!("{name}.{}: unknown type {other}", field.name),
+        };
+        assert!(
+            matches,
+            "{name}.{} is declared {} but serialized as {value}",
+            field.name, field.field_type
+        );
+    }
+}
+
+fn json<T: serde::Serialize>(value: &T) -> Value {
+    serde_json::to_value(value).expect("a model is serializable")
+}
+
+/// `contract/entities.json` is the authority for the shape of every entity that
+/// crosses the IPC boundary. The same file is checked against the Zod schemas by
+/// `src/features/storage/entities.contract.test.ts`.
+#[test]
+fn serializes_the_models_of_the_entity_contract() {
+    let moment = "2026-08-30T10:00:00.000Z".to_owned();
+
+    assert_entity(
+        "user",
+        json(&User {
+            id: 1,
+            email: "user@example.com".into(),
+            created_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "project",
+        json(&Project {
+            id: 1,
+            name: "Website".into(),
+            description: None,
+            color: "#112233".into(),
+            active: true,
+            created_at: moment.clone(),
+            updated_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "timeEntry",
+        json(&TimeEntry {
+            id: 1,
+            project_id: None,
+            start_time: moment.clone(),
+            end_time: None,
+            entry_type: "work".into(),
+            note: None,
+            created_at: moment.clone(),
+            updated_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "timeEntryAudit",
+        json(&TimeEntryAudit {
+            id: 1,
+            time_entry_id: 2,
+            action: "created".into(),
+            actor: "user@example.com".into(),
+            old_value: None,
+            new_value: None,
+            recorded_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "auditLogEntry",
+        json(&AuditLogEntry {
+            id: 1,
+            entity: "timeEntry".into(),
+            entity_id: 2,
+            action: "create".into(),
+            old_value: None,
+            new_value: None,
+            created_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "projectBudget",
+        json(&ProjectBudget {
+            id: 1,
+            project_id: 2,
+            budget_minutes: 600,
+            due_date: "2026-09-30".into(),
+            created_at: moment.clone(),
+            updated_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "absence",
+        json(&Absence {
+            id: 1,
+            absence_type: "vacation".into(),
+            date: "2026-09-01".into(),
+            created_at: moment.clone(),
+            updated_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "absenceAudit",
+        json(&AbsenceAudit {
+            id: 1,
+            absence_id: 2,
+            action: "created".into(),
+            actor: "user@example.com".into(),
+            old_value: None,
+            new_value: None,
+            recorded_at: moment,
+        }),
+    );
+    assert_entity(
+        "workSettings",
+        json(&WorkSettings {
+            weekly_target_minutes: 2400,
+            working_days: vec!["monday".into()],
+            week_starts_on: "monday".into(),
+            compliance_limits: GERMAN_COMPLIANCE_LIMITS,
+        }),
+    );
+    assert_entity(
+        "complianceLimits",
+        json(&ComplianceLimits {
+            ..GERMAN_COMPLIANCE_LIMITS
+        }),
+    );
 }
 
 #[test]
@@ -302,7 +539,10 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .new_value
         .as_deref()
         .is_some_and(|value| value.contains("sick")));
-    assert!(store.list_absences(second_user.id).unwrap().is_empty());
+    assert!(store
+        .list_absences(second_user.id, &ListRange::default())
+        .unwrap()
+        .is_empty());
     assert!(store
         .list_absence_audits(second_user.id)
         .unwrap()
