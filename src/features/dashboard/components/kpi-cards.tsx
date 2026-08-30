@@ -51,6 +51,14 @@ function targetCaption(prefix: string, targetMinutes: number): string {
   return targetMinutes > 0 ? `${prefix} ${formatDuration(targetMinutes)}` : 'No target scheduled'
 }
 
+/** Remaining time until the day is done, so the target is not only a number. */
+function remainingCaption(trackedMinutes: number, targetMinutes: number): string {
+  if (targetMinutes <= 0) return 'No target scheduled'
+  const remaining = targetMinutes - trackedMinutes
+  const suffix = remaining > 0 ? `${formatDuration(remaining)} left` : 'target reached'
+  return `${targetCaption('of', targetMinutes)} · ${suffix}`
+}
+
 export function KpiCards({
   trackedTodayMinutes,
   trackedWeekMinutes,
@@ -68,7 +76,7 @@ export function KpiCards({
   return (
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <KpiCard
-        caption={targetCaption('of', dailyTargetMinutes)}
+        caption={remainingCaption(trackedTodayMinutes, dailyTargetMinutes)}
         icon={Clock}
         label="Tracked Today"
         progress={

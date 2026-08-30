@@ -6,7 +6,8 @@ SQLite database, no proprietary runtime service is required.
 ## Features
 
 - **Dashboard**: start, pause, resume, stop, and switch timers, manual entries, day navigation,
-  daily and weekly targets with overtime, and time distribution per project.
+  daily and weekly targets with overtime, a cumulative overtime balance carried across weeks and
+  months, and time distribution per project.
 - **Time Management**: add worked time retroactively via quick-add buttons or custom durations
   such as `2h 45m`; entries are placed in the first free slot of the day and never overlap.
 - **Budgets**: per-project hour budgets with a due date; consumption and forecast appear in `Reports`.

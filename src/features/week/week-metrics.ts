@@ -5,12 +5,33 @@ import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, formatDuration, formatShortDay, startOfDay, startOfWeek, toDateKey } from '@/lib/date'
 
+/**
+ * `zero` marks a day that has bookings adding up to no time at all, which is
+ * different from `untracked`, a working day without any booking.
+ */
+export type DayStatus = 'tracked' | 'zero' | 'untracked' | 'non-working'
+
 export type RangeMetricsDay = {
   date: Date
   dateKey: string
   trackedMinutes: number
   targetMinutes: number
   workingDay: boolean
+  hasEntries: boolean
+  status: DayStatus
+}
+
+export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
+  tracked: 'Tracked',
+  zero: 'Booked without time',
+  untracked: 'Not tracked',
+  'non-working': 'Non-working day',
+}
+
+function dayStatus(trackedMinutes: number, hasEntries: boolean, workingDay: boolean): DayStatus {
+  if (trackedMinutes > 0) return 'tracked'
+  if (hasEntries) return 'zero'
+  return workingDay ? 'untracked' : 'non-working'
 }
 
 export type RangeMetricsProject = {
@@ -87,6 +108,14 @@ function completedRange(referenceNow: Date, range: DateRange): DateRange {
   return { start: range.start, end: nowStart }
 }
 
+/** Whether an entry belongs to a day, including bookings without any duration. */
+function touchesDay(entry: TimeEntry, day: DateRange, now: number): boolean {
+  const start = Date.parse(entry.startTime)
+  const end = entry.endTime ? Date.parse(entry.endTime) : now
+  if (start >= day.end.getTime()) return false
+  return end > day.start.getTime() || (end === start && start >= day.start.getTime())
+}
+
 function projectName(project: Project | undefined): string {
   return project?.name ?? 'Deleted project'
 }
@@ -129,12 +158,16 @@ export function rangeMetrics({
       0,
     )
     const targetMinutesForDay = isWorkingDay(settings, day) ? dailyTarget : 0
+    const hasEntries = inRange.some((entry) => touchesDay(entry, dayInterval, now))
+    const workingDay = targetMinutesForDay > 0
     return {
       date: day,
       dateKey: toDateKey(day),
       trackedMinutes,
       targetMinutes: targetMinutesForDay,
-      workingDay: targetMinutesForDay > 0,
+      workingDay,
+      hasEntries,
+      status: dayStatus(trackedMinutes, hasEntries, workingDay),
     }
   })
 

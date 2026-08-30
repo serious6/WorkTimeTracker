@@ -35,6 +35,20 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Weekly Total')).toBeInTheDocument()
   })
 
+  it('shows the cumulative balance with the tracked time of earlier weeks', async () => {
+    const project = await seedProject('Website')
+    const earlier = new Date(2026, 7, 20)
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: atTime(earlier, 9),
+      endTime: atTime(earlier, 11),
+    })
+
+    renderWithProviders(<DashboardPage />)
+    expect(await screen.findByText('Cumulative Balance')).toBeInTheDocument()
+    expect(await screen.findByText('Since August 20, 2026')).toBeInTheDocument()
+  })
+
   it('shows Currently Tracking region', async () => {
     renderWithProviders(<DashboardPage />)
     await waitFor(() =>
