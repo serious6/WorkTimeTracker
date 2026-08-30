@@ -335,6 +335,23 @@ impl SaveAbsence {
         }
         Ok(())
     }
+
+    /// A saved range must hold at least one day, every day must be valid and no
+    /// day may repeat, because one day can only carry one absence.
+    pub fn validate_range(inputs: &mut [SaveAbsence]) -> Result<(), &'static str> {
+        if inputs.is_empty() {
+            return Err("invalid absence range");
+        }
+        for input in inputs.iter_mut() {
+            input.validate().map_err(|_| "invalid absence range")?;
+        }
+        let days: std::collections::HashSet<&str> =
+            inputs.iter().map(|input| input.date.as_str()).collect();
+        if days.len() != inputs.len() {
+            return Err("invalid absence range");
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -647,6 +664,35 @@ mod tests {
         assert_eq!(
             absence("vacation", "01.09.2026"),
             Err("invalid absence date")
+        );
+    }
+
+    #[test]
+    fn rejects_an_invalid_absence_range() {
+        let range = |days: &[(&str, &str)]| {
+            let mut inputs: Vec<SaveAbsence> = days
+                .iter()
+                .map(|(absence_type, date)| SaveAbsence {
+                    absence_type: (*absence_type).into(),
+                    date: (*date).into(),
+                })
+                .collect();
+            SaveAbsence::validate_range(&mut inputs)
+        };
+
+        assert_eq!(range(&[]), Err("invalid absence range"));
+        assert_eq!(
+            range(&[("vacation", "2026-09-01"), ("sick", "2026-09-01")]),
+            Err("invalid absence range"),
+            "a day can only carry one absence"
+        );
+        assert_eq!(
+            range(&[("holiday", "2026-09-01")]),
+            Err("invalid absence range")
+        );
+        assert_eq!(
+            range(&[("vacation", " 2026-09-01 "), ("sick", "2026-09-02")]),
+            Ok(())
         );
     }
 

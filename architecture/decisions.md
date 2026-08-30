@@ -102,3 +102,19 @@ The browser fallback is only reachable through `createLocalRepository()`, which 
 development or test build (`import.meta.env`). The dead branch also lets the bundler drop the
 fallback from a production desktop build, so the code that is explicitly not a security boundary is
 neither shipped nor constructible there.
+
+## 8. Authentication is the default of a command, not a convention
+
+Commands are written with the `authed_command!` macro in `src-tauri/src/commands.rs`. It adds the
+log frame and the lookup of the signed in user, and only then runs the body, which receives the user
+id as a binding. Authorisation can no longer be forgotten by leaving a line out: a command that runs
+without a session has to be written by hand and named in `commands::PUBLIC_COMMANDS`
+(`register`, `login`, `logout`, `current_session`, `get_app_version`, `log_client_error`).
+
+Two tests keep the list honest. One fails when a hand written `#[tauri::command]` is not declared
+public, the other fails when a command registered in `tauri::generate_handler!` is neither generated
+by the macro nor public.
+
+Input validation that belongs to the domain stays in `models.rs`: `SaveAbsence::validate_range`
+holds the rule that a saved range is not empty, is valid per day and never repeats a day, instead of
+the command spelling it out.
