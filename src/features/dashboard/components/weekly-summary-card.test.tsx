@@ -9,6 +9,7 @@ function entry(id: number, startIso: string, endIso: string): TimeEntry {
     projectId: 1,
     startTime: startIso,
     endTime: endIso,
+    entryType: 'work',
     note: null,
     createdAt: startIso,
     updatedAt: startIso,

@@ -25,9 +25,24 @@ export const timeEntries = sqliteTable('time_entries', {
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   startTime: text('start_time').notNull(),
   endTime: text('end_time'),
+  entryType: text('entry_type', { enum: ['work', 'break'] })
+    .notNull()
+    .default('work'),
   note: text(),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+})
+
+/** Append-only trail that keeps every change to a time entry defensible. */
+export const timeEntryAudits = sqliteTable('time_entry_audits', {
+  id: integer().primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  timeEntryId: integer('time_entry_id').notNull(),
+  action: text({ enum: ['created', 'updated', 'deleted'] }).notNull(),
+  actor: text().notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  recordedAt: text('recorded_at').notNull(),
 })
 
 export const projectBudgets = sqliteTable(

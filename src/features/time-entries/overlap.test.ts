@@ -8,6 +8,7 @@ function entry(id: number, startTime: string, endTime: string | null): TimeEntry
     projectId: 1,
     startTime,
     endTime,
+    entryType: 'work',
     note: null,
     createdAt: startTime,
     updatedAt: startTime,

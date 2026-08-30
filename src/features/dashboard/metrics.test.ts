@@ -32,6 +32,7 @@ function entry(id: number, projectId: number | null, start: Date, end: Date | nu
     projectId,
     startTime: start.toISOString(),
     endTime: end?.toISOString() ?? null,
+    entryType: 'work',
     note: null,
     createdAt: start.toISOString(),
     updatedAt: start.toISOString(),

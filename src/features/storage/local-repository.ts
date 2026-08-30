@@ -33,6 +33,11 @@ import {
 } from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
 import {
+  timeEntryAuditSchema,
+  type AuditAction,
+  type TimeEntryAudit,
+} from '@/features/time-entries/audit-schema'
+import {
   OVERLAP_MESSAGE,
   saveTimeEntrySchema,
   timeEntrySchema,
@@ -43,7 +48,13 @@ import { AppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
 const USERS_KEY = 'work-time-tracker.users'
-const SCOPED_KEYS = ['projects', 'time-entries', 'project-budgets', 'work-settings'] as const
+const SCOPED_KEYS = [
+  'projects',
+  'time-entries',
+  'project-budgets',
+  'work-settings',
+  'time-entry-audits',
+] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
 
@@ -145,6 +156,40 @@ function readProjects(): Project[] {
 
 function readEntries(): TimeEntry[] {
   return read(scopedKey('time-entries'), [], (value) => timeEntrySchema.array().parse(value))
+}
+
+function readAudits(): TimeEntryAudit[] {
+  return read(scopedKey('time-entry-audits'), [], (value) =>
+    timeEntryAuditSchema.array().parse(value),
+  )
+}
+
+/** The signed-in account is the actor of every change it records. */
+function actor(): string {
+  const userId = requireUserId()
+  return readUsers().find((user) => user.id === userId)?.email ?? `user:${userId}`
+}
+
+/** Appends to the trail; recorded values are never modified or removed. */
+function recordAudit(
+  timeEntryId: number,
+  action: AuditAction,
+  oldValue: TimeEntry | null,
+  newValue: TimeEntry | null,
+): void {
+  const audits = readAudits()
+  write(scopedKey('time-entry-audits'), [
+    ...audits,
+    timeEntryAuditSchema.parse({
+      id: nextId(audits),
+      timeEntryId,
+      action,
+      actor: actor(),
+      oldValue: oldValue ? JSON.stringify(oldValue) : null,
+      newValue: newValue ? JSON.stringify(newValue) : null,
+      recordedAt: new Date().toISOString(),
+    }),
+  ])
 }
 
 function readBudgets(): ProjectBudget[] {
@@ -308,7 +353,9 @@ export const localRepository: Repository = {
     readEntries().sort((left, right) => left.startTime.localeCompare(right.startTime)),
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
-    if (parsed.projectId === null) throw new AppError('validation', 'Project is required')
+    if (parsed.entryType !== 'break' && parsed.projectId === null) {
+      throw new AppError('validation', 'Project is required')
+    }
     const entries = readEntries()
     if (findOverlap(entries, parsed)) throw new AppError('conflict', OVERLAP_MESSAGE)
     const now = new Date().toISOString()
@@ -319,6 +366,7 @@ export const localRepository: Repository = {
       updatedAt: now,
     })
     write(scopedKey('time-entries'), [...entries, entry])
+    recordAudit(entry.id, 'created', null, entry)
     return entry
   },
   updateTimeEntry: async (id, input) => {
@@ -327,11 +375,17 @@ export const localRepository: Repository = {
     const current = entries.find((entry) => entry.id === id)
     if (!current) throw new AppError('notFound', 'Time entry not found')
     if (findOverlap(entries, parsed, id)) throw new AppError('conflict', OVERLAP_MESSAGE)
-    const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
+    const updated = timeEntrySchema.parse({
+      ...current,
+      ...parsed,
+      entryType: parsed.entryType ?? current.entryType,
+      updatedAt: new Date().toISOString(),
+    })
     write(
       scopedKey('time-entries'),
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
+    recordAudit(id, 'updated', current, updated)
     return updated
   },
   updateTimeEntryNote: async (id, note) => {
@@ -347,6 +401,7 @@ export const localRepository: Repository = {
       scopedKey('time-entries'),
       entries.map((entry) => (entry.id === id ? updated : entry)),
     )
+    recordAudit(id, 'updated', current, updated)
     return updated
   },
   switchRunningTimeEntry: async (id, input) => {
@@ -372,14 +427,21 @@ export const localRepository: Repository = {
       updatedAt: now,
     })
     write(scopedKey('time-entries'), [...nextEntries, created])
+    recordAudit(id, 'updated', current, closed)
+    recordAudit(created.id, 'created', null, created)
     return created
   },
   deleteTimeEntry: async (id) => {
+    const entries = readEntries()
+    const current = entries.find((entry) => entry.id === id)
     write(
       scopedKey('time-entries'),
-      readEntries().filter((entry) => entry.id !== id),
+      entries.filter((entry) => entry.id !== id),
     )
+    if (current) recordAudit(id, 'deleted', current, null)
   },
+  listTimeEntryAudits: async () =>
+    readAudits().sort((left, right) => right.recordedAt.localeCompare(left.recordedAt)),
   listProjectBudgets: async () =>
     readBudgets().sort((left, right) => left.dueDate.localeCompare(right.dueDate)),
   createProjectBudget: async (input) => {

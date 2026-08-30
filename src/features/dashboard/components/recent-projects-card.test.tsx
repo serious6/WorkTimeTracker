@@ -14,6 +14,7 @@ function entry(id: number, projectId: number, startIso: string, endIso: string):
     projectId,
     startTime: startIso,
     endTime: endIso,
+    entryType: 'work',
     note: null,
     createdAt: startIso,
     updatedAt: startIso,

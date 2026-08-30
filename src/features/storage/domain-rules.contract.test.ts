@@ -62,6 +62,7 @@ function entries(records: OverlapCase['existing']): TimeEntry[] {
     projectId: 1,
     startTime: record.startTime,
     endTime: record.endTime,
+    entryType: 'work',
     note: null,
     createdAt: record.startTime,
     updatedAt: record.startTime,

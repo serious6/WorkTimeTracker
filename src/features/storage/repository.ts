@@ -2,6 +2,7 @@ import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
+import type { TimeEntryAudit } from '@/features/time-entries/audit-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
 
 export type Repository = {
@@ -19,6 +20,7 @@ export type Repository = {
   updateTimeEntryNote: (id: number, note: string | null) => Promise<TimeEntry>
   switchRunningTimeEntry: (id: number, input: SaveTimeEntry) => Promise<TimeEntry>
   deleteTimeEntry: (id: number) => Promise<void>
+  listTimeEntryAudits: () => Promise<TimeEntryAudit[]>
   listProjectBudgets: () => Promise<ProjectBudget[]>
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>

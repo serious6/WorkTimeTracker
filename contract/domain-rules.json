@@ -317,6 +317,39 @@
         "note": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn"
       },
       "accepted": false
+    },
+    {
+      "name": "accepts a break without a project",
+      "input": {
+        "projectId": null,
+        "startTime": "2026-08-27T12:00:00.000Z",
+        "endTime": "2026-08-27T12:30:00.000Z",
+        "entryType": "break",
+        "note": null
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects a break that is booked on a project",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T12:00:00.000Z",
+        "endTime": "2026-08-27T12:30:00.000Z",
+        "entryType": "break",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unknown entry type",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T12:00:00.000Z",
+        "endTime": null,
+        "entryType": "holiday",
+        "note": null
+      },
+      "accepted": false
     }
   ],
   "projectBudgets": [

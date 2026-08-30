@@ -13,6 +13,7 @@ const BASE_ENTRY: TimeEntry = {
   projectId: 42,
   startTime: '2026-08-27T08:00:00.000Z',
   endTime: '2026-08-27T10:00:00.000Z',
+  entryType: 'work',
   note: 'work',
   createdAt: '2026-08-27T08:00:00.000Z',
   updatedAt: '2026-08-27T08:00:00.000Z',

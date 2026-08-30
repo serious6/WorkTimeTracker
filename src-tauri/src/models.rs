@@ -155,20 +155,43 @@ pub struct Project {
     pub updated_at: String,
 }
 
+/// Working time and break time are recorded as entries of the same table.
+pub const ENTRY_TYPE_WORK: &str = "work";
+pub const ENTRY_TYPE_BREAK: &str = "break";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveTimeEntry {
     pub project_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
+    /// Missing input records work, breaks have to be requested explicitly.
+    #[serde(default)]
+    pub entry_type: Option<String>,
     pub note: Option<String>,
 }
 
 impl SaveTimeEntry {
+    /// The requested kind of entry, `work` unless a break was requested.
+    pub fn entry_type(&self) -> &str {
+        self.entry_type.as_deref().unwrap_or(ENTRY_TYPE_WORK)
+    }
+
+    pub fn is_break(&self) -> bool {
+        self.entry_type() == ENTRY_TYPE_BREAK
+    }
+
     pub fn validate(&mut self) -> Result<(), &'static str> {
         normalize(&mut self.start_time);
         normalize_optional(&mut self.end_time);
         normalize_optional(&mut self.note);
+        normalize_optional(&mut self.entry_type);
+        if !matches!(self.entry_type(), ENTRY_TYPE_WORK | ENTRY_TYPE_BREAK) {
+            return Err("invalid entry type");
+        }
+        if self.is_break() && self.project_id.is_some() {
+            return Err("a break is not booked on a project");
+        }
         if self.project_id.is_some_and(|project_id| project_id <= 0) {
             return Err("invalid project");
         }
@@ -201,9 +224,23 @@ pub struct TimeEntry {
     pub project_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
+    pub entry_type: String,
     pub note: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Append-only trail of every change to a time entry.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeEntryAudit {
+    pub id: i64,
+    pub time_entry_id: i64,
+    pub action: String,
+    pub actor: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub recorded_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -327,6 +364,7 @@ mod tests {
             project_id: Some(1),
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: Some("2026-08-27T09:00:00.000Z".into()),
+            entry_type: None,
             note: None,
         };
         assert_eq!(
@@ -341,10 +379,49 @@ mod tests {
             project_id: Some(1),
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: None,
+            entry_type: None,
             note: Some(" Design ".into()),
         };
         input.validate().unwrap();
         assert_eq!(input.note.as_deref(), Some("Design"));
+        assert_eq!(input.entry_type(), ENTRY_TYPE_WORK);
+    }
+
+    #[test]
+    fn accepts_a_break_without_a_project() {
+        let mut input = SaveTimeEntry {
+            project_id: None,
+            start_time: "2026-08-27T12:00:00.000Z".into(),
+            end_time: Some("2026-08-27T12:30:00.000Z".into()),
+            entry_type: Some(" break ".into()),
+            note: None,
+        };
+        input.validate().unwrap();
+        assert!(input.is_break());
+    }
+
+    #[test]
+    fn rejects_breaks_that_are_booked_on_a_project() {
+        let mut input = SaveTimeEntry {
+            project_id: Some(1),
+            start_time: "2026-08-27T12:00:00.000Z".into(),
+            end_time: Some("2026-08-27T12:30:00.000Z".into()),
+            entry_type: Some(ENTRY_TYPE_BREAK.into()),
+            note: None,
+        };
+        assert_eq!(input.validate(), Err("a break is not booked on a project"));
+    }
+
+    #[test]
+    fn rejects_an_unknown_entry_type() {
+        let mut input = SaveTimeEntry {
+            project_id: Some(1),
+            start_time: "2026-08-27T12:00:00.000Z".into(),
+            end_time: None,
+            entry_type: Some("holiday".into()),
+            note: None,
+        };
+        assert_eq!(input.validate(), Err("invalid entry type"));
     }
 
     #[test]
@@ -353,6 +430,7 @@ mod tests {
             project_id: Some(1),
             start_time: "xxxxxxxxxxxxTxxxxxxxxxxZ".into(),
             end_time: None,
+            entry_type: None,
             note: None,
         };
 
