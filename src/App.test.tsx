@@ -106,8 +106,8 @@ describe('App shell', () => {
 
   test('logs in through the login form', async () => {
     await signIn('form-login@example.com')
-    const { localRepository } = await import('@/features/storage/local-repository')
-    await localRepository.logout()
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    await createLocalRepository().logout()
 
     renderApp()
     await screen.findByRole('heading', { name: /sign in/i })

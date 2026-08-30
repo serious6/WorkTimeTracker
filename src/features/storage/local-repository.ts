@@ -368,11 +368,14 @@ function claimLegacyData(userId: number): void {
   }
 }
 
+export const FALLBACK_NOT_ALLOWED_MESSAGE =
+  'The browser fallback repository is only available in development and test builds'
+
 /**
  * Browser fallback used for UI development and end-to-end tests. It mirrors the
  * behaviour of the Rust commands, including overlap rejection.
  */
-export const localRepository: Repository = {
+const fallbackRepository: Repository = {
   currentSession: async () => {
     const user = readUsers().find(({ id }) => id === sessionUserId())
     return user ? toAuthUser(user) : null
@@ -707,4 +710,16 @@ export const localRepository: Repository = {
     return parsed
   },
   getAppVersion: async () => null,
+}
+
+/**
+ * Builds the fallback. Client-side storage is readable and writable by the user,
+ * so the fallback is a development and test tool and never a security boundary:
+ * constructing it in a production build is a bug and fails loudly.
+ */
+export function createLocalRepository(): Repository {
+  if (!import.meta.env.DEV && !import.meta.env.MODE.startsWith('test')) {
+    throw new Error(FALLBACK_NOT_ALLOWED_MESSAGE)
+  }
+  return fallbackRepository
 }

@@ -29,8 +29,8 @@ describe('LoginPage', () => {
 
   test('shows invalid credentials error on wrong password', async () => {
     await signIn('login-test@example.com')
-    const { localRepository } = await import('@/features/storage/local-repository')
-    await localRepository.logout()
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    await createLocalRepository().logout()
     renderWithProviders(<LoginPage onRegister={() => {}} />)
 
     fireEvent.change(document.querySelector('input[name="email"]')!, {
@@ -52,8 +52,8 @@ describe('LoginPage', () => {
 
   test('successful login shows no error', async () => {
     await signIn('login-ok@example.com')
-    const { localRepository } = await import('@/features/storage/local-repository')
-    await localRepository.logout()
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    await createLocalRepository().logout()
 
     renderWithProviders(<LoginPage onRegister={() => {}} />)
     fireEvent.change(document.querySelector('input[name="email"]')!, {
@@ -64,7 +64,7 @@ describe('LoginPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
     await waitFor(async () => {
-      expect(await localRepository.currentSession()).toMatchObject({
+      expect(await createLocalRepository().currentSession()).toMatchObject({
         email: 'login-ok@example.com',
       })
     })

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigationStore } from '@/app/navigation'
-import { repository } from '@/features/storage'
+import { getRepository } from '@/features/storage'
 import { useTimerStore } from '@/features/timer/timer-store'
 import type { AuthUser, Credentials } from './auth-schema'
 
@@ -10,7 +10,7 @@ export const sessionKeys = { current: ['session'] as const }
 export function useSession() {
   return useQuery({
     queryKey: sessionKeys.current,
-    queryFn: repository.currentSession,
+    queryFn: () => getRepository().currentSession(),
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: Number.POSITIVE_INFINITY,
   })
@@ -32,7 +32,7 @@ function applySession(queryClient: QueryClient, user: AuthUser | null): void {
 export function useLogin() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (credentials: Credentials) => repository.login(credentials),
+    mutationFn: (credentials: Credentials) => getRepository().login(credentials),
     onSuccess: (user) => applySession(queryClient, user),
   })
 }
@@ -40,7 +40,7 @@ export function useLogin() {
 export function useRegister() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (credentials: Credentials) => repository.register(credentials),
+    mutationFn: (credentials: Credentials) => getRepository().register(credentials),
     onSuccess: (user) => applySession(queryClient, user),
   })
 }
@@ -54,7 +54,7 @@ export function endSession(queryClient: QueryClient): void {
 export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: () => repository.logout(),
+    mutationFn: () => getRepository().logout(),
     onSuccess: () => applySession(queryClient, null),
   })
 }

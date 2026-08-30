@@ -12,7 +12,7 @@ import {
 } from '@/test/harness'
 import { useQuickAdd, DAY_FULL_MESSAGE } from './use-quick-add'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
-import { localRepository } from '@/features/storage/local-repository'
+import { createLocalRepository } from '@/features/storage/local-repository'
 
 beforeEach(async () => {
   await resetAppState()
@@ -38,7 +38,7 @@ describe('useQuickAdd', () => {
     await waitFor(() => expect(entries.current.isSuccess).toBe(true))
     await hook.current({ projectId: project.id, dateKey: TODAY, minutes: 30 })
     await waitFor(async () =>
-      expect(await localRepository.listTimeEntries()).toContainEqual(
+      expect(await createLocalRepository().listTimeEntries()).toContainEqual(
         expect.objectContaining({
           projectId: project.id,
           startTime: atTime(fromDateKey(TODAY), 9, 0).toISOString(),
@@ -72,7 +72,7 @@ describe('useQuickAdd', () => {
     await waitFor(() => expect(entries.current.isSuccess).toBe(true))
     await hook.current({ projectId: project.id, dateKey: TODAY, minutes: 15, note: 'test note' })
     await waitFor(async () =>
-      expect(await localRepository.listTimeEntries()).toContainEqual(
+      expect(await createLocalRepository().listTimeEntries()).toContainEqual(
         expect.objectContaining({ projectId: project.id, note: 'test note' }),
       ),
     )

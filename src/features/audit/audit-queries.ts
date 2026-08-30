@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { repository } from '@/features/storage'
+import { getRepository } from '@/features/storage'
 import { timeEntryKeys } from '@/features/time-entries/time-entry-keys'
 
 export const auditKeys = { all: ['audit-log'] as const }
@@ -9,9 +9,9 @@ export const timeEntryAuditKeys = { all: [...timeEntryKeys.all, 'audits'] as con
 
 /** The recorded changes of the time entries, newest first. */
 export function useAuditLog() {
-  return useQuery({ queryKey: auditKeys.all, queryFn: repository.listAuditLog })
+  return useQuery({ queryKey: auditKeys.all, queryFn: () => getRepository().listAuditLog() })
 }
 
 export function useTimeEntryAudits() {
-  return useQuery({ queryKey: timeEntryAuditKeys.all, queryFn: repository.listTimeEntryAudits })
+  return useQuery({ queryKey: timeEntryAuditKeys.all, queryFn: () => getRepository().listTimeEntryAudits() })
 }

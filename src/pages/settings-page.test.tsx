@@ -4,7 +4,7 @@ import {
   BREAK_ORDER_MESSAGE,
   GERMAN_COMPLIANCE_LIMITS,
 } from '@/features/settings/work-settings-schema'
-import { localRepository } from '@/features/storage/local-repository'
+import { createLocalRepository } from '@/features/storage/local-repository'
 import { renderWithProviders, resetAppState, signIn } from '@/test/harness'
 import { SettingsPage } from './settings-page'
 
@@ -44,7 +44,7 @@ describe('SettingsPage', () => {
     fireEvent.change(screen.getByLabelText(/weekly working time/i), { target: { value: '35' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
     await waitFor(async () => {
-      expect((await localRepository.getWorkSettings()).weeklyTargetMinutes).toBe(2_100)
+      expect((await createLocalRepository().getWorkSettings()).weeklyTargetMinutes).toBe(2_100)
     })
   })
 
@@ -85,7 +85,7 @@ describe('SettingsPage', () => {
 
     await waitFor(async () => {
       expect(
-        (await localRepository.getWorkSettings()).complianceLimits.maxDailyWorkMinutes,
+        (await createLocalRepository().getWorkSettings()).complianceLimits.maxDailyWorkMinutes,
       ).toBe(480)
     })
   })

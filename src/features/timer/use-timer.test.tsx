@@ -202,11 +202,11 @@ describe('useTimer', () => {
 
 describe('useTimer – error paths', () => {
   it('start shows a destructive toast when createTimeEntry fails', async () => {
-    const { localRepository } = await import('@/features/storage/local-repository')
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')
     const project = await seedProject('Website')
 
-    vi.spyOn(localRepository, 'createTimeEntry').mockRejectedValueOnce(new Error('db error'))
+    vi.spyOn(createLocalRepository(), 'createTimeEntry').mockRejectedValueOnce(new Error('db error'))
 
     const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
     await waitFor(() => expect(result.current.status).toBeDefined())
@@ -222,7 +222,7 @@ describe('useTimer – error paths', () => {
   })
 
   it('stop shows a destructive toast when updateTimeEntry fails', async () => {
-    const { localRepository } = await import('@/features/storage/local-repository')
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')
     const project = await seedProject('Website')
     await seedTimeEntry({
@@ -235,7 +235,7 @@ describe('useTimer – error paths', () => {
     const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
     await waitFor(() => expect(result.current.status.running).toBeDefined())
 
-    vi.spyOn(localRepository, 'updateTimeEntry').mockRejectedValueOnce(new Error('db error'))
+    vi.spyOn(createLocalRepository(), 'updateTimeEntry').mockRejectedValueOnce(new Error('db error'))
     useToastStore.setState({ toasts: [] })
 
     await act(async () => {
@@ -247,7 +247,7 @@ describe('useTimer – error paths', () => {
   })
 
   it('pause shows a destructive toast when updateTimeEntry fails', async () => {
-    const { localRepository } = await import('@/features/storage/local-repository')
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')
     const project = await seedProject('Website')
     await seedTimeEntry({
@@ -260,7 +260,7 @@ describe('useTimer – error paths', () => {
     const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
     await waitFor(() => expect(result.current.status.running).toBeDefined())
 
-    vi.spyOn(localRepository, 'updateTimeEntry').mockRejectedValueOnce(new Error('db error'))
+    vi.spyOn(createLocalRepository(), 'updateTimeEntry').mockRejectedValueOnce(new Error('db error'))
     useToastStore.setState({ toasts: [] })
 
     await act(async () => {
@@ -272,12 +272,12 @@ describe('useTimer – error paths', () => {
   })
 
   it('resume shows a destructive toast when createTimeEntry fails', async () => {
-    const { localRepository } = await import('@/features/storage/local-repository')
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')
     const project = await seedProject('Website')
     useTimerStore.setState({ session: { projectId: project.id, carriedMs: 60_000, paused: true } })
 
-    vi.spyOn(localRepository, 'createTimeEntry').mockRejectedValueOnce(new Error('db error'))
+    vi.spyOn(createLocalRepository(), 'createTimeEntry').mockRejectedValueOnce(new Error('db error'))
 
     const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
     await waitFor(() => expect(result.current.status.paused).toBe(true))
@@ -333,12 +333,12 @@ describe('useTimer – error paths', () => {
   })
 
   it('switchTo shows a destructive toast when mutation fails', async () => {
-    const { localRepository } = await import('@/features/storage/local-repository')
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')
     const p2 = await seedProject('Mobile')
     await seedProject('Website')
 
-    vi.spyOn(localRepository, 'createTimeEntry').mockRejectedValueOnce(new Error('db error'))
+    vi.spyOn(createLocalRepository(), 'createTimeEntry').mockRejectedValueOnce(new Error('db error'))
 
     const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
     await waitFor(() => expect(result.current.status).toBeDefined())

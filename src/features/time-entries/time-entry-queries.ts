@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { auditKeys } from '@/features/audit/audit-queries'
-import { repository } from '@/features/storage'
+import { getRepository } from '@/features/storage'
 import { timeEntryKeys } from './time-entry-keys'
 import type { SaveTimeEntry } from './time-entry-schema'
 
@@ -15,13 +15,13 @@ async function invalidate(queryClient: QueryClient): Promise<void> {
 }
 
 export function useTimeEntries() {
-  return useQuery({ queryKey: timeEntryKeys.all, queryFn: repository.listTimeEntries })
+  return useQuery({ queryKey: timeEntryKeys.all, queryFn: () => getRepository().listTimeEntries() })
 }
 
 export function useCreateTimeEntry() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: SaveTimeEntry) => repository.createTimeEntry(input),
+    mutationFn: (input: SaveTimeEntry) => getRepository().createTimeEntry(input),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -30,7 +30,7 @@ export function useUpdateTimeEntry() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: SaveTimeEntry }) =>
-      repository.updateTimeEntry(id, input),
+      getRepository().updateTimeEntry(id, input),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -39,7 +39,7 @@ export function useUpdateTimeEntryNote() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, note }: { id: number; note: string | null }) =>
-      repository.updateTimeEntryNote(id, note),
+      getRepository().updateTimeEntryNote(id, note),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -48,7 +48,7 @@ export function useSwitchRunningTimeEntry() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: SaveTimeEntry }) =>
-      repository.switchRunningTimeEntry(id, input),
+      getRepository().switchRunningTimeEntry(id, input),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -56,7 +56,7 @@ export function useSwitchRunningTimeEntry() {
 export function useDeleteTimeEntry() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => repository.deleteTimeEntry(id),
+    mutationFn: (id: number) => getRepository().deleteTimeEntry(id),
     onSuccess: () => invalidate(queryClient),
   })
 }

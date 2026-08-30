@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { repository } from '@/features/storage'
+import { getRepository } from '@/features/storage'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
 import type { SaveAbsence } from './absence-schema'
 
@@ -17,7 +17,7 @@ async function invalidate(queryClient: QueryClient): Promise<void> {
 }
 
 export function useAbsences() {
-  return useQuery({ queryKey: absenceKeys.all, queryFn: repository.listAbsences })
+  return useQuery({ queryKey: absenceKeys.all, queryFn: () => getRepository().listAbsences() })
 }
 
 /** Absence type per day, ready for every target and balance calculation. */
@@ -27,13 +27,13 @@ export function useAbsenceIndex(): AbsenceIndex {
 }
 
 export function useAbsenceAudits() {
-  return useQuery({ queryKey: absenceKeys.audits, queryFn: repository.listAbsenceAudits })
+  return useQuery({ queryKey: absenceKeys.audits, queryFn: () => getRepository().listAbsenceAudits() })
 }
 
 export function useCreateAbsence() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: SaveAbsence) => repository.createAbsence(input),
+    mutationFn: (input: SaveAbsence) => getRepository().createAbsence(input),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -42,7 +42,7 @@ export function useUpdateAbsence() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, input }: { id: number; input: SaveAbsence }) =>
-      repository.updateAbsence(id, input),
+      getRepository().updateAbsence(id, input),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -58,7 +58,7 @@ export function useSaveAbsences() {
       inputs: SaveAbsence[]
       replacementIds: number[]
       updateId?: number
-    }) => repository.saveAbsences(inputs, replacementIds, updateId),
+    }) => getRepository().saveAbsences(inputs, replacementIds, updateId),
     onSuccess: () => invalidate(queryClient),
   })
 }
@@ -66,7 +66,7 @@ export function useSaveAbsences() {
 export function useDeleteAbsence() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (id: number) => repository.deleteAbsence(id),
+    mutationFn: (id: number) => getRepository().deleteAbsence(id),
     onSuccess: () => invalidate(queryClient),
   })
 }

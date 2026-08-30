@@ -67,3 +67,14 @@ stored entries decide what is running (`reconcileSession`), so a restart, a cras
 cannot lose tracked time; the persisted session only carries the closed segments of a paused timer.
 A running timer can be moved to the time work actually started (`correctStart`); the entry itself is
 rewritten, so every derived figure and the audit trail follow.
+
+## 7. The repository is resolved on use, not at module load
+
+`src/features/storage/index.ts` exposes `getRepository()` instead of a `repository` constant. The
+backend is chosen on the first call and cached, so tests can replace it with `setRepository()` and
+restore the default with `setRepository(null)` instead of mocking the module.
+
+The browser fallback is only reachable through `createLocalRepository()`, which throws outside a
+development or test build (`import.meta.env`). The dead branch also lets the bundler drop the
+fallback from a production desktop build, so the code that is explicitly not a security boundary is
+neither shipped nor constructible there.

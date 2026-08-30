@@ -7,7 +7,7 @@ import type { AuthUser } from '@/features/auth/auth-schema'
 import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
 import type { Project } from '@/features/projects/project-schema'
-import { localRepository } from '@/features/storage/local-repository'
+import { createLocalRepository } from '@/features/storage/local-repository'
 import type { EntryType, TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { useTimerStore } from '@/features/timer/timer-store'
 import { toDateKey } from '@/lib/date'
@@ -32,7 +32,7 @@ export function renderWithProviders(
 
 /** Clears stored data and the client side stores between tests. */
 export async function resetAppState(): Promise<void> {
-  await localRepository.logout()
+  await createLocalRepository().logout()
   globalThis.localStorage?.clear()
   globalThis.sessionStorage?.clear()
   useTimerStore.setState({ session: null, recovered: false })
@@ -42,14 +42,14 @@ export async function resetAppState(): Promise<void> {
 }
 
 export async function signIn(email = 'tester@example.com'): Promise<AuthUser> {
-  return localRepository.register({ email, password: TEST_PASSWORD })
+  return createLocalRepository().register({ email, password: TEST_PASSWORD })
 }
 
 export async function seedProject(
   name: string,
   overrides: Partial<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>> = {},
 ): Promise<Project> {
-  return localRepository.createProject({
+  return createLocalRepository().createProject({
     name,
     description: null,
     color: '#22c55e',
@@ -65,7 +65,7 @@ export async function seedTimeEntry(input: {
   entryType?: EntryType
   note?: string | null
 }): Promise<TimeEntry> {
-  return localRepository.createTimeEntry({
+  return createLocalRepository().createTimeEntry({
     projectId: input.projectId,
     startTime: toIsoString(input.startTime),
     endTime: input.endTime === null ? null : toIsoString(input.endTime),
@@ -83,7 +83,7 @@ export async function seedBreak(input: {
 }
 
 export async function seedBudget(input: SaveProjectBudget) {
-  return localRepository.createProjectBudget(input)
+  return createLocalRepository().createProjectBudget(input)
 }
 
 function toIsoString(value: Date | string): string {

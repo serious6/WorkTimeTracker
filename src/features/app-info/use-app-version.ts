@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { repository } from '@/features/storage'
+import { getRepository } from '@/features/storage'
 
 export const appVersionKeys = { all: ['app-version'] as const }
 
@@ -11,7 +11,7 @@ export const appVersionKeys = { all: ['app-version'] as const }
 export function useAppVersion(): string | null {
   const { data } = useQuery({
     queryKey: appVersionKeys.all,
-    queryFn: repository.getAppVersion,
+    queryFn: () => getRepository().getAppVersion(),
     staleTime: Infinity,
   })
   return data ?? null
