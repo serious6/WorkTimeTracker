@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Select } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { errorToast, toast } from '@/components/ui/toast-store'
+import { cumulativeBalance } from '@/features/dashboard/balance'
 import { dayRange, entriesInRange } from '@/features/dashboard/metrics'
 import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboard-store'
 import { useProjects } from '@/features/projects/project-queries'
@@ -18,6 +19,7 @@ import { useQuickAdd } from '@/features/time-management/use-quick-add'
 import { useTicker } from '@/features/timer/use-ticker'
 import { useTimer } from '@/features/timer/use-timer'
 import {
+  DAY_STATUS_LABELS,
   dayTargetDeltaLabel,
   formatWeekSubtitle,
   isoWeekNumber,
@@ -53,6 +55,10 @@ export function WeekPage() {
   const month = useMemo(
     () => monthOverviewMetrics({ entries, projects, settings, selectedDate, now }),
     [entries, projects, settings, selectedDate, now],
+  )
+  const balance = useMemo(
+    () => cumulativeBalance({ entries, settings, throughDate: selectedDate, now }),
+    [entries, settings, selectedDate, now],
   )
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDateKey(selectedDate))
 
@@ -122,7 +128,7 @@ export function WeekPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader>
             <CardTitle>Overtime / balance (to date)</CardTitle>
@@ -140,6 +146,10 @@ export function WeekPage() {
               Tracked {formatDuration(week.trackedMinutes)} vs pro-rated target{' '}
               {formatDuration(week.proratedTargetMinutes)}.
             </p>
+            <p className="pt-1 text-xs text-muted-foreground">
+              Full week vs target {formatDuration(week.targetMinutes)}:{' '}
+              {formatSignedDuration(week.trackedMinutes - week.targetMinutes)}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -153,6 +163,26 @@ export function WeekPage() {
             </p>
             <p className="text-muted-foreground">
               Required average: {formatDuration(week.requiredAveragePerRemainingDayMinutes)} / remaining day
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Cumulative balance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p
+              className={cn(
+                'text-2xl font-semibold tabular-nums',
+                balance.balanceMinutes >= 0 ? 'text-success' : 'text-warning',
+              )}
+            >
+              {formatSignedDuration(balance.balanceMinutes)}
+            </p>
+            <p className="pt-1 text-xs text-muted-foreground">
+              {balance.startDate
+                ? `Carried across all weeks since ${formatDay(balance.startDate)}.`
+                : 'No time tracked yet.'}
             </p>
           </CardContent>
         </Card>
@@ -193,8 +223,20 @@ export function WeekPage() {
                   <span className="font-medium">
                     {day.date.toLocaleDateString('en-US', { weekday: 'short' })}, {day.date.getDate()}
                   </span>
-                  <span className="tabular-nums">
-                    {formatDuration(day.trackedMinutes)}
+                  <span className="flex items-center gap-2">
+                    {day.status !== 'tracked' && (
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-xs',
+                          day.status === 'non-working' || day.status === 'upcoming'
+                            ? 'bg-muted text-muted-foreground'
+                            : 'text-warning',
+                        )}
+                      >
+                        {DAY_STATUS_LABELS[day.status]}
+                      </span>
+                    )}
+                    <span className="tabular-nums">{formatDuration(day.trackedMinutes)}</span>
                   </span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">

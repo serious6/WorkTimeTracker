@@ -5,12 +5,41 @@ import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import { isBreak, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, formatDuration, formatShortDay, startOfDay, startOfWeek, toDateKey } from '@/lib/date'
 
+/**
+ * `zero` marks a day that has bookings adding up to no time at all, which is
+ * different from `untracked`, a working day without any booking. `upcoming`
+ * marks a working day that has not started yet, so it is not warned about.
+ */
+export type DayStatus = 'tracked' | 'zero' | 'untracked' | 'upcoming' | 'non-working'
+
 export type RangeMetricsDay = {
   date: Date
   dateKey: string
   trackedMinutes: number
   targetMinutes: number
   workingDay: boolean
+  hasEntries: boolean
+  status: DayStatus
+}
+
+export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
+  tracked: 'Tracked',
+  zero: 'Booked without time',
+  untracked: 'Not tracked',
+  upcoming: 'Upcoming',
+  'non-working': 'Non-working day',
+}
+
+function dayStatus(
+  trackedMinutes: number,
+  hasEntries: boolean,
+  workingDay: boolean,
+  hasStarted: boolean,
+): DayStatus {
+  if (trackedMinutes > 0) return 'tracked'
+  if (hasEntries) return 'zero'
+  if (!workingDay) return 'non-working'
+  return hasStarted ? 'untracked' : 'upcoming'
 }
 
 export type RangeMetricsProject = {
@@ -87,6 +116,14 @@ function completedRange(referenceNow: Date, range: DateRange): DateRange {
   return { start: range.start, end: nowStart }
 }
 
+/** Whether an entry belongs to a day, including bookings without any duration. */
+function touchesDay(entry: TimeEntry, day: DateRange, now: number): boolean {
+  const start = Date.parse(entry.startTime)
+  const end = entry.endTime ? Date.parse(entry.endTime) : now
+  if (start >= day.end.getTime()) return false
+  return end > day.start.getTime() || (end === start && start >= day.start.getTime())
+}
+
 function projectName(project: Project | undefined): string {
   return project?.name ?? 'Deleted project'
 }
@@ -109,7 +146,9 @@ export function rangeMetrics({
   now?: number
 }): RangeMetrics {
   const nowDate = new Date(now)
-  const inRange = entriesInRange(entries, range, now).filter((entry) => !isBreak(entry))
+  const today = startOfDay(nowDate)
+  const rangeEntries = entriesInRange(entries, range, now)
+  const inRange = rangeEntries.filter((entry) => !isBreak(entry))
   const dayList = timeline(range)
   const projectById = new Map(projects.map((project) => [project.id, project] as const))
   const elapsed = elapsedRange(nowDate, range)
@@ -129,12 +168,17 @@ export function rangeMetrics({
       0,
     )
     const targetMinutesForDay = isWorkingDay(settings, day) ? dailyTarget : 0
+    const hasEntries = rangeEntries.some((entry) => touchesDay(entry, dayInterval, now))
+    const workingDay = targetMinutesForDay > 0
+    const hasStarted = day <= today
     return {
       date: day,
       dateKey: toDateKey(day),
       trackedMinutes,
       targetMinutes: targetMinutesForDay,
-      workingDay: targetMinutesForDay > 0,
+      workingDay,
+      hasEntries,
+      status: dayStatus(trackedMinutes, hasEntries, workingDay, hasStarted),
     }
   })
 

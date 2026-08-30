@@ -30,6 +30,28 @@ describe('WeekPage', () => {
     await waitFor(() => expect(screen.getAllByText('1h 00m').length).toBeGreaterThanOrEqual(2))
   })
 
+  it('marks untracked working days and non-working days in the breakdown', async () => {
+    const project = await seedProject('Alpha')
+    const ref = new Date(2026, 7, 27)
+    await seedTimeEntry({ projectId: project.id, startTime: atTime(ref, 9), endTime: atTime(ref, 10) })
+
+    renderWithProviders(<WeekPage />)
+
+    expect((await screen.findAllByText('Not tracked')).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Non-working day').length).toBe(2)
+  })
+
+  it('shows the cumulative balance across weeks', async () => {
+    const project = await seedProject('Alpha')
+    const earlier = new Date(2026, 7, 20)
+    await seedTimeEntry({ projectId: project.id, startTime: atTime(earlier, 9), endTime: atTime(earlier, 10) })
+
+    renderWithProviders(<WeekPage />)
+
+    expect(await screen.findByText('Cumulative balance')).toBeInTheDocument()
+    expect(await screen.findByText(/Carried across all weeks since August 20, 2026/)).toBeInTheDocument()
+  })
+
   it('week navigation updates range and month section', async () => {
     renderWithProviders(<WeekPage />)
 

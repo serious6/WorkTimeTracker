@@ -53,4 +53,14 @@ describe('KpiCards', () => {
     const zeros = screen.getAllByText('0h 00m')
     expect(zeros.length).toBeGreaterThanOrEqual(1)
   })
+
+  it('shows remaining time left when below the daily target', () => {
+    renderKpi(240, 240, 480, 2400)
+    expect(screen.getByText('of 8h 00m · 4h 00m left')).toBeInTheDocument()
+  })
+
+  it('shows target reached when at or above the daily target', () => {
+    renderKpi(540, 540, 480, 2400)
+    expect(screen.getByText('of 8h 00m · target reached')).toBeInTheDocument()
+  })
 })
