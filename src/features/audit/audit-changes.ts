@@ -1,6 +1,5 @@
 import { formatShortDay, formatTimeOfDay } from '@/lib/date'
-import type { AuditChange } from './audit-schema'
-import type { AuditLogAction, AuditSnapshot } from './audit-schema'
+import type { AuditChange, AuditLogAction, AuditSnapshot } from './audit-schema'
 
 export const AUDIT_ACTION_LABEL: Record<AuditLogAction, string> = {
   create: 'Created',

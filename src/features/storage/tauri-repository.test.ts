@@ -145,8 +145,17 @@ describe('tauriRepository – time entries', () => {
   test('listAuditLog invokes list_audit_log', async () => {
     mockInvoke.mockResolvedValue([AUDIT_RECORD])
     const result = await tauriRepository.listAuditLog()
-    invokedWith('list_audit_log', {})
+    invokedWith('list_audit_log', { range: undefined })
     expect(result[0].action).toBe('update')
+  })
+
+  test('listAuditLog passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { from: '2026-08-01', to: '2026-09-01' }
+
+    await tauriRepository.listAuditLog(range)
+
+    invokedWith('list_audit_log', { range })
   })
 
   test('deleteTimeEntry invokes delete_time_entry', async () => {
@@ -200,8 +209,17 @@ describe('tauriRepository – absences', () => {
   test('listAbsences invokes list_absences', async () => {
     mockInvoke.mockResolvedValue([ABSENCE])
     const result = await tauriRepository.listAbsences()
-    invokedWith('list_absences', {})
+    invokedWith('list_absences', { range: undefined })
     expect(result[0].type).toBe('vacation')
+  })
+
+  test('listAbsences passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { from: '2026-08-01', to: '2026-09-01' }
+
+    await tauriRepository.listAbsences(range)
+
+    invokedWith('list_absences', { range })
   })
 
   test('createAbsence invokes create_absence', async () => {
