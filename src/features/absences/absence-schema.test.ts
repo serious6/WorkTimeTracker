@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { GERMAN_COMPLIANCE_LIMITS } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { absenceIndex } from './absence-index'
 import {
@@ -95,7 +94,6 @@ describe('absence warnings', () => {
     const warnings = absenceWorkWarnings(
       [entry('2026-09-01', '08:00', '12:00')],
       absenceIndex([absence('2026-09-01')]),
-      GERMAN_COMPLIANCE_LIMITS,
       now,
     )
 
@@ -109,11 +107,10 @@ describe('absence warnings', () => {
       absenceWorkWarnings(
         [entry('2026-09-02', '08:00', '12:00')],
         absenceIndex([absence('2026-09-01')]),
-        GERMAN_COMPLIANCE_LIMITS,
         now,
       ),
     ).toEqual([])
-    expect(absenceWorkWarnings([], absenceIndex([absence('2026-09-01')]), GERMAN_COMPLIANCE_LIMITS, now)).toEqual(
+    expect(absenceWorkWarnings([], absenceIndex([absence('2026-09-01')]), now)).toEqual(
       [],
     )
   })
@@ -126,7 +123,6 @@ describe('absence warnings', () => {
     const warnings = absenceWorkWarnings(
       [overnight],
       absenceIndex([absence('2026-09-02'), { ...absence('2026-09-01'), id: 2, type: 'halfDay' }]),
-      GERMAN_COMPLIANCE_LIMITS,
       now,
     )
 

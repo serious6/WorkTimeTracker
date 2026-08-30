@@ -1,5 +1,4 @@
 import { isBreak } from '@/features/time-entries/time-entry-schema'
-import type { ComplianceLimits } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, fromDateKey } from '@/lib/date'
 import type { AbsenceIndex } from './absence-index'
@@ -18,11 +17,9 @@ export type AbsenceWarning = {
 export function absenceWorkWarnings(
   entries: TimeEntry[],
   absences: AbsenceIndex,
-  limits: ComplianceLimits,
   now: number,
 ): AbsenceWarning[] {
   if (absences.size === 0) return []
-  void limits
   return [...absences.keys()]
     .filter((dateKey) => {
       const start = fromDateKey(dateKey).getTime()

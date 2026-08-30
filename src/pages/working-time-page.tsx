@@ -47,7 +47,6 @@ export function WorkingTimePage() {
   const absenceWarnings = absenceWorkWarnings(
     entries,
     absences,
-    settings.complianceLimits,
     now,
   ).filter((warning) => warning.dateKey.startsWith(month))
 
