@@ -87,23 +87,30 @@ export function AppSidebar() {
         </div>
         <nav aria-label="Main" className="px-2">
           <ul>
-            {groups.flatMap((group, groupIndex) => [
-              group.label && (
-                <li
-                  className={cn(
-                    'mb-1 border-t border-border pt-3 first:border-t-0 first:pt-0',
-                    !sidebarExpanded && 'h-3',
-                  )}
-                  key={group.label}
-                  role="presentation"
-                >
-                  <h2 className={cn('px-3 text-xs font-medium text-muted-foreground', !sidebarExpanded && 'sr-only')}>
-                    {group.label}
-                  </h2>
-                </li>
-              ),
+            {groups.flatMap((group) => [
+              ...(group.label
+                ? [
+                    <li
+                      className={cn(
+                        'mb-1 border-t border-border pt-3 first:border-t-0 first:pt-0',
+                        !sidebarExpanded && 'h-3',
+                      )}
+                      key={group.label}
+                      role="presentation"
+                    >
+                      <h2
+                        className={cn(
+                          'px-3 text-xs font-medium text-muted-foreground',
+                          !sidebarExpanded && 'sr-only',
+                        )}
+                      >
+                        {group.label}
+                      </h2>
+                    </li>,
+                  ]
+                : []),
               ...group.items.map((item) => (
-                <li className={cn(groupIndex > 0 && !group.label && 'mt-3')} key={item.view}>
+                <li className={cn(!group.label && 'mt-3')} key={item.view}>
                   <Button
                     aria-current={view === item.view ? 'page' : undefined}
                     className={cn(
