@@ -1,6 +1,13 @@
+import { NO_ABSENCES, type AbsenceIndex } from '@/features/absences/absence-index'
+import type { AbsenceType } from '@/features/absences/absence-schema'
 import { type DateRange, entriesInRange, entryMinutesInRange, monthRange, weekRange } from '@/features/dashboard/metrics'
 import type { Project } from '@/features/projects/project-schema'
-import { dailyTargetMinutes, isWorkingDay, scheduledMinutesInRange } from '@/features/settings/work-schedule'
+import {
+  dailyTargetMinutes,
+  isWorkingDay,
+  scheduledMinutesInRange,
+  targetMinutesForDay,
+} from '@/features/settings/work-schedule'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import { isBreak, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, formatDuration, formatShortDay, startOfDay, startOfWeek, toDateKey } from '@/lib/date'
@@ -9,8 +16,9 @@ import { addDays, formatDuration, formatShortDay, startOfDay, startOfWeek, toDat
  * `zero` marks a day that has bookings adding up to no time at all, which is
  * different from `untracked`, a working day without any booking. `upcoming`
  * marks a working day that has not started yet, so it is not warned about.
+ * `absence` marks a day that is excused, so its missing time is explained.
  */
-export type DayStatus = 'tracked' | 'zero' | 'untracked' | 'upcoming' | 'non-working'
+export type DayStatus = 'tracked' | 'zero' | 'untracked' | 'upcoming' | 'non-working' | 'absence'
 
 export type RangeMetricsDay = {
   date: Date
@@ -19,6 +27,7 @@ export type RangeMetricsDay = {
   targetMinutes: number
   workingDay: boolean
   hasEntries: boolean
+  absenceType: AbsenceType | null
   status: DayStatus
 }
 
@@ -28,17 +37,20 @@ export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
   untracked: 'Not tracked',
   upcoming: 'Upcoming',
   'non-working': 'Non-working day',
+  absence: 'Absence',
 }
 
 function dayStatus(
   trackedMinutes: number,
   hasEntries: boolean,
-  workingDay: boolean,
+  scheduledDay: boolean,
   hasStarted: boolean,
+  absence: AbsenceType | null,
 ): DayStatus {
   if (trackedMinutes > 0) return 'tracked'
   if (hasEntries) return 'zero'
-  if (!workingDay) return 'non-working'
+  if (absence) return 'absence'
+  if (!scheduledDay) return 'non-working'
   return hasStarted ? 'untracked' : 'upcoming'
 }
 
@@ -137,12 +149,14 @@ export function rangeMetrics({
   projects,
   settings,
   range,
+  absences = NO_ABSENCES,
   now = Date.now(),
 }: {
   entries: TimeEntry[]
   projects: Project[]
   settings: WorkSettings
   range: DateRange
+  absences?: AbsenceIndex
   now?: number
 }): RangeMetrics {
   const nowDate = new Date(now)
@@ -156,7 +170,7 @@ export function rangeMetrics({
   const elapsedDays = timeline(elapsed)
   const completedDays = timeline(completed)
   const dailyTarget = dailyTargetMinutes(settings)
-  const targetMinutes = scheduledMinutesInRange(settings, range)
+  const targetMinutes = scheduledMinutesInRange(settings, range, absences)
   const totalWorkingDays = dayList.filter((day) => isWorkingDay(settings, day)).length
   const elapsedWorkingDays = elapsedDays.filter((day) => isWorkingDay(settings, day)).length
   const remainingWorkingDays = Math.max(totalWorkingDays - elapsedWorkingDays, 0)
@@ -167,32 +181,38 @@ export function rangeMetrics({
       (total, entry) => total + entryMinutesInRange(entry, dayInterval, now),
       0,
     )
-    const targetMinutesForDay = isWorkingDay(settings, day) ? dailyTarget : 0
+    const dayTarget = targetMinutesForDay(settings, day, absences)
     const hasEntries = rangeEntries.some((entry) => touchesDay(entry, dayInterval, now))
-    const workingDay = targetMinutesForDay > 0
+    const absenceType = absences.get(toDateKey(day)) ?? null
     const hasStarted = day <= today
     return {
       date: day,
       dateKey: toDateKey(day),
       trackedMinutes,
-      targetMinutes: targetMinutesForDay,
-      workingDay,
+      targetMinutes: dayTarget,
+      workingDay: isWorkingDay(settings, day),
       hasEntries,
-      status: dayStatus(trackedMinutes, hasEntries, workingDay, hasStarted),
+      absenceType,
+      status: dayStatus(trackedMinutes, hasEntries, isWorkingDay(settings, day), hasStarted, absenceType),
     }
   })
 
   const trackedMinutes = days.reduce((total, day) => total + day.trackedMinutes, 0)
   const bookedDays = days.filter((day) => day.trackedMinutes > 0).length
   const averageDayLengthMinutes = bookedDays > 0 ? trackedMinutes / bookedDays : 0
-  const proratedTargetMinutes = elapsedWorkingDays * dailyTarget
+  const proratedTargetMinutes = scheduledMinutesInRange(settings, elapsed, absences)
   const balanceToDateMinutes = trackedMinutes - proratedTargetMinutes
 
   const daysByKey = new Map(days.map((day) => [day.dateKey, day] as const))
-  const trackedCompletedWorkingDays = completedDays
-    .filter((day) => isWorkingDay(settings, day))
-    .reduce((total, day) => total + (daysByKey.get(toDateKey(day))?.trackedMinutes ?? 0), 0)
-  const completedWorkingDays = completedDays.filter((day) => isWorkingDay(settings, day)).length
+  // Absence days carry no target, so they must not drag the forecast average down.
+  const completedTargetDays = completedDays.filter(
+    (day) => targetMinutesForDay(settings, day, absences) > 0,
+  )
+  const trackedCompletedWorkingDays = completedTargetDays.reduce(
+    (total, day) => total + (daysByKey.get(toDateKey(day))?.trackedMinutes ?? 0),
+    0,
+  )
+  const completedWorkingDays = completedTargetDays.length
   const averageCompletedWorkingDayMinutes =
     completedWorkingDays > 0 ? trackedCompletedWorkingDays / completedWorkingDays : dailyTarget
   const forecastMinutes = trackedMinutes + remainingWorkingDays * averageCompletedWorkingDayMinutes
@@ -247,15 +267,24 @@ export function weekMetrics({
   projects,
   settings,
   selectedDate,
+  absences = NO_ABSENCES,
   now = Date.now(),
 }: {
   entries: TimeEntry[]
   projects: Project[]
   settings: WorkSettings
   selectedDate: Date
+  absences?: AbsenceIndex
   now?: number
 }): RangeMetrics {
-  return rangeMetrics({ entries, projects, settings, range: weekRange(selectedDate, settings.weekStartsOn), now })
+  return rangeMetrics({
+    entries,
+    projects,
+    settings,
+    range: weekRange(selectedDate, settings.weekStartsOn),
+    absences,
+    now,
+  })
 }
 
 export function monthWeekStrip({
@@ -263,12 +292,14 @@ export function monthWeekStrip({
   projects,
   settings,
   month,
+  absences = NO_ABSENCES,
   now = Date.now(),
 }: {
   entries: TimeEntry[]
   projects: Project[]
   settings: WorkSettings
   month: DateRange
+  absences?: AbsenceIndex
   now?: number
 }): MonthWeekStrip[] {
   const rows: MonthWeekStrip[] = []
@@ -279,7 +310,7 @@ export function monthWeekStrip({
       start: weekStart < month.start ? month.start : weekStart,
       end: weekEnd > month.end ? month.end : weekEnd,
     }
-    const metrics = rangeMetrics({ entries, projects, settings, range, now })
+    const metrics = rangeMetrics({ entries, projects, settings, range, absences, now })
     rows.push({
       weekStart,
       weekEnd: addDays(weekStart, 6),
@@ -297,24 +328,26 @@ export function monthOverviewMetrics({
   projects,
   settings,
   selectedDate,
+  absences = NO_ABSENCES,
   now = Date.now(),
 }: {
   entries: TimeEntry[]
   projects: Project[]
   settings: WorkSettings
   selectedDate: Date
+  absences?: AbsenceIndex
   now?: number
 }): MonthOverviewMetrics {
   const selectedWeekStart = startOfWeek(selectedDate, settings.weekStartsOn)
   const month = monthRange(selectedWeekStart)
   const end = new Date(Math.min(addDays(startOfDay(new Date(now)), 1).getTime(), month.end.getTime()))
   const monthToDate = { start: month.start, end: end < month.start ? month.start : end }
-  const metrics = rangeMetrics({ entries, projects, settings, range: monthToDate, now })
+  const metrics = rangeMetrics({ entries, projects, settings, range: monthToDate, absences, now })
   return {
     ...metrics,
     month,
     monthToDate,
-    weekStrip: monthWeekStrip({ entries, projects, settings, month, now }),
+    weekStrip: monthWeekStrip({ entries, projects, settings, month, absences, now }),
   }
 }
 

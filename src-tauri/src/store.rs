@@ -3,8 +3,8 @@
 use crate::{
     config::DbConfig,
     models::{
-        AuditLogEntry, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
-        TimeEntry, TimeEntryAudit, User, WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, Project, ProjectBudget, SaveAbsence, SaveProject,
+        SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -122,6 +122,17 @@ pub trait Store {
         input: &SaveProjectBudget,
     ) -> Result<ProjectBudget, StoreError>;
     fn delete_project_budget(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
+
+    fn list_absences(&self, user_id: i64) -> Result<Vec<Absence>, StoreError>;
+    fn insert_absence(&self, user_id: i64, input: &SaveAbsence) -> Result<Absence, StoreError>;
+    fn update_absence(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveAbsence,
+    ) -> Result<Absence, StoreError>;
+    fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
+    fn list_absence_audits(&self, user_id: i64) -> Result<Vec<AbsenceAudit>, StoreError>;
 
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError>;
     fn write_settings(

@@ -9,7 +9,10 @@ use serde_json::Value;
 
 use crate::{
     auth::{LOGIN_LOCKOUT_MINUTES, MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES},
-    models::{Credentials, SaveProject, SaveProjectBudget, SaveTimeEntry, WorkSettings},
+    models::{
+        adjusted_daily_target, Credentials, SaveAbsence, SaveProject, SaveProjectBudget,
+        SaveTimeEntry, WorkSettings,
+    },
     store::{Store, StoreError},
     test_support::{test_store, unique_email, unique_tag},
 };
@@ -38,6 +41,19 @@ struct Case {
     normalized_name: Option<String>,
     #[serde(default)]
     normalized_working_days: Option<Vec<String>>,
+    #[serde(default)]
+    normalized_date: Option<String>,
+}
+
+/// A daily target before and after an absence neutralises it.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AbsenceTargetCase {
+    name: String,
+    daily_target_minutes: f64,
+    working_day: bool,
+    absence_type: Option<String>,
+    target_minutes: f64,
 }
 
 #[derive(Deserialize)]
@@ -139,6 +155,35 @@ fn validates_work_settings_like_the_contract() {
     }
 }
 
+#[test]
+fn validates_absences_like_the_contract() {
+    for case in cases("absences") {
+        let absence = check::<SaveAbsence>(&case, SaveAbsence::validate);
+        if let (Some(absence), Some(date)) = (absence, case.normalized_date.as_ref()) {
+            assert_eq!(&absence.date, date, "{}", case.name);
+        }
+    }
+}
+
+#[test]
+fn neutralises_absence_targets_like_the_contract() {
+    let targets: Vec<AbsenceTargetCase> =
+        serde_json::from_value(rules()["absenceTargets"].clone()).unwrap();
+
+    for case in targets {
+        assert_eq!(
+            adjusted_daily_target(
+                case.daily_target_minutes,
+                case.working_day,
+                case.absence_type.as_deref(),
+            ),
+            case.target_minutes,
+            "{}",
+            case.name
+        );
+    }
+}
+
 /// The uniqueness fixtures run through `Store` against a real Postgres, so the
 /// database constraints - not just the fixtures - are covered. Skipped without
 /// a reachable database and required in CI (see `test_support::test_store`).
@@ -188,6 +233,19 @@ fn enforces_uniqueness_like_the_contract() {
                 store.insert_project_budget(user.id, &budget).unwrap();
 
                 let error = store.insert_project_budget(user.id, &budget).unwrap_err();
+
+                assert!(
+                    matches!(error, StoreError::UniqueViolation),
+                    "{}",
+                    case.name
+                );
+            }
+            "absenceDay" => {
+                let absence: SaveAbsence = serde_json::from_value(case.input).unwrap();
+                let user = store.register_user(&unique_email(), "hash").unwrap();
+                store.insert_absence(user.id, &absence).unwrap();
+
+                let error = store.insert_absence(user.id, &absence).unwrap_err();
 
                 assert!(
                     matches!(error, StoreError::UniqueViolation),
