@@ -635,3 +635,69 @@ describe('local repository error kinds', () => {
     ).rejects.toMatchObject({ kind: 'rateLimited', message: LOCKED_OUT_MESSAGE })
   })
 })
+
+describe('local repository audit trail', () => {
+  let projectId: number
+
+  beforeEach(async () => {
+    await register('first@example.com')
+    projectId = (await createProject('Website Redesign')).id
+  })
+
+  async function createEntry(startTime: string, endTime: string | null) {
+    return localRepository.createTimeEntry({ projectId, startTime, endTime, note: null })
+  }
+
+  it('records create, update and delete of a time entry, newest first', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.updateTimeEntry(entry.id, {
+      projectId,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T10:00:00.000Z',
+      note: null,
+    })
+    await localRepository.deleteTimeEntry(entry.id)
+
+    const records = await localRepository.listAuditLog()
+
+    expect(records.map(({ action }) => action)).toEqual(['delete', 'update', 'create'])
+    expect(records.every((record) => record.entityId === entry.id)).toBe(true)
+    expect(records[1].oldValue).toContain('2026-08-27T09:00:00.000Z')
+    expect(records[1].newValue).toContain('2026-08-27T10:00:00.000Z')
+    expect(records[0].newValue).toBeNull()
+    expect(records[2].oldValue).toBeNull()
+  })
+
+  it('records an edited note', async () => {
+    const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+
+    await localRepository.updateTimeEntryNote(entry.id, 'Kickoff')
+
+    const [record] = await localRepository.listAuditLog()
+    expect(record.action).toBe('update')
+    expect(record.newValue).toContain('Kickoff')
+  })
+
+  it('records the closed and the started entry of a timer switch', async () => {
+    const running = await createEntry('2026-08-27T08:00:00.000Z', null)
+
+    const created = await localRepository.switchRunningTimeEntry(running.id, {
+      projectId,
+      startTime: '2026-08-27T09:00:00.000Z',
+      endTime: null,
+      note: null,
+    })
+
+    const records = await localRepository.listAuditLog()
+    expect(records[0]).toMatchObject({ action: 'create', entityId: created.id })
+    expect(records[1]).toMatchObject({ action: 'update', entityId: running.id })
+  })
+
+  it('keeps the audit trail of another user private', async () => {
+    await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
+    await localRepository.logout()
+    await register('second@example.com')
+
+    expect(await localRepository.listAuditLog()).toEqual([])
+  })
+})

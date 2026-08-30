@@ -7,8 +7,8 @@ use crate::{
     error::{AppError, AppResult},
     logging,
     models::{
-        Credentials, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
-        TimeEntry, User, WorkSettings,
+        AuditLogEntry, Credentials, Project, ProjectBudget, SaveProject, SaveProjectBudget,
+        SaveTimeEntry, TimeEntry, User, WorkSettings,
     },
 };
 
@@ -301,6 +301,17 @@ pub fn delete_time_entry(
         with_user(&database, &session, |connection, user_id| {
             database::delete_time_entry(connection, id, user_id)
         })
+    })
+}
+
+/// The recorded changes of the time entries of the signed in user.
+#[tauri::command]
+pub fn list_audit_log(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+) -> AppResult<Vec<AuditLogEntry>> {
+    logging::logged("list_audit_log", || {
+        with_user(&database, &session, database::list_audit_log)
     })
 }
 

@@ -1,3 +1,4 @@
+import type { AuditLogEntry } from '@/features/audit/audit-schema'
 import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
@@ -19,6 +20,7 @@ export type Repository = {
   updateTimeEntryNote: (id: number, note: string | null) => Promise<TimeEntry>
   switchRunningTimeEntry: (id: number, input: SaveTimeEntry) => Promise<TimeEntry>
   deleteTimeEntry: (id: number) => Promise<void>
+  listAuditLog: () => Promise<AuditLogEntry[]>
   listProjectBudgets: () => Promise<ProjectBudget[]>
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>

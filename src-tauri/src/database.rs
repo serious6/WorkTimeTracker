@@ -4,8 +4,8 @@ use rusqlite::{params, Connection, OptionalExtension, Result, Row};
 use rusqlite_migration::{Migrations, M};
 
 use crate::models::{
-    Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, User,
-    WorkSettings, DEFAULT_WORKING_DAYS,
+    AuditLogEntry, Project, ProjectBudget, SaveProject, SaveProjectBudget, SaveTimeEntry,
+    TimeEntry, User, WorkSettings, DEFAULT_WORKING_DAYS,
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
@@ -35,6 +35,7 @@ fn migrations() -> Migrations<'static> {
             "../../drizzle/0002_work_settings_working_days.sql"
         )),
         M::up(include_str!("../../drizzle/0003_create_users.sql")),
+        M::up(include_str!("../../drizzle/0004_create_audit_log.sql")),
     ])
 }
 
@@ -208,6 +209,66 @@ pub fn overlaps(
     )
 }
 
+/// Entity name of a time entry in the audit trail.
+pub const TIME_ENTRY_ENTITY: &str = "timeEntry";
+const AUDIT_LOG_LIMIT: i64 = 200;
+const AUDIT_LOG_COLUMNS: &str = "id, entity, entity_id, action, old_value, new_value, created_at";
+
+fn audit_from_row(row: &Row<'_>) -> Result<AuditLogEntry> {
+    Ok(AuditLogEntry {
+        id: row.get(0)?,
+        entity: row.get(1)?,
+        entity_id: row.get(2)?,
+        action: row.get(3)?,
+        old_value: row.get(4)?,
+        new_value: row.get(5)?,
+        created_at: row.get(6)?,
+    })
+}
+
+fn entry_snapshot(entry: &TimeEntry) -> String {
+    serde_json::json!({
+        "projectId": entry.project_id,
+        "startTime": entry.start_time,
+        "endTime": entry.end_time,
+        "note": entry.note,
+    })
+    .to_string()
+}
+
+/// Appends one change of a time entry to the audit trail of its owner.
+fn record_audit(
+    connection: &Connection,
+    user_id: i64,
+    entity_id: i64,
+    action: &str,
+    old_value: Option<&TimeEntry>,
+    new_value: Option<&TimeEntry>,
+) -> Result<()> {
+    connection.execute(
+        "INSERT INTO audit_log (user_id, entity, entity_id, action, old_value, new_value, created_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        params![
+            user_id,
+            TIME_ENTRY_ENTITY,
+            entity_id,
+            action,
+            old_value.map(entry_snapshot),
+            new_value.map(entry_snapshot)
+        ],
+    )?;
+    Ok(())
+}
+
+/// The most recent changes of the user, newest first.
+pub fn list_audit_log(connection: &Connection, user_id: i64) -> Result<Vec<AuditLogEntry>> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {AUDIT_LOG_COLUMNS} FROM audit_log WHERE user_id = ?1 ORDER BY id DESC LIMIT ?2"
+    ))?;
+    let records = statement.query_map(params![user_id, AUDIT_LOG_LIMIT], audit_from_row)?;
+    records.collect()
+}
+
 pub fn insert_time_entry(
     connection: &Connection,
     user_id: i64,
@@ -225,7 +286,9 @@ pub fn insert_time_entry(
             input.note
         ],
     )?;
-    read_entry(connection, connection.last_insert_rowid(), user_id)
+    let entry = read_entry(connection, connection.last_insert_rowid(), user_id)?;
+    record_audit(connection, user_id, entry.id, "create", None, Some(&entry))?;
+    Ok(entry)
 }
 
 pub fn update_time_entry(
@@ -235,6 +298,7 @@ pub fn update_time_entry(
     input: &SaveTimeEntry,
 ) -> Result<TimeEntry> {
     assert_owns_project(connection, user_id, input.project_id)?;
+    let current = read_entry(connection, id, user_id)?;
     connection.execute(
         "UPDATE time_entries
      SET project_id = ?3, start_time = ?4, end_time = ?5, note = ?6,
@@ -249,7 +313,16 @@ pub fn update_time_entry(
             input.note
         ],
     )?;
-    read_entry(connection, id, user_id)
+    let updated = read_entry(connection, id, user_id)?;
+    record_audit(
+        connection,
+        user_id,
+        id,
+        "update",
+        Some(&current),
+        Some(&updated),
+    )?;
+    Ok(updated)
 }
 
 pub fn update_time_entry_note(
@@ -258,13 +331,23 @@ pub fn update_time_entry_note(
     user_id: i64,
     note: Option<&str>,
 ) -> Result<TimeEntry> {
+    let current = read_entry(connection, id, user_id)?;
     connection.execute(
         "UPDATE time_entries
      SET note = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ?1 AND user_id = ?2",
         params![id, user_id, note],
     )?;
-    read_entry(connection, id, user_id)
+    let updated = read_entry(connection, id, user_id)?;
+    record_audit(
+        connection,
+        user_id,
+        id,
+        "update",
+        Some(&current),
+        Some(&updated),
+    )?;
+    Ok(updated)
 }
 
 pub fn switch_running_time_entry(
@@ -305,6 +388,17 @@ pub fn switch_running_time_entry(
     {
         return Err(SwitchRunningTimeEntryError::Overlap);
     }
+    let closed =
+        read_entry(&transaction, id, user_id).map_err(SwitchRunningTimeEntryError::Database)?;
+    record_audit(
+        &transaction,
+        user_id,
+        id,
+        "update",
+        Some(&current),
+        Some(&closed),
+    )
+    .map_err(SwitchRunningTimeEntryError::Database)?;
     let created = insert_time_entry(&transaction, user_id, input)
         .map_err(SwitchRunningTimeEntryError::Database)?;
     transaction
@@ -314,10 +408,14 @@ pub fn switch_running_time_entry(
 }
 
 pub fn delete_time_entry(connection: &Connection, id: i64, user_id: i64) -> Result<()> {
+    let current = read_entry(connection, id, user_id).optional()?;
     connection.execute(
         "DELETE FROM time_entries WHERE id = ?1 AND user_id = ?2",
         [id, user_id],
     )?;
+    if let Some(current) = current {
+        record_audit(connection, user_id, id, "delete", Some(&current), None)?;
+    }
     Ok(())
 }
 
@@ -634,7 +732,7 @@ mod tests {
         migrate(&mut connection).unwrap();
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(6)
+            Ok(7)
         );
     }
 
@@ -650,7 +748,7 @@ mod tests {
 
         assert_eq!(
             connection.pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0)),
-            Ok(6)
+            Ok(7)
         );
         let user_id = user(&connection, "first@example.com");
         assert!(list_projects(&connection, user_id).unwrap().is_empty());
@@ -877,6 +975,106 @@ mod tests {
 
         delete_time_entry(&connection, created.id, user_id).unwrap();
         assert!(list_time_entries(&connection, user_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn records_every_change_of_a_time_entry_in_the_audit_log() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        let created = insert_time_entry(
+            &connection,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T09:00:00.000Z"),
+            ),
+        )
+        .unwrap();
+        update_time_entry(
+            &connection,
+            created.id,
+            user_id,
+            &entry(
+                project.id,
+                "2026-08-27T08:00:00.000Z",
+                Some("2026-08-27T10:00:00.000Z"),
+            ),
+        )
+        .unwrap();
+        delete_time_entry(&connection, created.id, user_id).unwrap();
+
+        let records = list_audit_log(&connection, user_id).unwrap();
+
+        let actions: Vec<&str> = records
+            .iter()
+            .map(|record| record.action.as_str())
+            .collect();
+        assert_eq!(actions, vec!["delete", "update", "create"]);
+        assert!(records
+            .iter()
+            .all(|record| record.entity == TIME_ENTRY_ENTITY && record.entity_id == created.id));
+        let update = &records[1];
+        assert!(update
+            .old_value
+            .as_deref()
+            .unwrap()
+            .contains("2026-08-27T09:00:00.000Z"));
+        assert!(update
+            .new_value
+            .as_deref()
+            .unwrap()
+            .contains("2026-08-27T10:00:00.000Z"));
+        assert_eq!(records[0].new_value, None);
+        assert!(!records[0].created_at.is_empty());
+    }
+
+    #[test]
+    fn keeps_the_audit_log_of_another_user_private() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        insert_time_entry(
+            &connection,
+            user_id,
+            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
+        )
+        .unwrap();
+        let other = user(&connection, "second@example.com");
+
+        assert!(list_audit_log(&connection, other).unwrap().is_empty());
+        assert_eq!(list_audit_log(&connection, user_id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn records_the_closed_and_the_started_entry_of_a_timer_switch() {
+        let (connection, user_id) = connect();
+        let project = project(&connection, user_id);
+        let running = insert_time_entry(
+            &connection,
+            user_id,
+            &entry(project.id, "2026-08-27T08:00:00.000Z", None),
+        )
+        .unwrap();
+
+        let created = switch_running_time_entry(
+            &connection,
+            running.id,
+            user_id,
+            &entry(project.id, "2026-08-27T09:00:00.000Z", None),
+        )
+        .unwrap();
+
+        let records = list_audit_log(&connection, user_id).unwrap();
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[0].action, "create");
+        assert_eq!(records[0].entity_id, created.id);
+        assert_eq!(records[1].action, "update");
+        assert_eq!(records[1].entity_id, running.id);
+        assert!(records[1]
+            .new_value
+            .as_deref()
+            .unwrap()
+            .contains("2026-08-27T09:00:00.000Z"));
     }
 
     #[test]

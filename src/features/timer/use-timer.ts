@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { entryDurationMs, findRunningEntry } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
@@ -16,6 +16,7 @@ import {
 } from '@/features/time-entries/time-entry-schema'
 import { formatDuration } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
+import { reconcileSession } from './recover-session'
 import { useTimerStore } from './timer-store'
 
 export type TimerStatus = {
@@ -27,16 +28,25 @@ export type TimerStatus = {
 }
 
 export function useTimer(now: number) {
-  const { data: entries = [] } = useTimeEntries()
+  const { data: entries = [], isSuccess } = useTimeEntries()
   const { data: projects = [] } = useProjects()
   const session = useTimerStore((state) => state.session)
   const setSession = useTimerStore((state) => state.setSession)
+  const recovered = useTimerStore((state) => state.recovered)
+  const recover = useTimerStore((state) => state.recover)
   const createEntry = useCreateTimeEntry()
   const updateEntry = useUpdateTimeEntry()
   const updateNote = useUpdateTimeEntryNote()
   const switchEntry = useSwitchRunningTimeEntry()
 
   const running = findRunningEntry(entries)
+
+  /** Once per application start the stored entries decide what is running. */
+  useEffect(() => {
+    if (recovered || !isSuccess) return
+    recover(reconcileSession(useTimerStore.getState().session, running))
+  }, [isSuccess, recover, recovered, running])
+
   const paused = Boolean(session?.paused) && !running
   const carriedMs = session?.carriedMs ?? 0
   const status: TimerStatus = {

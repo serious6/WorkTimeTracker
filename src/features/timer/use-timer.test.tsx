@@ -292,6 +292,46 @@ describe('useTimer – error paths', () => {
     vi.restoreAllMocks()
   })
 
+  it('recovers the running entry after a restart without a stored session', async () => {
+    const project = await seedProject('Website')
+    const started = new Date(Date.now() - 120_000)
+    await seedTimeEntry({ projectId: project.id, startTime: started, endTime: null })
+    useTimerStore.setState({ session: null, recovered: false })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+
+    await waitFor(() => expect(useTimerStore.getState().session?.projectId).toBe(project.id))
+    expect(useTimerStore.getState().session?.paused).toBe(false)
+    expect(result.current.status.elapsedMs).toBeGreaterThanOrEqual(120_000)
+  })
+
+  it('clears a stored session whose entry is no longer running', async () => {
+    const project = await seedProject('Website')
+    useTimerStore.setState({
+      session: { projectId: project.id, carriedMs: 60_000, paused: false },
+      recovered: false,
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    expect(result.current.status.elapsedMs).toBe(0)
+  })
+
+  it('keeps the carried time of a paused session across a restart', async () => {
+    const project = await seedProject('Website')
+    useTimerStore.setState({
+      session: { projectId: project.id, carriedMs: 60_000, paused: true },
+      recovered: false,
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+
+    await waitFor(() => expect(result.current.status.paused).toBe(true))
+    expect(result.current.status.elapsedMs).toBe(60_000)
+    expect(useTimerStore.getState().session?.carriedMs).toBe(60_000)
+  })
+
   it('switchTo shows a destructive toast when mutation fails', async () => {
     const { localRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')

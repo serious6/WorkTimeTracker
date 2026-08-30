@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { z } from 'zod'
+import { auditLogEntrySchema } from '@/features/audit/audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
@@ -49,6 +50,7 @@ export const tauriRepository: Repository = {
   deleteTimeEntry: async (id) => {
     await run('delete_time_entry', { id })
   },
+  listAuditLog: () => call('list_audit_log', {}, auditLogEntrySchema.array()),
   listProjectBudgets: () => call('list_project_budgets', {}, projectBudgetSchema.array()),
   createProjectBudget: (input) => call('create_project_budget', { input }, projectBudgetSchema),
   updateProjectBudget: (id, input) =>
