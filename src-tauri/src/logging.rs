@@ -122,7 +122,7 @@ fn clamp(message: &str) -> String {
 }
 
 /// Removes credentials, hashes, e-mail addresses and file system paths from a
-/// message. Both backends redact, so a log line is safe wherever it originates.
+/// message. A log line is redacted before it is written, so it is safe wherever it originates.
 pub fn redact(message: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
 
@@ -395,11 +395,11 @@ mod tests {
     #[test]
     fn removes_file_system_paths() {
         assert_eq!(
-            redact("unable to open /home/jane/.local/share/db.sqlite"),
+            redact("unable to open /home/jane/.local/share/app.db"),
             "unable to open [redacted path]"
         );
         assert_eq!(
-            redact("unable to open C:\\Users\\jane\\db.sqlite"),
+            redact("unable to open C:\\Users\\jane\\app.db"),
             "unable to open [redacted path]"
         );
     }

@@ -39,7 +39,7 @@ The file is rotated once it passes 512 KiB, and a failing logger never breaks a 
 ## 4. Sessions and credentials
 
 Native sessions live in memory and end after 480 idle minutes; every command extends them, a
-restart always returns to the login page. Both backends lock an email out for 15 minutes after 5
+restart always returns to the login page. Both storage paths lock an email out for 15 minutes after 5
 failed logins, in memory only. The limits are part of the contract file, so both sides stay equal.
 
 The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
@@ -48,23 +48,19 @@ fallback is a development and test tool only, not a security boundary. It is nev
 production path, which is also why it hashes passwords with PBKDF2-SHA256 (210,000 iterations, the
 strongest KDF available in the browser) while the Rust backend uses Argon2id for real credentials.
 
-## 5. One mutex around SQLite
+## 5. Postgres connection pool
 
-`Database(pub Mutex<Connection>)` serializes every database access of the application. For a local,
-single-user desktop app with short-lived commands this is intentional: it keeps transactions simple
-and rules out concurrent writer errors of SQLite. The tradeoff is that commands cannot run in
-parallel, so a slow query blocks the whole application.
-
-Revisit the decision when any of these becomes true: commands run long enough to be noticed,
-background jobs write while the user works, or reports read large ranges. A connection pool with
-SQLite in WAL mode, or a reader connection next to a single writer, is the expected next step.
+The native backend talks to Postgres through a small synchronous `r2d2` connection pool. Commands
+still execute short transactions, but independent requests do not need to share one process-wide
+connection. The pool keeps startup and command code simple while leaving room for background jobs or
+report queries to run without blocking unrelated reads.
 
 ## 6. Audit trail and timer recovery
 
-Every write of a time entry appends one `audit_log` row with the actor (`user_id`), the timestamp,
+Every write of a time entry appends one `time_entry_audits` row with the actor (`user_id`), the timestamp,
 and JSON snapshots of the old and the new value. The rows are written inside the same connection as
-the change, so a rejected write records nothing, and they are never updated or deleted. Both
-backends implement it, so the browser fallback keeps the same evidence.
+the change, so a rejected write records nothing, and they are never updated or deleted. The native backend and
+the browser fallback both implement it, so the fallback keeps the same evidence.
 
 The running timer is the time entry without an end time, never a client-side clock. On start the
 stored entries decide what is running (`reconcileSession`), so a restart, a crash or a system sleep

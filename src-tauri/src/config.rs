@@ -1,88 +1,35 @@
-//! Resolves which database backend to use at startup, driven by environment
-//! variables. SQLite remains the default so existing installs are unaffected
-//! when no env var is set.
+//! Resolves the Postgres database connection used at startup.
 
-use std::{collections::HashMap, path::PathBuf};
+use std::collections::HashMap;
 
-pub const BACKEND_ENV: &str = "WTT_DB_BACKEND";
 pub const DATABASE_URL_ENV: &str = "DATABASE_URL";
-pub const SQLITE_PATH_ENV: &str = "WTT_SQLITE_PATH";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DbBackend {
-    Sqlite,
-    Postgres,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ConfigError {
-    /// `WTT_DB_BACKEND` was set to something other than `sqlite`/`postgres`.
-    InvalidBackend(String),
-    /// The backend is `postgres` but `DATABASE_URL` was not set.
-    MissingDatabaseUrl,
-}
-
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidBackend(value) => write!(
-                formatter,
-                "{BACKEND_ENV} must be \"sqlite\" or \"postgres\", got \"{value}\""
-            ),
-            Self::MissingDatabaseUrl => write!(
-                formatter,
-                "{DATABASE_URL_ENV} must be set when {BACKEND_ENV}=postgres"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {}
+pub const DEFAULT_DATABASE_URL: &str =
+    "postgresql://worktimetracker:worktimetracker@localhost:5432/worktimetracker";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DbConfig {
-    pub backend: DbBackend,
-    /// Effective SQLite file path, honoring `WTT_SQLITE_PATH` when set.
-    pub sqlite_path: PathBuf,
-    /// Connection string, required and used only when `backend` is `Postgres`.
-    pub database_url: Option<String>,
+    pub database_url: String,
 }
 
 impl DbConfig {
     /// Resolves the configuration from the real process environment.
-    pub fn from_env(default_sqlite_path: PathBuf) -> Result<Self, ConfigError> {
-        let vars: HashMap<String, String> = [BACKEND_ENV, DATABASE_URL_ENV, SQLITE_PATH_ENV]
+    pub fn from_env() -> Self {
+        let vars: HashMap<String, String> = [DATABASE_URL_ENV]
             .into_iter()
             .filter_map(|key| std::env::var(key).ok().map(|value| (key.to_owned(), value)))
             .collect();
-        Self::resolve(&vars, default_sqlite_path)
+        Self::resolve(&vars)
     }
 
     /// Pure resolution from a map of env vars, so it can be unit tested
     /// without mutating the real process environment.
-    pub fn resolve(
-        vars: &HashMap<String, String>,
-        default_sqlite_path: PathBuf,
-    ) -> Result<Self, ConfigError> {
-        let backend = match vars.get(BACKEND_ENV).map(String::as_str) {
-            None | Some("") => DbBackend::Sqlite,
-            Some("sqlite") => DbBackend::Sqlite,
-            Some("postgres") => DbBackend::Postgres,
-            Some(other) => return Err(ConfigError::InvalidBackend(other.to_owned())),
-        };
-        let database_url = vars.get(DATABASE_URL_ENV).cloned();
-        if backend == DbBackend::Postgres && database_url.is_none() {
-            return Err(ConfigError::MissingDatabaseUrl);
-        }
-        let sqlite_path = vars
-            .get(SQLITE_PATH_ENV)
-            .map(PathBuf::from)
-            .unwrap_or(default_sqlite_path);
-        Ok(Self {
-            backend,
-            sqlite_path,
-            database_url,
-        })
+    pub fn resolve(vars: &HashMap<String, String>) -> Self {
+        let database_url = vars
+            .get(DATABASE_URL_ENV)
+            .filter(|value| !value.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_DATABASE_URL.to_owned());
+        Self { database_url }
     }
 }
 
@@ -110,58 +57,28 @@ mod tests {
             .collect()
     }
 
-    fn default_path() -> PathBuf {
-        PathBuf::from("/data/work-time-tracker.sqlite")
+    #[test]
+    fn defaults_to_the_local_compose_postgres_url_when_unset() {
+        let config = DbConfig::resolve(&HashMap::new());
+
+        assert_eq!(config.database_url, DEFAULT_DATABASE_URL);
     }
 
     #[test]
-    fn defaults_to_sqlite_when_nothing_is_set() {
-        let config = DbConfig::resolve(&HashMap::new(), default_path()).unwrap();
-        assert_eq!(config.backend, DbBackend::Sqlite);
-        assert_eq!(config.sqlite_path, default_path());
-        assert_eq!(config.database_url, None);
+    fn defaults_to_the_local_compose_postgres_url_when_blank() {
+        let config = DbConfig::resolve(&vars(&[(DATABASE_URL_ENV, "   ")]));
+
+        assert_eq!(config.database_url, DEFAULT_DATABASE_URL);
     }
 
     #[test]
-    fn defaults_to_sqlite_when_backend_is_explicitly_sqlite() {
-        let config = DbConfig::resolve(&vars(&[(BACKEND_ENV, "sqlite")]), default_path()).unwrap();
-        assert_eq!(config.backend, DbBackend::Sqlite);
-    }
+    fn uses_the_database_url_when_set() {
+        let user = "worktimetracker";
+        let secret = "secret";
+        let url = format!("postgresql://{user}:{secret}@localhost/worktimetracker");
+        let config = DbConfig::resolve(&vars(&[(DATABASE_URL_ENV, &url)]));
 
-    #[test]
-    fn overrides_the_sqlite_path_when_set() {
-        let config = DbConfig::resolve(
-            &vars(&[(SQLITE_PATH_ENV, "/tmp/custom.sqlite")]),
-            default_path(),
-        )
-        .unwrap();
-        assert_eq!(config.sqlite_path, PathBuf::from("/tmp/custom.sqlite"));
-    }
-
-    #[test]
-    fn selects_postgres_when_requested_with_a_url() {
-        let url = ["postgresql://worktimetracker", "@localhost/worktimetracker"].join(":secret");
-        let config = DbConfig::resolve(
-            &vars(&[(BACKEND_ENV, "postgres"), (DATABASE_URL_ENV, &url)]),
-            default_path(),
-        )
-        .unwrap();
-        assert_eq!(config.backend, DbBackend::Postgres);
-        assert_eq!(config.database_url.as_deref(), Some(url.as_str()));
-    }
-
-    #[test]
-    fn rejects_postgres_without_a_database_url() {
-        let error =
-            DbConfig::resolve(&vars(&[(BACKEND_ENV, "postgres")]), default_path()).unwrap_err();
-        assert_eq!(error, ConfigError::MissingDatabaseUrl);
-    }
-
-    #[test]
-    fn rejects_an_unknown_backend_value() {
-        let error =
-            DbConfig::resolve(&vars(&[(BACKEND_ENV, "mysql")]), default_path()).unwrap_err();
-        assert_eq!(error, ConfigError::InvalidBackend("mysql".to_owned()));
+        assert_eq!(config.database_url, url);
     }
 
     #[test]

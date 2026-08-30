@@ -1,4 +1,4 @@
-//! Postgres backend, used when `WTT_DB_BACKEND=postgres`. Talks to the
+//! Postgres backend. Talks to the
 //! database with the synchronous `postgres` crate through a small `r2d2`
 //! connection pool (see `Cargo.toml` for why this crate was chosen over
 //! `sqlx`/`tokio-postgres`+`deadpool`).
@@ -14,13 +14,27 @@ use crate::{
     models::{
         AuditLogEntry, ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget,
         SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS,
-        ENTRY_TYPE_BREAK, ENTRY_TYPE_WORK, GERMAN_COMPLIANCE_LIMITS,
+        ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
     },
     store::{Store, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
 const AUDIT_LOG_LIMIT: i64 = 200;
+const APP_VERSION_KEY: &str = "app_version";
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Ordered migrations, applied exactly once each and tracked in
+/// `schema_migrations`. `0000_init` is the immutable baseline: every later
+/// schema change is a new file in `drizzle/` that is appended here, so an
+/// existing database is upgraded instead of silently kept on a stale schema.
+/// `migrate` runs them inside one transaction, so a migration must not use a
+/// statement that Postgres refuses in a transaction block, such as
+/// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
+const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
+
+/// Arbitrary but stable key for the advisory lock that serializes `migrate`.
+const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
 
 type Manager = PostgresConnectionManager<NoTls>;
 
@@ -28,8 +42,7 @@ pub struct PostgresStore {
     pool: Pool<Manager>,
 }
 
-/// Timestamp string in the same ISO 8601 UTC/millisecond format that the
-/// SQLite backend produces via `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`.
+/// Timestamp string in the ISO 8601 UTC/millisecond format expected by the frontend.
 fn now_iso() -> String {
     Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
@@ -62,9 +75,11 @@ impl PostgresStore {
             .connection_timeout(Duration::from_secs(5))
             .build(manager)?;
         let store = Self { pool };
-        store
-            .conn()?
-            .batch_execute(include_str!("../../drizzle/postgres/0000_init.sql"))?;
+        {
+            let mut client = store.conn()?;
+            migrate(&mut client)?;
+            write_app_version(&mut *client, APP_VERSION)?;
+        }
         Ok(store)
     }
 
@@ -158,6 +173,53 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
         .query_opt("SELECT email FROM users WHERE id = $1", &[&user_id])?
         .map(|row| row.get(0));
     Ok(email.unwrap_or_else(|| format!("user:{user_id}")))
+}
+
+/// Applies every not yet recorded migration in order, all within one
+/// transaction that first takes a transaction-scoped advisory lock. The lock
+/// serializes concurrent starts before any DDL runs, because
+/// `CREATE TABLE IF NOT EXISTS` is not race free in Postgres: two sessions
+/// creating the same table at once make one of them fail with a duplicate key
+/// on `pg_type`. A second process therefore waits and then sees the already
+/// recorded versions.
+fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
+    let mut transaction = client.transaction()?;
+    transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
+    transaction.batch_execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+           version TEXT PRIMARY KEY,
+           applied_at TEXT NOT NULL
+         )",
+    )?;
+    for (version, sql) in MIGRATIONS {
+        let applied: bool = transaction
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
+                &[version],
+            )?
+            .get(0);
+        if !applied {
+            transaction.batch_execute(sql)?;
+            transaction.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)",
+                &[version, &now_iso()],
+            )?;
+        }
+    }
+    transaction.commit()?;
+    Ok(())
+}
+
+fn write_app_version(
+    client: &mut impl postgres::GenericClient,
+    version: &str,
+) -> Result<(), StoreError> {
+    client.execute(
+        "INSERT INTO app_metadata (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
+        &[&APP_VERSION_KEY, &version],
+    )?;
+    Ok(())
 }
 
 fn record_audit(
@@ -770,8 +832,8 @@ impl Store for PostgresStore {
         let mut client = self.conn()?;
         Ok(client
             .query_opt(
-                "SELECT value FROM app_metadata WHERE key = 'app_version'",
-                &[],
+                "SELECT value FROM app_metadata WHERE key = $1",
+                &[&APP_VERSION_KEY],
             )?
             .map(|row| row.get(0)))
     }
@@ -838,33 +900,17 @@ impl Store for PostgresStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{SaveProject, SaveTimeEntry};
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
-
-    /// Reads `DATABASE_URL` for the integration tests below, so they only run
-    /// when a real Postgres server is reachable (see README for how to start
-    /// one via `podman compose --profile postgres up -d`).
-    fn test_store() -> Option<PostgresStore> {
-        let url = std::env::var("DATABASE_URL").ok()?;
-        PostgresStore::connect(&url).ok()
-    }
-
-    fn unique_email() -> String {
-        let id = NEXT_TEST_ID.fetch_add(1, Ordering::Relaxed);
-        format!(
-            "postgres-store-test-{}-{id}@example.com",
-            std::process::id()
-        )
-    }
+    use crate::{
+        models::{SaveProject, SaveTimeEntry},
+        test_support::{fresh_database, test_store, unique_email},
+    };
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
-    /// the frontend expects (matches SQLite's `strftime('%Y-%m-%dT%H:%M:%fZ')`),
+    /// the frontend expects,
     /// e.g. `2024-01-01T12:34:56.789Z`. Regression test for a bug where a
     /// missing `%S` dropped the whole-seconds field.
     #[test]
-    fn now_iso_matches_the_sqlite_timestamp_format() {
+    fn now_iso_matches_the_expected_timestamp_format() {
         let timestamp = now_iso();
         assert_eq!(timestamp.len(), "2024-01-01T12:34:56.789Z".len());
         assert_eq!(&timestamp[4..5], "-");
@@ -888,26 +934,40 @@ mod tests {
         );
     }
 
+    /// `CREATE TABLE IF NOT EXISTS` is not race free in Postgres, so several
+    /// app instances starting against a fresh database at the same time used
+    /// to fail with a duplicate key on `pg_type`.
     #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
-    fn maps_a_duplicate_email_to_a_unique_violation() {
-        let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
+    fn migrates_concurrent_connections_to_a_fresh_database() {
+        let Some(database) = fresh_database() else {
             return;
         };
-        let email = unique_email();
-        store.register_user(&email, "hash-one").unwrap();
+        let url = database.url();
+        let failures: Vec<String> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| {
+                    scope.spawn(|| {
+                        PostgresStore::connect(url)
+                            .err()
+                            .map(|error| error.to_string())
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .filter_map(|handle| handle.join().unwrap())
+                .collect()
+        });
 
-        let error = store.register_user(&email, "hash-two").unwrap_err();
-
-        assert!(matches!(error, StoreError::UniqueViolation));
+        assert!(
+            failures.is_empty(),
+            "concurrent migrations failed: {failures:?}"
+        );
     }
 
     #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
     fn round_trips_a_project_through_postgres() {
         let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
             return;
         };
         let user = store.register_user(&unique_email(), "hash").unwrap();
@@ -924,7 +984,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(created.name, "Postgres project");
-        // ISO 8601 UTC with milliseconds, matching the SQLite backend's format.
+        // ISO 8601 UTC with milliseconds.
         assert!(created.created_at.ends_with('Z'));
 
         let listed = store.list_projects(user.id).unwrap();
@@ -935,10 +995,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
     fn detects_overlapping_time_entries() {
         let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
             return;
         };
         let user = store.register_user(&unique_email(), "hash").unwrap();
@@ -961,6 +1019,7 @@ mod tests {
                     project_id: Some(project.id),
                     start_time: "2024-01-01T09:00:00.000Z".into(),
                     end_time: Some("2024-01-01T10:00:00.000Z".into()),
+                    entry_type: None,
                     note: None,
                 },
             )
@@ -973,6 +1032,7 @@ mod tests {
                     project_id: Some(project.id),
                     start_time: "2024-01-01T09:30:00.000Z".into(),
                     end_time: Some("2024-01-01T10:30:00.000Z".into()),
+                    entry_type: None,
                     note: None,
                 },
             )

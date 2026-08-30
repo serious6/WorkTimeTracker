@@ -78,6 +78,27 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
+    # The Postgres tests are the only coverage of the constraints and queries
+    # of the single native backend, so they run against a throwaway database
+    # here instead of being skipped.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          # Throwaway database that is only reachable from this job.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: worktimetracker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d worktimetracker"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: host=localhost port=5432 user=postgres dbname=worktimetracker
+      # Turns an unreachable database into a failure instead of a skip.
+      REQUIRE_POSTGRES_TESTS: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Node is only needed for the npm steps below, which are all skipped on

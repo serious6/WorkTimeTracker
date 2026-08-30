@@ -4,14 +4,14 @@
 //! `src/features/storage/domain-rules.contract.test.ts`. Whenever one side
 //! changes a rule without the other, one of the two suites fails.
 
-use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
     auth::{LOGIN_LOCKOUT_MINUTES, MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES},
-    database,
     models::{Credentials, SaveProject, SaveProjectBudget, SaveTimeEntry, WorkSettings},
+    store::{Store, StoreError},
+    test_support::{test_store, unique_email, unique_tag},
 };
 
 const RULES: &str = include_str!("../../contract/domain-rules.json");
@@ -139,8 +139,14 @@ fn validates_work_settings_like_the_contract() {
     }
 }
 
+/// The uniqueness fixtures run through `Store` against a real Postgres, so the
+/// database constraints - not just the fixtures - are covered. Skipped without
+/// a reachable database and required in CI (see `test_support::test_store`).
 #[test]
 fn enforces_uniqueness_like_the_contract() {
+    let Some(store) = test_store() else {
+        return;
+    };
     let uniqueness: Vec<UniquenessCase> =
         serde_json::from_value(rules()["uniqueness"].clone()).unwrap();
 
@@ -148,24 +154,43 @@ fn enforces_uniqueness_like_the_contract() {
         match case.kind.as_str() {
             "email" => {
                 let credentials: Credentials = serde_json::from_value(case.input).unwrap();
-                let mut connection = Connection::open_in_memory().unwrap();
-                database::migrate(&mut connection).unwrap();
-                database::insert_user(&connection, &credentials.email, "argon2-hash").unwrap();
+                // The fixture address is fixed, so it is scoped to this run to
+                // keep repeated runs against the same database independent.
+                let email = format!("{}.{}", unique_tag(), credentials.email);
+                store.register_user(&email, "hash-one").unwrap();
+
+                let error = store.register_user(&email, "hash-two").unwrap_err();
 
                 assert!(
-                    database::insert_user(&connection, &credentials.email, "argon2-hash").is_err(),
+                    matches!(error, StoreError::UniqueViolation),
                     "{}",
                     case.name
                 );
             }
             "projectBudget" => {
-                let mut budget: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
-                let (connection, user_id) = database_with_project();
-                budget.project_id = 1;
-                database::insert_project_budget(&connection, user_id, &budget).unwrap();
+                let fixture: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
+                let user = store.register_user(&unique_email(), "hash").unwrap();
+                let project = store
+                    .insert_project(
+                        user.id,
+                        &SaveProject {
+                            name: "Contract budget project".into(),
+                            description: None,
+                            color: "#336699".into(),
+                            active: true,
+                        },
+                    )
+                    .unwrap();
+                let budget = SaveProjectBudget {
+                    project_id: project.id,
+                    ..fixture
+                };
+                store.insert_project_budget(user.id, &budget).unwrap();
+
+                let error = store.insert_project_budget(user.id, &budget).unwrap_err();
 
                 assert!(
-                    database::insert_project_budget(&connection, user_id, &budget).is_err(),
+                    matches!(error, StoreError::UniqueViolation),
                     "{}",
                     case.name
                 );
@@ -175,22 +200,22 @@ fn enforces_uniqueness_like_the_contract() {
     }
 }
 
-fn database_with_project() -> (Connection, i64) {
-    let mut connection = Connection::open_in_memory().unwrap();
-    database::migrate(&mut connection).unwrap();
-    let user = database::insert_user(&connection, "first@example.com", "argon2-hash").unwrap();
-    database::insert_project(
-        &connection,
-        user.id,
-        &SaveProject {
-            name: "Website Redesign".into(),
-            description: None,
-            color: "#22c55e".into(),
-            active: true,
-        },
-    )
-    .unwrap();
-    (connection, user.id)
+const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
+
+fn overlaps_existing(
+    existing: &[SaveTimeEntry],
+    candidate: &SaveTimeEntry,
+    exclude_index: Option<usize>,
+) -> bool {
+    let candidate_end = candidate.end_time.as_deref().unwrap_or(OPEN_END);
+    existing.iter().enumerate().any(|(index, entry)| {
+        // Contract fixtures use 1-based indices to mirror persisted record IDs.
+        if exclude_index.is_some_and(|exclude| exclude == index + 1) {
+            return false;
+        }
+        let entry_end = entry.end_time.as_deref().unwrap_or(OPEN_END);
+        entry.start_time.as_str() < candidate_end && entry_end > candidate.start_time.as_str()
+    })
 }
 
 #[test]
@@ -198,27 +223,8 @@ fn detects_overlaps_like_the_contract() {
     let overlaps: Vec<OverlapCase> = serde_json::from_value(rules()["overlaps"].clone()).unwrap();
 
     for case in overlaps {
-        let (connection, user_id) = database_with_project();
-        let ids: Vec<i64> = case
-            .existing
-            .iter()
-            .map(|entry| {
-                database::insert_time_entry(&connection, user_id, entry)
-                    .unwrap()
-                    .id
-            })
-            .collect();
-        let exclude_id = case.exclude_index.map(|index| ids[index - 1]);
-
         assert_eq!(
-            database::overlaps(
-                &connection,
-                user_id,
-                &case.candidate.start_time,
-                case.candidate.end_time.as_deref(),
-                exclude_id,
-            )
-            .unwrap(),
+            overlaps_existing(&case.existing, &case.candidate, case.exclude_index),
             case.overlaps,
             "{}",
             case.name
