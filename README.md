@@ -53,7 +53,10 @@ npm run tauri dev
 ```
 
 The built-in `DATABASE_URL` default matches the compose `db` service; `.env.example` shows
-the full local connection string. Use another Postgres instance by changing `DATABASE_URL`.
+the full local connection string. `DATABASE_URL` may point at another Postgres instance, but the
+connection is unencrypted (the backend connects without TLS), so only local endpoints such as
+`localhost` or a container on the same host are supported. Remote or TLS-required servers need
+transport encryption, which this version does not implement.
 
 This is a breaking storage change. Earlier local database files are not read or migrated by this
 version; export any data you need before switching to the Postgres-only application.

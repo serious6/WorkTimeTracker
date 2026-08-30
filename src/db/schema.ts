@@ -39,6 +39,8 @@ export const timeEntries = pgTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
+    // `enum` only narrows the TypeScript type, so the value constraint is modelled explicitly.
+    check('time_entries_entry_type_check', sql`${table.entryType} IN ('work', 'break')`),
     check('time_entries_break_project_constraint', sql`${table.entryType} <> 'break' OR ${table.projectId} IS NULL`),
   ],
 )

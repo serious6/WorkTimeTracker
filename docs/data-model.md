@@ -65,6 +65,7 @@ flowchart TB
 | `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings | `src/features/storage/local-repository.ts` (`scopedKey`) |
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
@@ -209,7 +210,7 @@ erDiagram
 | `action` | TEXT | yes | `created`, `updated` or `deleted` | — |
 | `actor` | TEXT | yes | E-mail of the signed-in user | — |
 | `old_value`, `new_value` | TEXT | no | JSON of the entry before and after the change | — |
-| `recorded_at` | TEXT | yes | ISO 8601 UTC | index `time_entry_audits_user_id` |
+| `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
 Rows are only inserted, never updated or deleted, and are kept for at least the retention period of
 two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
@@ -280,9 +281,12 @@ Enums: `week_starts_on` is `monday` or `sunday`; `working_days` is a subset of `
 
 ## Migration
 
-Because WorkTimeTracker has not been released yet, the native database is initialized from the
-single consolidated migration `drizzle/0000_init.sql`. The Rust backend applies that file on startup
-through `PostgresStore::connect`, and `drizzle.config.ts` points Drizzle at the same migration
+Because WorkTimeTracker has not been released yet, the native database starts from the single
+baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies every migration listed
+in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, each in its own transaction and
+recorded in the `schema_migrations` table, so an existing database is upgraded exactly once instead
+of re-running the baseline. Later schema changes therefore get a new numbered file in `drizzle/`
+rather than an edit of the baseline. `drizzle.config.ts` points Drizzle at the same migration
 directory. Existing pre-release local database files are not migrated by this version.
 
 ## Derived data (not persisted)

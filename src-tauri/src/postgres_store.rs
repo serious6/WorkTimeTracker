@@ -24,6 +24,12 @@ const AUDIT_LOG_LIMIT: i64 = 200;
 const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Ordered migrations, applied exactly once each and tracked in
+/// `schema_migrations`. `0000_init` is the immutable baseline: every later
+/// schema change is a new file in `drizzle/` that is appended here, so an
+/// existing database is upgraded instead of silently kept on a stale schema.
+const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
+
 type Manager = PostgresConnectionManager<NoTls>;
 
 pub struct PostgresStore {
@@ -65,7 +71,7 @@ impl PostgresStore {
         let store = Self { pool };
         {
             let mut client = store.conn()?;
-            client.batch_execute(include_str!("../../drizzle/0000_init.sql"))?;
+            migrate(&mut client)?;
             write_app_version(&mut *client, APP_VERSION)?;
         }
         Ok(store)
@@ -161,6 +167,37 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
         .query_opt("SELECT email FROM users WHERE id = $1", &[&user_id])?
         .map(|row| row.get(0));
     Ok(email.unwrap_or_else(|| format!("user:{user_id}")))
+}
+
+/// Applies every not yet recorded migration in order, each in its own
+/// transaction. The exclusive lock serializes concurrent starts, so a second
+/// process waits and then sees the already recorded version.
+fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
+    client.batch_execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+           version TEXT PRIMARY KEY,
+           applied_at TEXT NOT NULL
+         )",
+    )?;
+    for (version, sql) in MIGRATIONS {
+        let mut transaction = client.transaction()?;
+        transaction.batch_execute("LOCK TABLE schema_migrations IN EXCLUSIVE MODE")?;
+        let applied: bool = transaction
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
+                &[version],
+            )?
+            .get(0);
+        if !applied {
+            transaction.batch_execute(sql)?;
+            transaction.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)",
+                &[version, &now_iso()],
+            )?;
+        }
+        transaction.commit()?;
+    }
+    Ok(())
 }
 
 fn write_app_version(
@@ -853,26 +890,10 @@ impl Store for PostgresStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{SaveProject, SaveTimeEntry};
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NEXT_TEST_ID: AtomicU64 = AtomicU64::new(0);
-
-    /// Reads `DATABASE_URL` for the integration tests below, so they only run
-    /// when a real Postgres server is reachable (see README for how to start
-    /// one via compose).
-    fn test_store() -> Option<PostgresStore> {
-        let url = std::env::var("DATABASE_URL").ok()?;
-        PostgresStore::connect(&url).ok()
-    }
-
-    fn unique_email() -> String {
-        let id = NEXT_TEST_ID.fetch_add(1, Ordering::Relaxed);
-        format!(
-            "postgres-store-test-{}-{id}@example.com",
-            std::process::id()
-        )
-    }
+    use crate::{
+        models::{SaveProject, SaveTimeEntry},
+        test_support::{test_store, unique_email},
+    };
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
     /// the frontend expects,
@@ -904,56 +925,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
-    fn maps_a_duplicate_email_to_a_unique_violation() {
-        let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
-            return;
-        };
-        let email = unique_email();
-        store.register_user(&email, "hash-one").unwrap();
-
-        let error = store.register_user(&email, "hash-two").unwrap_err();
-
-        assert!(matches!(error, StoreError::UniqueViolation));
-    }
-
-    #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
-    fn maps_a_duplicate_project_budget_to_a_unique_violation() {
-        let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
-            return;
-        };
-        let user = store.register_user(&unique_email(), "hash").unwrap();
-        let project = store
-            .insert_project(
-                user.id,
-                &SaveProject {
-                    name: "Budget project".into(),
-                    description: None,
-                    color: "#336699".into(),
-                    active: true,
-                },
-            )
-            .unwrap();
-        let budget = SaveProjectBudget {
-            project_id: project.id,
-            budget_minutes: 120,
-            due_date: "2026-09-01".into(),
-        };
-        store.insert_project_budget(user.id, &budget).unwrap();
-
-        let error = store.insert_project_budget(user.id, &budget).unwrap_err();
-
-        assert!(matches!(error, StoreError::UniqueViolation));
-    }
-
-    #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
     fn round_trips_a_project_through_postgres() {
         let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
             return;
         };
         let user = store.register_user(&unique_email(), "hash").unwrap();
@@ -981,10 +954,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires a reachable Postgres (DATABASE_URL)"]
     fn detects_overlapping_time_entries() {
         let Some(store) = test_store() else {
-            eprintln!("skipping: DATABASE_URL is not reachable");
             return;
         };
         let user = store.register_user(&unique_email(), "hash").unwrap();

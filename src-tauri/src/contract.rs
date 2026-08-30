@@ -10,6 +10,8 @@ use serde_json::Value;
 use crate::{
     auth::{LOGIN_LOCKOUT_MINUTES, MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES},
     models::{Credentials, SaveProject, SaveProjectBudget, SaveTimeEntry, WorkSettings},
+    store::{Store, StoreError},
+    test_support::{test_store, unique_email, unique_tag},
 };
 
 const RULES: &str = include_str!("../../contract/domain-rules.json");
@@ -137,19 +139,14 @@ fn validates_work_settings_like_the_contract() {
     }
 }
 
-fn insert_if_unique<T: PartialEq>(existing: &mut Vec<T>, candidate: T) -> bool {
-    if existing.contains(&candidate) {
-        return false;
-    }
-    existing.push(candidate);
-    true
-}
-
-// Database-level uniqueness constraints are exercised by the ignored live
-// Postgres tests in postgres_store; this regular contract test keeps the
-// shared uniqueness fixtures covered without requiring a running database.
+/// The uniqueness fixtures run through `Store` against a real Postgres, so the
+/// database constraints - not just the fixtures - are covered. Skipped without
+/// a reachable database and required in CI (see `test_support::test_store`).
 #[test]
 fn enforces_uniqueness_like_the_contract() {
+    let Some(store) = test_store() else {
+        return;
+    };
     let uniqueness: Vec<UniquenessCase> =
         serde_json::from_value(rules()["uniqueness"].clone()).unwrap();
 
@@ -157,28 +154,43 @@ fn enforces_uniqueness_like_the_contract() {
         match case.kind.as_str() {
             "email" => {
                 let credentials: Credentials = serde_json::from_value(case.input).unwrap();
-                let mut existing = Vec::new();
+                // The fixture address is fixed, so it is scoped to this run to
+                // keep repeated runs against the same database independent.
+                let email = format!("{}.{}", unique_tag(), credentials.email);
+                store.register_user(&email, "hash-one").unwrap();
+
+                let error = store.register_user(&email, "hash-two").unwrap_err();
+
                 assert!(
-                    insert_if_unique(&mut existing, credentials.email.clone()),
-                    "{}",
-                    case.name
-                );
-                assert!(
-                    !insert_if_unique(&mut existing, credentials.email),
+                    matches!(error, StoreError::UniqueViolation),
                     "{}",
                     case.name
                 );
             }
             "projectBudget" => {
-                let budget: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
-                let mut existing = Vec::new();
+                let fixture: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
+                let user = store.register_user(&unique_email(), "hash").unwrap();
+                let project = store
+                    .insert_project(
+                        user.id,
+                        &SaveProject {
+                            name: "Contract budget project".into(),
+                            description: None,
+                            color: "#336699".into(),
+                            active: true,
+                        },
+                    )
+                    .unwrap();
+                let budget = SaveProjectBudget {
+                    project_id: project.id,
+                    ..fixture
+                };
+                store.insert_project_budget(user.id, &budget).unwrap();
+
+                let error = store.insert_project_budget(user.id, &budget).unwrap_err();
+
                 assert!(
-                    insert_if_unique(&mut existing, budget.project_id),
-                    "{}",
-                    case.name
-                );
-                assert!(
-                    !insert_if_unique(&mut existing, budget.project_id),
+                    matches!(error, StoreError::UniqueViolation),
                     "{}",
                     case.name
                 );

@@ -54,8 +54,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - Keep documentation concise.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- Schema changes need an update to the consolidated Postgres migration in `drizzle/0000_init.sql`
-  plus the matching update in `src/db/schema.ts` and `src-tauri/src/postgres_store.rs`.
+- `drizzle/0000_init.sql` is the baseline migration and stays unchanged. A schema change gets a new
+  numbered file in `drizzle/`, is appended to `MIGRATIONS` in `src-tauri/src/postgres_store.rs`
+  (which applies it once and records it in `schema_migrations`), and comes with the matching update
+  in `src/db/schema.ts` and the queries in `src-tauri/src/postgres_store.rs`.
+- The Rust tests that need a database skip without a reachable `DATABASE_URL`; set
+  `REQUIRE_POSTGRES_TESTS=1` (as CI does) to turn that skip into a failure.
 
 ## Pull requests
 

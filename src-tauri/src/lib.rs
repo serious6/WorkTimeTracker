@@ -8,6 +8,8 @@ mod logging;
 mod models;
 mod postgres_store;
 mod store;
+#[cfg(test)]
+mod test_support;
 mod window_state;
 
 use auth::{LoginAttempts, Session};
