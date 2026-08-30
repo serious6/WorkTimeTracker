@@ -61,4 +61,20 @@ describe('absence storage', () => {
     expect(await localRepository.listAbsences()).toEqual([])
     expect(await localRepository.listAbsenceAudits()).toEqual([])
   })
+
+  it('saves replacements and ranges together', async () => {
+    const occupied = await localRepository.createAbsence({ type: 'sick', date: '2026-09-02' })
+    await localRepository.saveAbsences(
+      [
+        { type: 'vacation', date: '2026-09-01' },
+        { type: 'vacation', date: '2026-09-02' },
+      ],
+      [occupied.id],
+    )
+
+    expect(await localRepository.listAbsences()).toMatchObject([
+      { type: 'vacation', date: '2026-09-01' },
+      { type: 'vacation', date: '2026-09-02' },
+    ])
+  })
 })

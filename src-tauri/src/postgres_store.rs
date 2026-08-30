@@ -878,6 +878,85 @@ impl Store for PostgresStore {
         Ok(absence)
     }
 
+    fn save_absences(
+        &self,
+        user_id: i64,
+        inputs: &[SaveAbsence],
+        replacement_ids: &[i64],
+        update_id: Option<i64>,
+    ) -> Result<Vec<Absence>, StoreError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        let mut replacements = Vec::with_capacity(replacement_ids.len());
+        for id in replacement_ids {
+            replacements.push(read_absence(&mut transaction, *id, user_id)?);
+        }
+        let current = update_id
+            .map(|id| read_absence(&mut transaction, id, user_id))
+            .transpose()?;
+        for absence in &replacements {
+            transaction.execute(
+                "DELETE FROM absences WHERE id = $1 AND user_id = $2",
+                &[&absence.id, &user_id],
+            )?;
+            record_absence_audit(
+                &mut transaction,
+                user_id,
+                absence.id,
+                "deleted",
+                Some(absence),
+                None,
+            )?;
+        }
+        let now = now_iso();
+        let mut saved = Vec::with_capacity(inputs.len());
+        for (index, input) in inputs.iter().enumerate() {
+            let absence = if index == 0 && current.is_some() {
+                let current = current.as_ref().expect("checked above");
+                let row = transaction
+                    .query_opt(
+                        &format!(
+                            "UPDATE absences SET absence_type = $3, absence_date = $4, updated_at = $5
+                             WHERE id = $1 AND user_id = $2 RETURNING {ABSENCE_COLUMNS}"
+                        ),
+                        &[&current.id, &user_id, &input.absence_type, &input.date, &now],
+                    )?
+                    .ok_or(StoreError::NotFound)?;
+                let updated = absence_from_row(&row);
+                record_absence_audit(
+                    &mut transaction,
+                    user_id,
+                    current.id,
+                    "updated",
+                    Some(current),
+                    Some(&updated),
+                )?;
+                updated
+            } else {
+                let row = transaction.query_one(
+                    &format!(
+                        "INSERT INTO absences (user_id, absence_type, absence_date, created_at, updated_at)
+                         VALUES ($1, $2, $3, $4, $4) RETURNING {ABSENCE_COLUMNS}"
+                    ),
+                    &[&user_id, &input.absence_type, &input.date, &now],
+                )?;
+                let created = absence_from_row(&row);
+                record_absence_audit(
+                    &mut transaction,
+                    user_id,
+                    created.id,
+                    "created",
+                    None,
+                    Some(&created),
+                )?;
+                created
+            };
+            saved.push(absence);
+        }
+        transaction.commit()?;
+        Ok(saved)
+    }
+
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;

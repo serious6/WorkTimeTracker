@@ -145,7 +145,7 @@ describe('toCsv', () => {
       .split('\n')
 
     expect(lines[6]).toBe('2026-03-04,,,00:00,00:00,Vacation,-01:30')
-    expect(lines.at(-1)).toContain('1 absence days')
+    expect(lines.at(-1)).toContain('1 absence day')
   })
 
   it('quotes fields that contain a separator', () => {

@@ -149,7 +149,7 @@ function totalValues(report: MonthlyExport): string[] {
     '',
     formatHoursAndMinutes(report.totals.breakMinutes),
     formatHoursAndMinutes(report.totals.workMinutes),
-    `${report.totals.absenceDays} absence days`,
+    `${report.totals.absenceDays} absence day${report.totals.absenceDays === 1 ? '' : 's'}`,
     formatHoursAndMinutes(report.totals.balanceMinutes),
   ]
 }

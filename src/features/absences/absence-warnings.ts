@@ -1,6 +1,7 @@
-import { workingDays } from '@/features/compliance/compliance-rules'
+import { isBreak } from '@/features/time-entries/time-entry-schema'
 import type { ComplianceLimits } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
+import { addDays, fromDateKey } from '@/lib/date'
 import type { AbsenceIndex } from './absence-index'
 import { ABSENCE_TYPE_LABELS, type AbsenceType } from './absence-schema'
 
@@ -21,16 +22,24 @@ export function absenceWorkWarnings(
   now: number,
 ): AbsenceWarning[] {
   if (absences.size === 0) return []
-  return workingDays(entries, limits, now)
-    .filter((day) => absences.has(day.dateKey))
-    .map((day) => {
-      const type = absences.get(day.dateKey) as AbsenceType
+  void limits
+  return [...absences.keys()]
+    .filter((dateKey) => {
+      const start = fromDateKey(dateKey).getTime()
+      const end = addDays(fromDateKey(dateKey), 1).getTime()
+      return entries.some((entry) => !isBreak(entry) && Date.parse(entry.startTime) < end && (entry.endTime ? Date.parse(entry.endTime) : now) > start)
+    })
+    .sort()
+    .map((dateKey) => {
+      const type = absences.get(dateKey) as AbsenceType
       return {
-        dateKey: day.dateKey,
+        dateKey,
         type,
         message: `Time was recorded although the day is marked as ${ABSENCE_TYPE_LABELS[
           type
-        ].toLowerCase()}. The time counts fully, the day carries no target.`,
+        ].toLowerCase()}. The time counts fully, ${
+          type === 'halfDay' ? 'half the target still applies.' : 'the day carries no target.'
+        }`,
       }
     })
 }

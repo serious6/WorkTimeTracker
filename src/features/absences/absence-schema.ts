@@ -63,9 +63,7 @@ export const absenceFormSchema = z
   .refine(
     (values) =>
       values.endDate < values.startDate ||
-      (fromDateKey(values.endDate).getTime() - fromDateKey(values.startDate).getTime()) /
-        86_400_000 <
-        MAX_ABSENCE_RANGE_DAYS,
+      values.endDate <= toDateKey(addDays(fromDateKey(values.startDate), MAX_ABSENCE_RANGE_DAYS - 1)),
     { message: ABSENCE_RANGE_LENGTH_MESSAGE, path: ['endDate'] },
   )
 

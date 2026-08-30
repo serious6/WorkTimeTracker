@@ -258,6 +258,57 @@ fn enforces_uniqueness_like_the_contract() {
     }
 }
 
+#[test]
+fn round_trips_absence_changes_and_audits_in_postgres() {
+    let Some(store) = test_store() else {
+        return;
+    };
+    let first_user = store.register_user(&unique_email(), "hash").unwrap();
+    let second_user = store.register_user(&unique_email(), "hash").unwrap();
+    let created = store
+        .insert_absence(
+            first_user.id,
+            &SaveAbsence {
+                absence_type: "vacation".into(),
+                date: "2026-09-01".into(),
+            },
+        )
+        .unwrap();
+    let updated = store
+        .update_absence(
+            created.id,
+            first_user.id,
+            &SaveAbsence {
+                absence_type: "sick".into(),
+                date: "2026-09-02".into(),
+            },
+        )
+        .unwrap();
+    store.delete_absence(updated.id, first_user.id).unwrap();
+
+    let audits = store.list_absence_audits(first_user.id).unwrap();
+    assert_eq!(
+        audits
+            .iter()
+            .map(|audit| audit.action.as_str())
+            .collect::<Vec<_>>(),
+        ["deleted", "updated", "created"]
+    );
+    assert!(audits[1]
+        .old_value
+        .as_deref()
+        .is_some_and(|value| value.contains("vacation")));
+    assert!(audits[1]
+        .new_value
+        .as_deref()
+        .is_some_and(|value| value.contains("sick")));
+    assert!(store.list_absences(second_user.id).unwrap().is_empty());
+    assert!(store
+        .list_absence_audits(second_user.id)
+        .unwrap()
+        .is_empty());
+}
+
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
 
 fn overlaps_existing(

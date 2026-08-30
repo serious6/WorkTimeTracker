@@ -31,6 +31,11 @@ export type Repository = {
   listAbsences: () => Promise<Absence[]>
   createAbsence: (input: SaveAbsence) => Promise<Absence>
   updateAbsence: (id: number, input: SaveAbsence) => Promise<Absence>
+  saveAbsences: (
+    inputs: SaveAbsence[],
+    replacementIds: number[],
+    updateId?: number,
+  ) => Promise<Absence[]>
   deleteAbsence: (id: number) => Promise<void>
   listAbsenceAudits: () => Promise<AbsenceAudit[]>
   getWorkSettings: () => Promise<WorkSettings>

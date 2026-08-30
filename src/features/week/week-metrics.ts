@@ -171,9 +171,16 @@ export function rangeMetrics({
   const completedDays = timeline(completed)
   const dailyTarget = dailyTargetMinutes(settings)
   const targetMinutes = scheduledMinutesInRange(settings, range, absences)
-  const totalWorkingDays = dayList.filter((day) => isWorkingDay(settings, day)).length
-  const elapsedWorkingDays = elapsedDays.filter((day) => isWorkingDay(settings, day)).length
-  const remainingWorkingDays = Math.max(totalWorkingDays - elapsedWorkingDays, 0)
+  const totalWorkingDays = dayList.filter((day) => targetMinutesForDay(settings, day, absences) > 0).length
+  const elapsedWorkingDays = elapsedDays.filter(
+    (day) => targetMinutesForDay(settings, day, absences) > 0,
+  ).length
+  const remainingDays = dayList.filter(
+    (day) =>
+      (today <= range.start ? day >= range.start : day >= addDays(today, 1)) &&
+      targetMinutesForDay(settings, day, absences) > 0,
+  )
+  const remainingWorkingDays = remainingDays.length
 
   const days = dayList.map((day) => {
     const dayInterval = { start: day, end: addDays(day, 1) }
@@ -215,7 +222,13 @@ export function rangeMetrics({
   const completedWorkingDays = completedTargetDays.length
   const averageCompletedWorkingDayMinutes =
     completedWorkingDays > 0 ? trackedCompletedWorkingDays / completedWorkingDays : dailyTarget
-  const forecastMinutes = trackedMinutes + remainingWorkingDays * averageCompletedWorkingDayMinutes
+  const forecastMinutes =
+    trackedMinutes +
+    remainingDays.reduce(
+      (total, day) =>
+        total + (averageCompletedWorkingDayMinutes * targetMinutesForDay(settings, day, absences)) / dailyTarget,
+      0,
+    )
   const remainingMinutes = Math.max(targetMinutes - trackedMinutes, 0)
   const requiredAveragePerRemainingDayMinutes =
     remainingWorkingDays > 0 ? remainingMinutes / remainingWorkingDays : 0

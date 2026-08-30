@@ -78,6 +78,7 @@ pub fn run() {
             commands::list_absences,
             commands::create_absence,
             commands::update_absence,
+            commands::save_absences,
             commands::delete_absence,
             commands::list_absence_audits,
             commands::get_work_settings,

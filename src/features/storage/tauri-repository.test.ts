@@ -184,6 +184,17 @@ describe('tauriRepository – absences', () => {
     expect(mockInvoke).toHaveBeenCalledWith('update_absence', { id: 1, input })
   })
 
+  test('saveAbsences invokes one bulk command', async () => {
+    mockInvoke.mockResolvedValue([ABSENCE])
+    const inputs = [{ type: 'vacation', date: '2026-09-01' }] as const
+    await tauriRepository.saveAbsences([...inputs], [2], 1)
+    expect(mockInvoke).toHaveBeenCalledWith('save_absences', {
+      inputs,
+      replacementIds: [2],
+      updateId: 1,
+    })
+  })
+
   test('deleteAbsence invokes delete_absence', async () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteAbsence(1)

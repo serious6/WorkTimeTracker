@@ -649,6 +649,46 @@ export const localRepository: Repository = {
     )
     return updated
   },
+  saveAbsences: async (inputs, replacementIds, updateId) => {
+    const parsed = inputs.map((input) => validate(saveAbsenceSchema, input))
+    if (parsed.length === 0 || new Set(parsed.map((absence) => absence.date)).size !== parsed.length) {
+      throw new AppError('validation', 'Invalid absence range')
+    }
+    const { absences, audits } = readAbsenceState()
+    const replacements = new Set(replacementIds)
+    const current = updateId === undefined ? undefined : absences.find((absence) => absence.id === updateId)
+    if (updateId !== undefined && !current) throw new AppError('notFound', 'Absence not found')
+    const retained = absences.filter((absence) => !replacements.has(absence.id) && absence.id !== updateId)
+    if (parsed.some((input) => retained.some((absence) => absence.date === input.date))) {
+      throw new AppError('conflict', DUPLICATE_ABSENCE_MESSAGE)
+    }
+    const now = new Date().toISOString()
+    let nextAbsenceId = nextId(absences)
+    const saved = parsed.map((input, index) =>
+      absenceSchema.parse({
+        ...input,
+        id: index === 0 && current ? current.id : nextAbsenceId++,
+        createdAt: index === 0 && current ? current.createdAt : now,
+        updatedAt: now,
+      }),
+    )
+    const replacementRecords = absences.filter((absence) => replacements.has(absence.id))
+    const nextAudits = replacementRecords.reduce(
+      (all, absence) => appendAbsenceAudit(all, absence.id, 'deleted', absence, null),
+      audits,
+    )
+    const withUpdateAudit = current
+      ? appendAbsenceAudit(nextAudits, current.id, 'updated', current, saved[0]!)
+      : nextAudits
+    writeAbsenceState(
+      [...retained, ...saved],
+      saved.slice(current ? 1 : 0).reduce(
+        (all, absence) => appendAbsenceAudit(all, absence.id, 'created', null, absence),
+        withUpdateAudit,
+      ),
+    )
+    return saved
+  },
   deleteAbsence: async (id) => {
     const { absences, audits } = readAbsenceState()
     const current = absences.find((absence) => absence.id === id) ?? null

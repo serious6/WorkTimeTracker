@@ -391,6 +391,34 @@ pub fn update_absence(
 }
 
 #[tauri::command]
+pub fn save_absences(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+    mut inputs: Vec<SaveAbsence>,
+    replacement_ids: Vec<i64>,
+    update_id: Option<i64>,
+) -> AppResult<Vec<Absence>> {
+    logging::logged("save_absences", || {
+        if inputs.is_empty()
+            || inputs.iter_mut().any(|input| input.validate().is_err())
+            || inputs
+                .iter()
+                .map(|input| &input.date)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != inputs.len()
+        {
+            return Err(AppError::validation("invalid absence range"));
+        }
+        let user_id = current_user(&session)?;
+        database
+            .0
+            .save_absences(user_id, &inputs, &replacement_ids, update_id)
+            .map_err(unique_error(DUPLICATE_ABSENCE))
+    })
+}
+
+#[tauri::command]
 pub fn delete_absence(
     database: State<'_, Database>,
     session: State<'_, Session>,

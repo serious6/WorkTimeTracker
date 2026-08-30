@@ -6,9 +6,7 @@ import { toast } from '@/components/ui/toast-store'
 import { errorMessage } from '@/lib/errors'
 import {
   useAbsences,
-  useCreateAbsence,
-  useDeleteAbsence,
-  useUpdateAbsence,
+  useSaveAbsences,
 } from '../absence-queries'
 import {
   ABSENCE_TYPES,
@@ -35,12 +33,10 @@ export function AbsenceDialog({
   onClose: () => void
 }) {
   const { data: absences = [] } = useAbsences()
-  const createAbsence = useCreateAbsence()
-  const updateAbsence = useUpdateAbsence()
-  const deleteAbsence = useDeleteAbsence()
+  const saveAbsences = useSaveAbsences()
   const [error, setError] = useState<string>()
   const [replacing, setReplacing] = useState<Absence[]>()
-  const [confirmed, setConfirmed] = useState(false)
+  const [confirmedReplacementIds, setConfirmedReplacementIds] = useState<number[]>()
   const [openedFor, setOpenedFor] = useState<number | null>(null)
 
   const openedKey = absence?.id ?? 0
@@ -48,7 +44,7 @@ export function AbsenceDialog({
     setOpenedFor(openedKey)
     setError(undefined)
     setReplacing(undefined)
-    setConfirmed(false)
+    setConfirmedReplacementIds(undefined)
   }
   if (!open && openedFor !== null) setOpenedFor(null)
 
@@ -71,37 +67,33 @@ export function AbsenceDialog({
     const occupied = absences.filter(
       (recorded) => dates.has(recorded.date) && recorded.id !== absence?.id,
     )
-    if (occupied.length > 0 && !confirmed) {
+    const occupiedIds = occupied.map((recorded) => recorded.id).sort((left, right) => left - right)
+    if (
+      occupied.length > 0 &&
+      occupiedIds.join(',') !== confirmedReplacementIds?.join(',')
+    ) {
       setError(undefined)
       setReplacing(occupied)
       return
     }
 
-    const occupiedByDate = new Map(occupied.map((recorded) => [recorded.date, recorded] as const))
     try {
-      if (absence) {
-        // A single day is edited in place; a day taken by another absence is
-        // freed first, so the replacement never creates a second record.
-        for (const taken of occupied) await deleteAbsence.mutateAsync(taken.id)
-        await updateAbsence.mutateAsync({ id: absence.id, input: days[0] })
-      } else {
-        for (const day of days) {
-          const taken = occupiedByDate.get(day.date)
-          if (taken) await updateAbsence.mutateAsync({ id: taken.id, input: day })
-          else await createAbsence.mutateAsync(day)
-        }
-      }
+      await saveAbsences.mutateAsync({
+        inputs: days,
+        replacementIds: occupiedIds,
+        updateId: absence?.id,
+      })
       toast(
         absence ? 'Absence updated' : 'Absence saved',
         `${ABSENCE_TYPE_LABELS[result.data.type]}, ${days.length} day${days.length === 1 ? '' : 's'}`,
       )
       setError(undefined)
       setReplacing(undefined)
-      setConfirmed(false)
+      setConfirmedReplacementIds(undefined)
       onClose()
     } catch (failure) {
       setReplacing(undefined)
-      setConfirmed(false)
+      setConfirmedReplacementIds(undefined)
       setError(errorMessage(failure, 'The absence could not be saved.'))
     }
   }
@@ -137,14 +129,19 @@ export function AbsenceDialog({
         <p className="text-xs text-muted-foreground">
           Only configured working days lose their target. A half day keeps half of it.
         </p>
-        {replacing && !confirmed && (
+        {replacing && !confirmedReplacementIds && (
           <div className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
             <p>
               {replacing.length} day{replacing.length === 1 ? '' : 's'} already{' '}
               {replacing.length === 1 ? 'carries' : 'carry'} an absence. Saving replaces{' '}
               {replacing.length === 1 ? 'it' : 'them'}.
             </p>
-            <Button onClick={() => setConfirmed(true)} size="sm" type="button" variant="outline">
+            <Button
+              onClick={() => setConfirmedReplacementIds(replacing.map((recorded) => recorded.id).sort((left, right) => left - right))}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
               Replace existing absences
             </Button>
           </div>

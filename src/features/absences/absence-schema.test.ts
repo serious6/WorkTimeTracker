@@ -76,6 +76,16 @@ describe('absence form', () => {
     ).toBe(false)
     expect(MAX_ABSENCE_RANGE_DAYS).toBe(366)
   })
+
+  it('limits ranges by calendar days across daylight-saving transitions', () => {
+    expect(
+      absenceFormSchema.safeParse({
+        type: 'vacation',
+        startDate: '2026-03-01',
+        endDate: '2027-03-02',
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe('absence warnings', () => {
@@ -106,5 +116,21 @@ describe('absence warnings', () => {
     expect(absenceWorkWarnings([], absenceIndex([absence('2026-09-01')]), GERMAN_COMPLIANCE_LIMITS, now)).toEqual(
       [],
     )
+  })
+
+  it('warns for overnight work and describes a remaining half-day target', () => {
+    const overnight = {
+      ...entry('2026-09-01', '22:00', '23:00'),
+      endTime: new Date('2026-09-02T02:00:00').toISOString(),
+    }
+    const warnings = absenceWorkWarnings(
+      [overnight],
+      absenceIndex([absence('2026-09-02'), { ...absence('2026-09-01'), id: 2, type: 'halfDay' }]),
+      GERMAN_COMPLIANCE_LIMITS,
+      now,
+    )
+
+    expect(warnings.map((warning) => warning.dateKey)).toEqual(['2026-09-01', '2026-09-02'])
+    expect(warnings[0]?.message).toContain('half the target still applies')
   })
 })

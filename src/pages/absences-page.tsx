@@ -12,6 +12,16 @@ import { targetMinutesForDay } from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { formatDay, formatDuration, fromDateKey, toDateKey } from '@/lib/date'
 
+function absenceValue(value: string | null): string | null {
+  if (!value) return null
+  try {
+    const absence = JSON.parse(value) as { date: string; type: keyof typeof ABSENCE_TYPE_LABELS }
+    return `${ABSENCE_TYPE_LABELS[absence.type]} on ${absence.date}`
+  } catch {
+    return null
+  }
+}
+
 export function AbsencesPage() {
   const settings = useWorkSettings()
   const { data: absences = [] } = useAbsences()
@@ -129,6 +139,11 @@ export function AbsencesPage() {
                     absence #{audit.absenceId} by {audit.actor} on{' '}
                     {new Date(audit.recordedAt).toLocaleString('en-US')}
                   </span>
+                  {(absenceValue(audit.oldValue) || absenceValue(audit.newValue)) && (
+                    <span className="text-muted-foreground">
+                      {absenceValue(audit.oldValue) ?? 'none'} → {absenceValue(audit.newValue) ?? 'none'}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>

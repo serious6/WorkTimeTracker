@@ -65,6 +65,8 @@ export const tauriRepository: Repository = {
   listAbsences: () => call('list_absences', {}, absenceSchema.array()),
   createAbsence: (input) => call('create_absence', { input }, absenceSchema),
   updateAbsence: (id, input) => call('update_absence', { id, input }, absenceSchema),
+  saveAbsences: (inputs, replacementIds, updateId) =>
+    call('save_absences', { inputs, replacementIds, updateId }, absenceSchema.array()),
   deleteAbsence: async (id) => {
     await run('delete_absence', { id })
   },

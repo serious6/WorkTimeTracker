@@ -131,6 +131,13 @@ pub trait Store {
         user_id: i64,
         input: &SaveAbsence,
     ) -> Result<Absence, StoreError>;
+    fn save_absences(
+        &self,
+        user_id: i64,
+        inputs: &[SaveAbsence],
+        replacement_ids: &[i64],
+        update_id: Option<i64>,
+    ) -> Result<Vec<Absence>, StoreError>;
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
     fn list_absence_audits(&self, user_id: i64) -> Result<Vec<AbsenceAudit>, StoreError>;
 

@@ -245,4 +245,18 @@ describe('week metrics with absences', () => {
     expect(metrics.proratedTargetMinutes).toBe(0)
     expect(metrics.balanceToDateMinutes).toBe(0)
   })
+
+  it('weights forecasts by the targets left after future absences', () => {
+    const metrics = weekMetrics({
+      entries: [entry(1, 1, at(24, 9), at(24, 17))],
+      projects: [project(1, 'Project')],
+      settings,
+      selectedDate: at(27, 12),
+      now: at(27, 12).getTime(),
+      absences: absences(['2026-08-28', 'halfDay']),
+    })
+
+    expect(metrics.remainingWorkingDays).toBe(1)
+    expect(metrics.forecastMinutes).toBe(560)
+  })
 })

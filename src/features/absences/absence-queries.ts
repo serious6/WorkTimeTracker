@@ -47,6 +47,22 @@ export function useUpdateAbsence() {
   })
 }
 
+export function useSaveAbsences() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      inputs,
+      replacementIds,
+      updateId,
+    }: {
+      inputs: SaveAbsence[]
+      replacementIds: number[]
+      updateId?: number
+    }) => repository.saveAbsences(inputs, replacementIds, updateId),
+    onSuccess: () => invalidate(queryClient),
+  })
+}
+
 export function useDeleteAbsence() {
   const queryClient = useQueryClient()
   return useMutation({
