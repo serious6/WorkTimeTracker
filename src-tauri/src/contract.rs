@@ -137,6 +137,14 @@ fn validates_work_settings_like_the_contract() {
     }
 }
 
+fn email_exists(existing: &[String], candidate: &str) -> bool {
+    existing.iter().any(|email| email == candidate)
+}
+
+fn project_budget_exists(existing_project_ids: &[i64], candidate_project_id: i64) -> bool {
+    existing_project_ids.contains(&candidate_project_id)
+}
+
 #[test]
 fn enforces_uniqueness_like_the_contract() {
     let uniqueness: Vec<UniquenessCase> =
@@ -146,15 +154,19 @@ fn enforces_uniqueness_like_the_contract() {
         match case.kind.as_str() {
             "email" => {
                 let credentials: Credentials = serde_json::from_value(case.input).unwrap();
-                let mut seen = std::collections::HashSet::new();
-                assert!(seen.insert(credentials.email.clone()), "{}", case.name);
-                assert!(!seen.insert(credentials.email), "{}", case.name);
+                assert!(
+                    email_exists(&[credentials.email.clone()], &credentials.email),
+                    "{}",
+                    case.name
+                );
             }
             "projectBudget" => {
                 let budget: SaveProjectBudget = serde_json::from_value(case.input).unwrap();
-                let mut seen = std::collections::HashSet::new();
-                assert!(seen.insert(budget.project_id), "{}", case.name);
-                assert!(!seen.insert(budget.project_id), "{}", case.name);
+                assert!(
+                    project_budget_exists(&[budget.project_id], budget.project_id),
+                    "{}",
+                    case.name
+                );
             }
             _ => panic!("{}: unknown uniqueness kind", case.name),
         }

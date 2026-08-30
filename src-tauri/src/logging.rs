@@ -122,7 +122,7 @@ fn clamp(message: &str) -> String {
 }
 
 /// Removes credentials, hashes, e-mail addresses and file system paths from a
-/// message. Both storage paths redact, so a log line is safe wherever it originates.
+/// message. A log line is redacted before it is written, so it is safe wherever it originates.
 pub fn redact(message: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
 
