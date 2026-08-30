@@ -39,6 +39,24 @@ describe('Dialog', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  test('a new onClose identity does not move focus from an input', () => {
+    const { rerender } = render(
+      <Dialog onClose={() => {}} open title="Stable focus">
+        <input aria-label="Name" />
+      </Dialog>,
+    )
+    const input = screen.getByRole('textbox', { name: 'Name' })
+    input.focus()
+
+    rerender(
+      <Dialog onClose={() => {}} open title="Stable focus">
+        <input aria-label="Name" />
+      </Dialog>,
+    )
+
+    expect(input).toHaveFocus()
+  })
+
   test('labels the dialog with the title and describes it with the description', () => {
     renderDialog(true)
     const dialog = screen.getByRole('dialog', { name: 'Test Dialog' })

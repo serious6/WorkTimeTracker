@@ -16,6 +16,8 @@ export function Dialog({
 }>) {
   const panel = useRef<HTMLDivElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   const titleId = useId()
   const descriptionId = useId()
 
@@ -29,7 +31,7 @@ export function Dialog({
         ) ?? [],
       ).filter((element) => !element.hasAttribute('aria-hidden'))
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') closeRef.current()
       if (event.key !== 'Tab') return
       const elements = focusable()
       if (elements.length === 0) {
@@ -49,12 +51,18 @@ export function Dialog({
       }
     }
     document.addEventListener('keydown', onKeyDown)
-    ;(focusable()[0] ?? panel.current)?.focus()
+    ;(
+      panel.current?.querySelector<HTMLElement>(
+        'input:not([disabled]), textarea:not([disabled]), select:not([disabled])',
+      ) ??
+      focusable()[0] ??
+      panel.current
+    )?.focus()
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       previousFocus.current?.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

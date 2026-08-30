@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   renderWithProviders,
@@ -32,6 +33,71 @@ describe('ProjectDialog – create', () => {
     fireEvent.click(screen.getByRole('button', { name: /create project/i }))
     await waitFor(() => expect(created).toBeDefined())
     expect(created?.name).toBe('My Project')
+  })
+
+  it('keeps the name focused while typing through parent rerenders', () => {
+    function Wrapper() {
+      const [, setRenders] = useState(0)
+      return (
+        <div onChange={() => setRenders((count) => count + 1)}>
+          <ProjectDialog open onClose={() => {}} />
+        </div>
+      )
+    }
+    renderWithProviders(<Wrapper />)
+    const input = screen.getByPlaceholderText(/website redesign/i)
+
+    for (const character of 'NewProject') {
+      expect(input).toHaveFocus()
+      fireEvent.change(input, { target: { value: `${(input as HTMLInputElement).value}${character}` } })
+    }
+
+    expect(input).toHaveFocus()
+    expect(input).toHaveValue('NewProject')
+  })
+
+  it('submits the full name after typing through parent rerenders', async () => {
+    let created: import('@/features/projects/project-schema').Project | undefined
+    function Wrapper() {
+      const [, setRenders] = useState(0)
+      return (
+        <div onChange={() => setRenders((count) => count + 1)}>
+          <ProjectDialog open onClose={() => {}} onCreated={(project) => { created = project }} />
+        </div>
+      )
+    }
+    renderWithProviders(<Wrapper />)
+    const input = screen.getByPlaceholderText(/website redesign/i)
+
+    for (const character of 'NewProject') {
+      expect(input).toHaveFocus()
+      fireEvent.change(input, { target: { value: `${(input as HTMLInputElement).value}${character}` } })
+    }
+    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
+
+    await waitFor(() => expect(created?.name).toBe('NewProject'))
+  })
+
+  it('autofocuses the name, closes on Escape, and restores trigger focus', () => {
+    function Wrapper() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)} type="button">New project</button>
+          <ProjectDialog open={open} onClose={() => setOpen(false)} />
+        </>
+      )
+    }
+    renderWithProviders(<Wrapper />)
+    const trigger = screen.getByRole('button', { name: 'New project' })
+    trigger.focus()
+    fireEvent.click(trigger)
+
+    expect(screen.getByPlaceholderText(/website redesign/i)).toHaveFocus()
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it('allows picking a different color', () => {
