@@ -1,15 +1,14 @@
-use rusqlite::Connection;
 use tauri::State;
 
 use crate::{
     auth::{self, LoginAttempts, Session},
-    database::{self, Database, SwitchRunningTimeEntryError},
     error::{AppError, AppResult},
     logging,
     models::{
         AuditLogEntry, Credentials, Project, ProjectBudget, SaveProject, SaveProjectBudget,
         SaveTimeEntry, TimeEntry, User, WorkSettings,
     },
+    store::{Database, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OVERLAP: &str = "This time overlaps with another time entry";
@@ -17,17 +16,9 @@ const DUPLICATE_BUDGET: &str = "This project already has a budget";
 const INVALID_CREDENTIALS: &str = "Email or password is incorrect";
 const DUPLICATE_EMAIL: &str = "An account with this email already exists";
 
-fn is_unique_violation(error: &rusqlite::Error) -> bool {
-    matches!(
-        error,
-        rusqlite::Error::SqliteFailure(failure, _)
-            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
-    )
-}
-
-fn unique_error(message: &'static str) -> impl Fn(rusqlite::Error) -> AppError {
+fn unique_error(message: &'static str) -> impl Fn(StoreError) -> AppError {
     move |error| {
-        if is_unique_violation(&error) {
+        if matches!(error, StoreError::UniqueViolation) {
             AppError::conflict(message)
         } else {
             AppError::from(error)
@@ -35,26 +26,9 @@ fn unique_error(message: &'static str) -> impl Fn(rusqlite::Error) -> AppError {
     }
 }
 
-fn with_connection<T>(
-    database: &State<'_, Database>,
-    action: impl FnOnce(&Connection) -> rusqlite::Result<T>,
-) -> AppResult<T> {
-    let connection = database.0.lock()?;
-    Ok(action(&connection)?)
-}
-
 /// Every command works on the data of the signed in user only.
 fn current_user(session: &State<'_, Session>) -> AppResult<i64> {
     session.user_id()?.ok_or_else(AppError::not_signed_in)
-}
-
-fn with_user<T>(
-    database: &State<'_, Database>,
-    session: &State<'_, Session>,
-    action: impl FnOnce(&Connection, i64) -> rusqlite::Result<T>,
-) -> AppResult<T> {
-    let user_id = current_user(session)?;
-    with_connection(database, |connection| action(connection, user_id))
 }
 
 #[tauri::command]
@@ -66,8 +40,9 @@ pub fn register(
     logging::logged("register", || {
         credentials.validate_registration()?;
         let password_hash = auth::hash_password(&credentials.password)?;
-        let mut connection = database.0.lock()?;
-        let user = database::register_user(&mut connection, &credentials.email, &password_hash)
+        let user = database
+            .0
+            .register_user(&credentials.email, &password_hash)
             .map_err(unique_error(DUPLICATE_EMAIL))?;
         session.set(Some(user.id))?;
         Ok(user)
@@ -86,11 +61,11 @@ pub fn login(
             .validate()
             .map_err(|_| AppError::validation(INVALID_CREDENTIALS))?;
         attempts.check(&credentials.email)?;
-        let user = with_connection(&database, |connection| {
-            database::read_password_hash(connection, &credentials.email)
-        })?
-        .filter(|(_, hash)| auth::verify_password(&credentials.password, hash))
-        .map(|(id, _)| id);
+        let user = database
+            .0
+            .read_password_hash(&credentials.email)?
+            .filter(|(_, hash)| auth::verify_password(&credentials.password, hash))
+            .map(|(id, _)| id);
         let user = match user {
             Some(user) => user,
             None => {
@@ -98,10 +73,10 @@ pub fn login(
                 return Err(AppError::validation(INVALID_CREDENTIALS));
             }
         };
-        let user = with_connection(&database, |connection| {
-            database::read_user(connection, user)
-        })?
-        .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
+        let user = database
+            .0
+            .read_user(user)?
+            .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
         attempts.record_success(&credentials.email)?;
         session.set(Some(user.id))?;
         Ok(user)
@@ -122,9 +97,7 @@ pub fn current_session(
         let Some(user_id) = session.user_id()? else {
             return Ok(None);
         };
-        with_connection(&database, |connection| {
-            database::read_user(connection, user_id)
-        })
+        Ok(database.0.read_user(user_id)?)
     })
 }
 
@@ -134,7 +107,8 @@ pub fn list_projects(
     session: State<'_, Session>,
 ) -> AppResult<Vec<Project>> {
     logging::logged("list_projects", || {
-        with_user(&database, &session, database::list_projects)
+        let user_id = current_user(&session)?;
+        Ok(database.0.list_projects(user_id)?)
     })
 }
 
@@ -146,9 +120,8 @@ pub fn create_project(
 ) -> AppResult<Project> {
     logging::logged("create_project", || {
         input.validate()?;
-        with_user(&database, &session, |connection, user_id| {
-            database::insert_project(connection, user_id, &input)
-        })
+        let user_id = current_user(&session)?;
+        Ok(database.0.insert_project(user_id, &input)?)
     })
 }
 
@@ -161,9 +134,8 @@ pub fn update_project(
 ) -> AppResult<Project> {
     logging::logged("update_project", || {
         input.validate()?;
-        with_user(&database, &session, |connection, user_id| {
-            database::update_project(connection, id, user_id, &input)
-        })
+        let user_id = current_user(&session)?;
+        Ok(database.0.update_project(id, user_id, &input)?)
     })
 }
 
@@ -174,9 +146,8 @@ pub fn delete_project(
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_project", || {
-        with_user(&database, &session, |connection, user_id| {
-            database::delete_project(connection, id, user_id)
-        })
+        let user_id = current_user(&session)?;
+        Ok(database.0.delete_project(id, user_id)?)
     })
 }
 
@@ -186,8 +157,16 @@ pub fn list_time_entries(
     session: State<'_, Session>,
 ) -> AppResult<Vec<TimeEntry>> {
     logging::logged("list_time_entries", || {
-        with_user(&database, &session, database::list_time_entries)
+        let user_id = current_user(&session)?;
+        Ok(database.0.list_time_entries(user_id)?)
     })
+}
+
+fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
+    match error {
+        TimeEntryWriteError::Overlap => AppError::conflict(OVERLAP),
+        TimeEntryWriteError::Store(error) => AppError::from(error),
+    }
 }
 
 #[tauri::command]
@@ -202,17 +181,10 @@ pub fn create_time_entry(
             return Err(AppError::validation("Project is required"));
         }
         let user_id = current_user(&session)?;
-        let connection = database.0.lock()?;
-        if database::overlaps(
-            &connection,
-            user_id,
-            &input.start_time,
-            input.end_time.as_deref(),
-            None,
-        )? {
-            return Err(AppError::conflict(OVERLAP));
-        }
-        Ok(database::insert_time_entry(&connection, user_id, &input)?)
+        database
+            .0
+            .create_time_entry(user_id, &input)
+            .map_err(map_time_entry_write_error)
     })
 }
 
@@ -226,22 +198,10 @@ pub fn update_time_entry(
     logging::logged("update_time_entry", || {
         input.validate()?;
         let user_id = current_user(&session)?;
-        let connection = database.0.lock()?;
-        if database::overlaps(
-            &connection,
-            user_id,
-            &input.start_time,
-            input.end_time.as_deref(),
-            Some(id),
-        )? {
-            return Err(AppError::conflict(OVERLAP));
-        }
-        Ok(database::update_time_entry(
-            &connection,
-            id,
-            user_id,
-            &input,
-        )?)
+        database
+            .0
+            .update_time_entry(id, user_id, &input)
+            .map_err(map_time_entry_write_error)
     })
 }
 
@@ -259,9 +219,10 @@ pub fn update_time_entry_note(
         if note.as_ref().is_some_and(|note| note.chars().count() > 500) {
             return Err(AppError::validation("invalid note"));
         }
-        with_user(&database, &session, |connection, user_id| {
-            database::update_time_entry_note(connection, id, user_id, note.as_deref())
-        })
+        let user_id = current_user(&session)?;
+        Ok(database
+            .0
+            .update_time_entry_note(id, user_id, note.as_deref())?)
     })
 }
 
@@ -278,16 +239,14 @@ pub fn switch_running_time_entry(
             return Err(AppError::validation("invalid timer switch"));
         }
         let user_id = current_user(&session)?;
-        let connection = database.0.lock()?;
-        database::switch_running_time_entry(&connection, id, user_id, &input).map_err(|error| {
-            match error {
-                SwitchRunningTimeEntryError::InvalidTimer => {
-                    AppError::validation("invalid timer switch")
-                }
-                SwitchRunningTimeEntryError::Overlap => AppError::conflict(OVERLAP),
-                SwitchRunningTimeEntryError::Database(error) => AppError::from(error),
-            }
-        })
+        database
+            .0
+            .switch_running_time_entry(id, user_id, &input)
+            .map_err(|error| match error {
+                SwitchEntryError::InvalidTimer => AppError::validation("invalid timer switch"),
+                SwitchEntryError::Overlap => AppError::conflict(OVERLAP),
+                SwitchEntryError::Store(error) => AppError::from(error),
+            })
     })
 }
 
@@ -298,9 +257,8 @@ pub fn delete_time_entry(
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_time_entry", || {
-        with_user(&database, &session, |connection, user_id| {
-            database::delete_time_entry(connection, id, user_id)
-        })
+        let user_id = current_user(&session)?;
+        Ok(database.0.delete_time_entry(id, user_id)?)
     })
 }
 
@@ -311,7 +269,8 @@ pub fn list_audit_log(
     session: State<'_, Session>,
 ) -> AppResult<Vec<AuditLogEntry>> {
     logging::logged("list_audit_log", || {
-        with_user(&database, &session, database::list_audit_log)
+        let user_id = current_user(&session)?;
+        Ok(database.0.list_audit_log(user_id)?)
     })
 }
 
@@ -321,7 +280,8 @@ pub fn list_project_budgets(
     session: State<'_, Session>,
 ) -> AppResult<Vec<ProjectBudget>> {
     logging::logged("list_project_budgets", || {
-        with_user(&database, &session, database::list_project_budgets)
+        let user_id = current_user(&session)?;
+        Ok(database.0.list_project_budgets(user_id)?)
     })
 }
 
@@ -334,8 +294,9 @@ pub fn create_project_budget(
     logging::logged("create_project_budget", || {
         input.validate()?;
         let user_id = current_user(&session)?;
-        let connection = database.0.lock()?;
-        database::insert_project_budget(&connection, user_id, &input)
+        database
+            .0
+            .insert_project_budget(user_id, &input)
             .map_err(unique_error(DUPLICATE_BUDGET))
     })
 }
@@ -350,8 +311,9 @@ pub fn update_project_budget(
     logging::logged("update_project_budget", || {
         input.validate()?;
         let user_id = current_user(&session)?;
-        let connection = database.0.lock()?;
-        database::update_project_budget(&connection, id, user_id, &input)
+        database
+            .0
+            .update_project_budget(id, user_id, &input)
             .map_err(unique_error(DUPLICATE_BUDGET))
     })
 }
@@ -363,9 +325,8 @@ pub fn delete_project_budget(
     id: i64,
 ) -> AppResult<()> {
     logging::logged("delete_project_budget", || {
-        with_user(&database, &session, |connection, user_id| {
-            database::delete_project_budget(connection, id, user_id)
-        })
+        let user_id = current_user(&session)?;
+        Ok(database.0.delete_project_budget(id, user_id)?)
     })
 }
 
@@ -375,7 +336,8 @@ pub fn get_work_settings(
     session: State<'_, Session>,
 ) -> AppResult<WorkSettings> {
     logging::logged("get_work_settings", || {
-        with_user(&database, &session, database::read_settings)
+        let user_id = current_user(&session)?;
+        Ok(database.0.read_settings(user_id)?)
     })
 }
 
@@ -387,17 +349,14 @@ pub fn update_work_settings(
 ) -> AppResult<WorkSettings> {
     logging::logged("update_work_settings", || {
         settings.validate()?;
-        with_user(&database, &session, |connection, user_id| {
-            database::write_settings(connection, user_id, &settings)
-        })
+        let user_id = current_user(&session)?;
+        Ok(database.0.write_settings(user_id, &settings)?)
     })
 }
 
 #[tauri::command]
 pub fn get_app_version(database: State<'_, Database>) -> AppResult<Option<String>> {
-    logging::logged("get_app_version", || {
-        with_connection(&database, database::read_app_version)
-    })
+    logging::logged("get_app_version", || Ok(database.0.read_app_version()?))
 }
 
 /// Writes a failure of the user interface into the same log file. The message is

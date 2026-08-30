@@ -71,6 +71,23 @@ impl From<rusqlite::Error> for AppError {
     }
 }
 
+/// Generic mapping used for storage failures that are not a known-message
+/// conflict (unique violations get their per-command message via
+/// `commands::unique_error` before reaching here).
+impl From<crate::store::StoreError> for AppError {
+    fn from(error: crate::store::StoreError) -> Self {
+        match error {
+            crate::store::StoreError::NotFound => {
+                Self::NotFound("The record was not found".to_owned())
+            }
+            crate::store::StoreError::UniqueViolation => {
+                Self::Conflict("This record already exists".to_owned())
+            }
+            crate::store::StoreError::Backend(message) => Self::Database(message),
+        }
+    }
+}
+
 /// A poisoned lock means another command panicked while holding it.
 impl<T> From<PoisonError<T>> for AppError {
     fn from(error: PoisonError<T>) -> Self {

@@ -2,8 +2,13 @@
 
 This document describes what WorkTimeTracker persists today, as a logical model in C4 style
 (context, container, component). It covers the client-side persistence layer only: the local SQLite
-database of the desktop application and the browser fallback used for UI development and end-to-end
-tests. There is no server and no external integration.
+database of the desktop application (default) or an optional local Postgres server, and the browser
+fallback used for UI development and end-to-end tests. There is no remote server and no external
+integration; a self-hosted Postgres, if configured, still runs on the same machine.
+
+The schema and its invariants are identical across backends; only storage engine, primary-key
+generation, and column types differ (see "Schema versions" below and `drizzle/postgres/0000_init.sql`
+for the Postgres equivalent of the SQLite migrations).
 
 Sources: `drizzle/*.sql`, `src/db/schema.ts`, `src-tauri/src/database.rs`,
 `src-tauri/src/models.rs`, `src/features/storage/local-repository.ts`, and the Zod schemas under
@@ -283,6 +288,19 @@ applied migrations is stored in the SQLite `user_version` pragma by `rusqlite_mi
 
 Rows that predate migration 6 keep `user_id IS NULL` until the first registration claims them
 (`claim_unowned_data` in `src-tauri/src/database.rs`, `claimLegacyData` in the browser fallback).
+
+### Postgres backend
+
+When `WTT_DB_BACKEND=postgres` (see the README's "Database backend" section), the app runs
+`drizzle/postgres/0000_init.sql` instead, a single consolidated migration equivalent to the six
+SQLite migrations combined — a Postgres deployment always starts from an empty database, so there
+is no need to replay SQLite's historical schema evolution. Differences are limited to storage
+details, not semantics: `SERIAL`/`GENERATED ALWAYS AS IDENTITY` primary keys instead of
+`INTEGER PRIMARY KEY AUTOINCREMENT`, `BOOLEAN` for `projects.active`, and the same
+`ON DELETE CASCADE` / `ON DELETE SET NULL` and `budget_minutes > 0` check constraint
+(`project_budgets_budget_minutes_check`). Timestamps remain `TEXT` columns holding the same ISO 8601
+UTC strings the frontend already expects, generated in Rust (`postgres_store.rs`) instead of by
+SQLite's `strftime`, so no frontend change is required.
 
 ## Derived data (not persisted)
 

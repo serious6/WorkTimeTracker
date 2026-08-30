@@ -3,19 +3,49 @@ services:
     build:
       context: .
       dockerfile: Containerfile
+    init: true
+    stdin_open: true
+    tty: true
     ports:
       - "1420:1420"
     environment:
       XDG_DATA_HOME: /root/.local/share
+      WTT_DB_BACKEND: ${WTT_DB_BACKEND:-sqlite}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://worktimetracker:worktimetracker@db:5432/worktimetracker}
     volumes:
-      - .:/workspace
+      - .:/workspace:z
       - node_modules:/workspace/node_modules
       - cargo_registry:/root/.cargo/registry
       - cargo_target:/workspace/src-tauri/target
       - app_data:/root/.local/share
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+  # Optional containerised Postgres for `WTT_DB_BACKEND=postgres`. Only started
+  # with `podman compose --profile postgres up -d`; plain `podman compose up -d`
+  # keeps using embedded SQLite as before.
+  db:
+    image: docker.io/library/postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-worktimetracker}
+      POSTGRES_USER: ${POSTGRES_USER:-worktimetracker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-worktimetracker}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-worktimetracker} -d ${POSTGRES_DB:-worktimetracker}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   app_data:
   node_modules:
   cargo_registry:
   cargo_target:
+  postgres_data:

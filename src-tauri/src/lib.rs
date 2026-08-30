@@ -1,15 +1,19 @@
 mod auth;
 mod commands;
+mod config;
 #[cfg(test)]
 mod contract;
 mod database;
 mod error;
 mod logging;
 mod models;
+mod postgres_store;
+mod store;
 mod window_state;
 
 use auth::{LoginAttempts, Session};
-use database::Database;
+use config::DbConfig;
+use store::Database;
 use tauri::{Manager, WindowEvent};
 
 /// Panics of the backend end up in the log file instead of only on stderr.
@@ -33,7 +37,10 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             logging::init(&data_dir);
             log_panics();
-            let database = Database::open(data_dir.join("work-time-tracker.sqlite"))
+            let default_sqlite_path = data_dir.join("work-time-tracker.sqlite");
+            let db_config = DbConfig::from_env(default_sqlite_path)
+                .inspect_err(|error| logging::error("setup", &format!("config: {error}")))?;
+            let database = Database::open(&db_config)
                 .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
             app.manage(database);
             app.manage(Session::default());
