@@ -1,6 +1,7 @@
 import {
   BarChart3,
   CalendarDays,
+  CalendarOff,
   CalendarRange,
   Clock,
   FolderKanban,
@@ -29,6 +30,7 @@ const items: { view: View; label: string; icon: typeof LayoutDashboard }[] = [
   { view: 'budgets', label: 'Budgets', icon: Wallet },
   { view: 'reports', label: 'Reports', icon: BarChart3 },
   { view: 'working-time', label: 'Working Time', icon: ShieldCheck },
+  { view: 'absences', label: 'Absences', icon: CalendarOff },
   { view: 'calendar', label: 'Calendar', icon: CalendarDays },
   { view: 'settings', label: 'Settings', icon: Settings },
 ]

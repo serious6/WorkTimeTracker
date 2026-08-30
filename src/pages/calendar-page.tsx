@@ -1,6 +1,8 @@
 import { useNavigationStore } from '@/app/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { useAbsenceIndex } from '@/features/absences/absence-queries'
+import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboard-store'
 import { dayRange, entriesInRange, monthRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
@@ -13,6 +15,7 @@ export function CalendarPage() {
   const selectedDate = useSelectedDate()
   const settings = useWorkSettings()
   const { data: entries = [] } = useTimeEntries()
+  const absences = useAbsenceIndex()
   const now = useTicker(true)
   const setSelectedDate = useDashboardStore((state) => state.setSelectedDate)
   const navigate = useNavigationStore((state) => state.navigate)
@@ -47,6 +50,7 @@ export function CalendarPage() {
             {days.map((day) => {
               const range = dayRange(day)
               const minutes = totalMinutes(entriesInRange(entries, range, now), now, range)
+              const absence = absences.get(toDateKey(day)) ?? null
               const inMonth = day.getMonth() === selectedDate.getMonth()
               return (
                 <Button
@@ -66,6 +70,11 @@ export function CalendarPage() {
                   <span className="block tabular-nums text-muted-foreground">
                     {minutes > 0 ? formatDuration(minutes) : '–'}
                   </span>
+                  {absence && (
+                    <span className="block truncate text-muted-foreground">
+                      {ABSENCE_TYPE_LABELS[absence]}
+                    </span>
+                  )}
                 </Button>
               )
             })}

@@ -1,5 +1,13 @@
 import { z } from 'zod'
 import {
+  DUPLICATE_ABSENCE_MESSAGE,
+  absenceAuditSchema,
+  absenceSchema,
+  saveAbsenceSchema,
+  type Absence,
+  type AbsenceAudit,
+} from '@/features/absences/absence-schema'
+import {
   TIME_ENTRY_ENTITY,
   auditLogEntrySchema,
   type AuditLogEntry,
@@ -61,6 +69,7 @@ const SCOPED_KEYS = [
   'time-entry-audits',
   'time-entry-state',
   'audit-log',
+  'absence-state',
 ] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
@@ -75,6 +84,12 @@ const entryStateSchema = z.object({
   audits: timeEntryAuditSchema.array(),
 })
 type EntryState = z.infer<typeof entryStateSchema>
+
+const absenceStateSchema = z.object({
+  absences: absenceSchema.array(),
+  audits: absenceAuditSchema.array(),
+})
+type AbsenceState = z.infer<typeof absenceStateSchema>
 
 const SESSION_KEY = 'work-time-tracker.session'
 const SESSIONS_KEY = 'work-time-tracker.sessions'
@@ -240,6 +255,42 @@ function appendAudit(
     timeEntryAuditSchema.parse({
       id: nextId(audits),
       timeEntryId,
+      action,
+      actor: currentActor(),
+      oldValue: oldValue ? JSON.stringify(oldValue) : null,
+      newValue: newValue ? JSON.stringify(newValue) : null,
+      recordedAt: new Date().toISOString(),
+    }),
+  ]
+}
+
+function absenceStateKey(): string {
+  return scopedKey('absence-state')
+}
+
+function readAbsenceState(): AbsenceState {
+  return read(absenceStateKey(), { absences: [], audits: [] }, (value) =>
+    absenceStateSchema.parse(value),
+  )
+}
+
+function writeAbsenceState(absences: Absence[], audits: AbsenceAudit[]): void {
+  write(absenceStateKey(), { absences, audits })
+}
+
+/** Appends to the trail; recorded values are never modified or removed. */
+function appendAbsenceAudit(
+  audits: AbsenceAudit[],
+  absenceId: number,
+  action: AuditAction,
+  oldValue: Absence | null,
+  newValue: Absence | null,
+): AbsenceAudit[] {
+  return [
+    ...audits,
+    absenceAuditSchema.parse({
+      id: nextId(audits),
+      absenceId,
       action,
       actor: currentActor(),
       oldValue: oldValue ? JSON.stringify(oldValue) : null,
@@ -562,6 +613,52 @@ export const localRepository: Repository = {
       readBudgets().filter((budget) => budget.id !== id),
     )
   },
+  listAbsences: async () =>
+    readAbsenceState().absences.sort((left, right) => left.date.localeCompare(right.date)),
+  createAbsence: async (input) => {
+    const parsed = validate(saveAbsenceSchema, input)
+    const { absences, audits } = readAbsenceState()
+    if (absences.some((absence) => absence.date === parsed.date)) {
+      throw new AppError('conflict', DUPLICATE_ABSENCE_MESSAGE)
+    }
+    const now = new Date().toISOString()
+    const absence = absenceSchema.parse({
+      ...parsed,
+      id: nextId(absences),
+      createdAt: now,
+      updatedAt: now,
+    })
+    writeAbsenceState(
+      [...absences, absence],
+      appendAbsenceAudit(audits, absence.id, 'created', null, absence),
+    )
+    return absence
+  },
+  updateAbsence: async (id, input) => {
+    const parsed = validate(saveAbsenceSchema, input)
+    const { absences, audits } = readAbsenceState()
+    const current = absences.find((absence) => absence.id === id)
+    if (!current) throw new AppError('notFound', 'Absence not found')
+    if (absences.some((absence) => absence.date === parsed.date && absence.id !== id)) {
+      throw new AppError('conflict', DUPLICATE_ABSENCE_MESSAGE)
+    }
+    const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
+    writeAbsenceState(
+      absences.map((absence) => (absence.id === id ? updated : absence)),
+      appendAbsenceAudit(audits, id, 'updated', current, updated),
+    )
+    return updated
+  },
+  deleteAbsence: async (id) => {
+    const { absences, audits } = readAbsenceState()
+    const current = absences.find((absence) => absence.id === id) ?? null
+    writeAbsenceState(
+      absences.filter((absence) => absence.id !== id),
+      current ? appendAbsenceAudit(audits, id, 'deleted', current, null) : audits,
+    )
+  },
+  listAbsenceAudits: async () =>
+    readAbsenceState().audits.sort((left, right) => right.id - left.id),
   getWorkSettings: async () =>
     read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
       workSettingsSchema.parse(value),

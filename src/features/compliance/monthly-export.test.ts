@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { absenceIndex } from '@/features/absences/absence-index'
+import type { Absence, AbsenceType } from '@/features/absences/absence-schema'
 import { DEFAULT_WORK_SETTINGS } from '@/features/settings/work-settings-schema'
 import type { EntryType, TimeEntry } from '@/features/time-entries/time-entry-schema'
 import {
@@ -34,8 +36,19 @@ const ENTRIES = [
   entry('2026-03-03', '09:00', '15:00'),
 ]
 
-function report(entries = ENTRIES) {
-  return monthlyExport(entries, DEFAULT_WORK_SETTINGS, new Date(2026, 2, 15), 'first@example.com')
+function absence(date: string, type: AbsenceType): Absence {
+  return { id: nextId++, type, date, createdAt: date, updatedAt: date }
+}
+
+function report(entries = ENTRIES, absences: Absence[] = []) {
+  return monthlyExport(
+    entries,
+    DEFAULT_WORK_SETTINGS,
+    new Date(2026, 2, 15),
+    'first@example.com',
+    new Date('2026-03-31T12:00:00.000Z').getTime(),
+    absenceIndex(absences),
+  )
 }
 
 describe('formatHoursAndMinutes', () => {
@@ -121,9 +134,18 @@ describe('toCsv', () => {
 
     expect(lines[0]).toBe('Employee,first@example.com')
     expect(lines[1]).toBe('Month,2026-03')
-    expect(lines[3]).toBe('Date,Start,End,Break,Daily total,Overtime balance')
-    expect(lines[4]).toBe('2026-03-02,08:00,17:00,00:30,08:30,00:30')
+    expect(lines[3]).toBe('Date,Start,End,Break,Daily total,Absence,Overtime balance')
+    expect(lines[4]).toBe('2026-03-02,08:00,17:00,00:30,08:30,,00:30')
     expect(lines.at(-1)).toContain('Total')
+  })
+
+  it('names the absence of a day without recorded time', () => {
+    const lines = toCsv(report(ENTRIES, [absence('2026-03-04', 'vacation')]))
+      .trim()
+      .split('\n')
+
+    expect(lines[6]).toBe('2026-03-04,,,00:00,00:00,Vacation,-01:30')
+    expect(lines.at(-1)).toContain('1 absence days')
   })
 
   it('quotes fields that contain a separator', () => {

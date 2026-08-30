@@ -412,3 +412,74 @@ test('restores the German working time limits in the settings', async ({ page })
   await page.getByRole('button', { name: 'Save settings' }).click()
   await expect(page.getByRole('button', { name: 'Restore German defaults' })).toBeDisabled()
 })
+
+function cumulativeBalance(page: Page) {
+  return page.getByRole('button').filter({ hasText: 'Carried into this day' }).locator('p').first()
+}
+
+async function selectDate(page: Page, inDays: number) {
+  await page.getByLabel('Selected date').fill(dateKey(inDays))
+}
+
+test('keeps the overtime balance unchanged across a marked vacation range', async ({ page }) => {
+  // Every weekday counts, so the assertions do not depend on today's weekday.
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByLabel('Weekly working time (hours)').fill('42')
+  for (const day of ['Saturday', 'Sunday']) {
+    await page.getByLabel(day, { exact: true }).check()
+  }
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByText('Work schedule updated')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await createProject(page, 'Vacation Check')
+  await selectDate(page, -6)
+  await addEntry(page, 'Vacation Check', '08:00', '14:00')
+  await expect(dialog(page)).toBeHidden()
+  await expect(cumulativeBalance(page)).toHaveText('+0h 00m')
+
+  // The six untracked days since then are pure undertime.
+  await page.getByRole('button', { name: 'Today' }).click()
+  await expect(cumulativeBalance(page)).toHaveText('-36h 00m')
+
+  await page.getByRole('button', { name: 'Absences' }).click()
+  await page.getByRole('button', { name: 'Mark absence' }).click()
+  await dialog(page).getByLabel('Absence type').selectOption('vacation')
+  await dialog(page).getByLabel('First day').fill(dateKey(-5))
+  await dialog(page).getByLabel('Last day').fill(dateKey(0))
+  await dialog(page).getByRole('button', { name: 'Mark absence' }).click()
+  await expect(dialog(page)).toBeHidden()
+  await expect(page.getByText('6 days recorded, 36h 00m of target neutralised.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await expect(cumulativeBalance(page)).toHaveText('+0h 00m')
+  await expect(page.getByText('on this day, so it carries no working time target.')).toBeVisible()
+})
+
+test('replaces an absence only after an explicit confirmation', async ({ page }) => {
+  await page.getByRole('button', { name: 'Absences' }).click()
+  await page.getByRole('button', { name: 'Mark absence' }).click()
+  await dialog(page).getByLabel('Absence type').selectOption('vacation')
+  await dialog(page).getByLabel('First day').fill(dateKey(1))
+  await dialog(page).getByLabel('Last day').fill(dateKey(1))
+  await dialog(page).getByRole('button', { name: 'Mark absence' }).click()
+  await expect(dialog(page)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Mark absence' }).click()
+  await dialog(page).getByLabel('Absence type').selectOption('sick')
+  await dialog(page).getByLabel('First day').fill(dateKey(1))
+  await dialog(page).getByLabel('Last day').fill(dateKey(1))
+  await dialog(page).getByRole('button', { name: 'Mark absence' }).click()
+  await expect(dialog(page).getByText('1 day already carries an absence')).toBeVisible()
+
+  await dialog(page).getByRole('button', { name: 'Replace existing absences' }).click()
+  await dialog(page).getByRole('button', { name: 'Mark absence' }).click()
+  await expect(dialog(page)).toBeHidden()
+  await expect(page.getByText('1 day recorded', { exact: false })).toBeVisible()
+  await expect(page.getByText('Sick leave', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: `Delete absence on ${dateKey(1)}` }).click()
+  await dialog(page).getByRole('button', { name: 'Delete absence' }).click()
+  await expect(page.getByText('Absence deleted')).toBeVisible()
+  await expect(page.getByText('No absences yet.', { exact: false })).toBeVisible()
+})

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { absenceIndex } from '@/features/absences/absence-index'
+import type { Absence, AbsenceType } from '@/features/absences/absence-schema'
 import {
+  adjustedDailyTarget,
   dailyTargetMinutes,
   isWorkingDay,
   scheduledMinutesInRange,
@@ -21,6 +24,18 @@ function settings(weeklyHours: number, workingDays: Weekday[]): WorkSettings {
 
 const MONDAY = new Date(2026, 7, 24)
 const SATURDAY = new Date(2026, 7, 29)
+
+function absences(...days: [string, AbsenceType][]) {
+  return absenceIndex(
+    days.map<Absence>(([date, type], index) => ({
+      id: index + 1,
+      type,
+      date,
+      createdAt: date,
+      updatedAt: date,
+    })),
+  )
+}
 
 describe('work settings schema', () => {
   it('defaults to a 40 hour week from Monday to Friday', () => {
@@ -99,5 +114,41 @@ describe('work schedule', () => {
   it('recalculates targets as soon as the settings change', () => {
     expect(targetMinutesForDay(settings(40, ['monday']), MONDAY)).toBe(2_400)
     expect(targetMinutesForDay(settings(20, ['monday']), MONDAY)).toBe(1_200)
+  })
+})
+
+describe('absences', () => {
+  const schedule = settings(40, ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'])
+
+  it('neutralises the target of a full day absence', () => {
+    for (const type of ['vacation', 'sick', 'unpaid'] as const) {
+      expect(targetMinutesForDay(schedule, MONDAY, absences(['2026-08-24', type]))).toBe(0)
+    }
+  })
+
+  it('halves the target of a half day and rounds to whole minutes', () => {
+    expect(targetMinutesForDay(schedule, MONDAY, absences(['2026-08-24', 'halfDay']))).toBe(240)
+    expect(adjustedDailyTarget(461, true, 'halfDay')).toBe(231)
+  })
+
+  it('changes nothing on a day outside the schedule', () => {
+    expect(targetMinutesForDay(schedule, SATURDAY, absences(['2026-08-29', 'vacation']))).toBe(0)
+    expect(targetMinutesForDay(schedule, SATURDAY)).toBe(0)
+  })
+
+  it('leaves days without an absence untouched', () => {
+    expect(targetMinutesForDay(schedule, MONDAY, absences(['2026-08-25', 'vacation']))).toBe(480)
+  })
+
+  it('subtracts absence days from the target of a range', () => {
+    const week = { start: MONDAY, end: new Date(2026, 7, 31) }
+
+    expect(
+      scheduledMinutesInRange(
+        schedule,
+        week,
+        absences(['2026-08-24', 'vacation'], ['2026-08-25', 'halfDay'], ['2026-08-29', 'sick']),
+      ),
+    ).toBe(2_400 - 480 - 240)
   })
 })

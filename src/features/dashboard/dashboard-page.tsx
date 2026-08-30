@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNavigationStore } from '@/app/navigation'
+import { useAbsenceIndex } from '@/features/absences/absence-queries'
+import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { ProjectDialog } from '@/features/projects/components/project-dialog'
 import { useProjects } from '@/features/projects/project-queries'
 import {
@@ -11,7 +13,7 @@ import { TimeEntryDialog } from '@/features/time-entries/components/time-entry-d
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
 import { useTicker } from '@/features/timer/use-ticker'
 import { useTimer } from '@/features/timer/use-timer'
-import { formatDay, startOfWeek } from '@/lib/date'
+import { formatDay, startOfWeek, toDateKey } from '@/lib/date'
 import { cumulativeBalance } from './balance'
 import { CumulativeBalanceCard } from './components/cumulative-balance-card'
 import { CurrentlyTrackingCard } from './components/currently-tracking-card'
@@ -31,6 +33,7 @@ export function DashboardPage() {
   const settings = useWorkSettings()
   const { data: entries = [], isError } = useTimeEntries()
   const { data: projects = [] } = useProjects()
+  const absences = useAbsenceIndex()
   const navigate = useNavigationStore((state) => state.navigate)
 
   const now = useTicker(true)
@@ -46,9 +49,10 @@ export function DashboardPage() {
   const weekEntries = entriesInRange(entries, selectedWeekRange, now)
   const trackedTodayMinutes = totalMinutes(dayEntries, now, todayRange)
   const trackedWeekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
-  const dailyTargetMinutes = targetMinutesForDay(settings, selectedDate)
-  const weeklyTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange)
-  const balance = cumulativeBalance({ entries, settings, throughDate: selectedDate, now })
+  const dailyTargetMinutes = targetMinutesForDay(settings, selectedDate, absences)
+  const weeklyTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange, absences)
+  const balance = cumulativeBalance({ entries, settings, throughDate: selectedDate, absences, now })
+  const absenceOfDay = absences.get(toDateKey(selectedDate)) ?? null
 
   function toggleTimer() {
     if (timer.status.running) void timer.stop()
@@ -77,6 +81,20 @@ export function DashboardPage() {
       {isError && (
         <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
           The local database could not be loaded.
+        </p>
+      )}
+
+      {absenceOfDay && (
+        <p
+          className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm"
+          role="status"
+        >
+          <span className="font-medium">{ABSENCE_TYPE_LABELS[absenceOfDay]}</span>{' '}
+          {dailyTargetMinutes === 0
+            ? 'on this day, so it carries no working time target.'
+            : 'on this day, so only half of the target is expected.'}
+          {dayEntries.length > 0 &&
+            ' Recorded time counts fully, the day is not charged with a full target.'}
         </p>
       )}
 
