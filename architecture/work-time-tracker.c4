@@ -20,14 +20,15 @@ model {
       description 'Local Postgres database accessed through a small connection pool'
     }
 
-    session = container 'Session' {
+    session = container 'Sessions' {
       technology 'Rust, Argon2id password hashes'
-      description 'In-memory session with idle timeout and login lockout'
+      description 'Sessions kept by opaque id, with idle timeout and login lockout'
     }
 
-    frontend -> backend 'Invokes commands'
-    backend -> session 'Resolves the signed in user'
-    backend -> database 'Reads and writes data of that user, verifies credentials'
+    frontend -> backend 'Invokes commands with its session id'
+    backend -> session 'Resolves the user of that session id'
+    backend -> database 'Reads and writes bounded windows of that user, verifies credentials'
+    database -> session 'Keeps the login attempt counters across restarts'
   }
 
   user -> application 'Signs in and tracks work time'

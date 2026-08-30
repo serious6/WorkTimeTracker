@@ -131,3 +131,21 @@ answers at most `DEFAULT_LIST_LIMIT` rows, newest first, and the combined audit 
 The calendar reads only the six weeks of its grid. The dashboard, the week view and the reports keep
 the bounded default on purpose: the cumulative balance and the budget progress count every day since
 the first tracked entry, so a window would change the number they show.
+
+## 10. `contract/entities.json` is the authority for the entity shapes
+
+The same entities used to be described in four places: the Drizzle schema (`src/db/schema.ts`), the
+SQL migrations in `drizzle/`, the Rust models (`src-tauri/src/models.rs`) and the Zod schemas under
+`src/features/*`. Rust owns all runtime SQL, so nothing forced the four to agree.
+
+`contract/entities.json` now names the fields, their types and their nullability for every entity
+that crosses the IPC boundary, and both sides are checked against it:
+
+- `serializes_the_models_of_the_entity_contract` in `src-tauri/src/contract.rs` serializes a sample
+  of every model and compares the field names, types and nulls.
+- `src/features/storage/entities.contract.test.ts` compares the Zod schemas with the same file and
+  asserts that only the declared fields accept `null`.
+
+A field added or renamed on one side only fails one of the two suites. `drizzle/*.sql` stays the
+migration history of the database and `src/db/schema.ts` its typed description; neither is consulted
+at runtime, and neither may add a field to an entity without the contract naming it.
