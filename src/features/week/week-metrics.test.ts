@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { absenceIndex } from '@/features/absences/absence-index'
+import type { Absence, AbsenceType } from '@/features/absences/absence-schema'
 import type { Project } from '@/features/projects/project-schema'
 import { DEFAULT_WORK_SETTINGS } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -32,6 +34,18 @@ function entry(id: number, projectId: number | null, start: Date, end: Date | nu
 
 const at = (day: number, hour: number, minute = 0) => new Date(2026, 7, day, hour, minute)
 const settings = DEFAULT_WORK_SETTINGS
+
+function absences(...days: [string, AbsenceType][]) {
+  return absenceIndex(
+    days.map<Absence>(([date, type], index) => ({
+      id: index + 1,
+      type,
+      date,
+      createdAt: date,
+      updatedAt: date,
+    })),
+  )
+}
 
 describe('week metrics', () => {
   it('computes tracked, target and balance for a selected week', () => {
@@ -189,5 +203,60 @@ describe('month metrics', () => {
 
     expect(strip.length).toBeGreaterThan(0)
     expect(strip.every((row) => Number.isFinite(row.trackedMinutes))).toBe(true)
+  })
+})
+
+describe('week metrics with absences', () => {
+  it('drops the target of an absence day and marks the day', () => {
+    const metrics = weekMetrics({
+      entries: [entry(1, 1, at(24, 9), at(24, 17))],
+      projects: [project(1, 'Project')],
+      settings,
+      selectedDate: at(28, 18),
+      now: at(28, 18).getTime(),
+      absences: absences(['2026-08-25', 'vacation'], ['2026-08-26', 'halfDay']),
+    })
+
+    expect(metrics.targetMinutes).toBe(2_400 - 480 - 240)
+    const vacationDay = metrics.days.find((day) => day.dateKey === '2026-08-25')
+    expect(vacationDay?.status).toBe('absence')
+    expect(vacationDay?.absenceType).toBe('vacation')
+    expect(vacationDay?.targetMinutes).toBe(0)
+    expect(metrics.days.find((day) => day.dateKey === '2026-08-26')?.targetMinutes).toBe(240)
+  })
+
+  it('leaves the balance untouched for a full week of vacation', () => {
+    const metrics = weekMetrics({
+      entries: [],
+      projects: [project(1, 'Project')],
+      settings,
+      selectedDate: at(28, 18),
+      now: at(28, 18).getTime(),
+      absences: absences(
+        ['2026-08-24', 'vacation'],
+        ['2026-08-25', 'vacation'],
+        ['2026-08-26', 'vacation'],
+        ['2026-08-27', 'vacation'],
+        ['2026-08-28', 'vacation'],
+      ),
+    })
+
+    expect(metrics.targetMinutes).toBe(0)
+    expect(metrics.proratedTargetMinutes).toBe(0)
+    expect(metrics.balanceToDateMinutes).toBe(0)
+  })
+
+  it('weights forecasts by the targets left after future absences', () => {
+    const metrics = weekMetrics({
+      entries: [entry(1, 1, at(24, 9), at(24, 17))],
+      projects: [project(1, 'Project')],
+      settings,
+      selectedDate: at(27, 12),
+      now: at(27, 12).getTime(),
+      absences: absences(['2026-08-28', 'halfDay']),
+    })
+
+    expect(metrics.remainingWorkingDays).toBe(1)
+    expect(metrics.forecastMinutes).toBe(560)
   })
 })

@@ -5,14 +5,16 @@ use crate::{
     error::{AppError, AppResult},
     logging,
     models::{
-        AuditLogEntry, Credentials, Project, ProjectBudget, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, Credentials, Project, ProjectBudget, SaveAbsence,
+        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
+        WorkSettings,
     },
     store::{Database, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OVERLAP: &str = "This time overlaps with another time entry";
 const DUPLICATE_BUDGET: &str = "This project already has a budget";
+const DUPLICATE_ABSENCE: &str = "This day already has an absence";
 const INVALID_CREDENTIALS: &str = "Email or password is incorrect";
 const DUPLICATE_EMAIL: &str = "An account with this email already exists";
 
@@ -341,6 +343,101 @@ pub fn delete_project_budget(
     logging::logged("delete_project_budget", || {
         let user_id = current_user(&session)?;
         Ok(database.0.delete_project_budget(id, user_id)?)
+    })
+}
+
+#[tauri::command]
+pub fn list_absences(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+) -> AppResult<Vec<Absence>> {
+    logging::logged("list_absences", || {
+        let user_id = current_user(&session)?;
+        Ok(database.0.list_absences(user_id)?)
+    })
+}
+
+#[tauri::command]
+pub fn create_absence(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+    mut input: SaveAbsence,
+) -> AppResult<Absence> {
+    logging::logged("create_absence", || {
+        input.validate()?;
+        let user_id = current_user(&session)?;
+        database
+            .0
+            .insert_absence(user_id, &input)
+            .map_err(unique_error(DUPLICATE_ABSENCE))
+    })
+}
+
+#[tauri::command]
+pub fn update_absence(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+    id: i64,
+    mut input: SaveAbsence,
+) -> AppResult<Absence> {
+    logging::logged("update_absence", || {
+        input.validate()?;
+        let user_id = current_user(&session)?;
+        database
+            .0
+            .update_absence(id, user_id, &input)
+            .map_err(unique_error(DUPLICATE_ABSENCE))
+    })
+}
+
+#[tauri::command]
+pub fn save_absences(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+    mut inputs: Vec<SaveAbsence>,
+    replacement_ids: Vec<i64>,
+    update_id: Option<i64>,
+) -> AppResult<Vec<Absence>> {
+    logging::logged("save_absences", || {
+        if inputs.is_empty()
+            || inputs.iter_mut().any(|input| input.validate().is_err())
+            || inputs
+                .iter()
+                .map(|input| &input.date)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != inputs.len()
+        {
+            return Err(AppError::validation("invalid absence range"));
+        }
+        let user_id = current_user(&session)?;
+        database
+            .0
+            .save_absences(user_id, &inputs, &replacement_ids, update_id)
+            .map_err(unique_error(DUPLICATE_ABSENCE))
+    })
+}
+
+#[tauri::command]
+pub fn delete_absence(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+    id: i64,
+) -> AppResult<()> {
+    logging::logged("delete_absence", || {
+        let user_id = current_user(&session)?;
+        Ok(database.0.delete_absence(id, user_id)?)
+    })
+}
+
+#[tauri::command]
+pub fn list_absence_audits(
+    database: State<'_, Database>,
+    session: State<'_, Session>,
+) -> AppResult<Vec<AbsenceAudit>> {
+    logging::logged("list_absence_audits", || {
+        let user_id = current_user(&session)?;
+        Ok(database.0.list_absence_audits(user_id)?)
     })
 }
 

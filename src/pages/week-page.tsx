@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input, Select } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { errorToast, toast } from '@/components/ui/toast-store'
+import { useAbsenceIndex } from '@/features/absences/absence-queries'
+import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { cumulativeBalance } from '@/features/dashboard/balance'
 import { dayRange, entriesInRange } from '@/features/dashboard/metrics'
 import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboard-store'
@@ -40,6 +42,7 @@ export function WeekPage() {
   const settings = useWorkSettings()
   const { data: entries = [] } = useTimeEntries()
   const { data: projects = [] } = useProjects()
+  const absences = useAbsenceIndex()
   const now = useTicker(true)
   const timer = useTimer(now)
   const quickAdd = useQuickAdd()
@@ -49,16 +52,16 @@ export function WeekPage() {
   const dayRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const week = useMemo(
-    () => weekMetrics({ entries, projects, settings, selectedDate, now }),
-    [entries, projects, settings, selectedDate, now],
+    () => weekMetrics({ entries, projects, settings, selectedDate, absences, now }),
+    [entries, projects, settings, selectedDate, absences, now],
   )
   const month = useMemo(
-    () => monthOverviewMetrics({ entries, projects, settings, selectedDate, now }),
-    [entries, projects, settings, selectedDate, now],
+    () => monthOverviewMetrics({ entries, projects, settings, selectedDate, absences, now }),
+    [entries, projects, settings, selectedDate, absences, now],
   )
   const balance = useMemo(
-    () => cumulativeBalance({ entries, settings, throughDate: selectedDate, now }),
-    [entries, settings, selectedDate, now],
+    () => cumulativeBalance({ entries, settings, throughDate: selectedDate, absences, now }),
+    [entries, settings, selectedDate, absences, now],
   )
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDateKey(selectedDate))
 
@@ -224,16 +227,25 @@ export function WeekPage() {
                     {day.date.toLocaleDateString('en-US', { weekday: 'short' })}, {day.date.getDate()}
                   </span>
                   <span className="flex items-center gap-2">
+                    {day.absenceType && day.status === 'tracked' && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        {ABSENCE_TYPE_LABELS[day.absenceType]}
+                      </span>
+                    )}
                     {day.status !== 'tracked' && (
                       <span
                         className={cn(
                           'rounded-full px-2 py-0.5 text-xs',
-                          day.status === 'non-working' || day.status === 'upcoming'
+                          day.status === 'non-working' ||
+                            day.status === 'upcoming' ||
+                            day.status === 'absence'
                             ? 'bg-muted text-muted-foreground'
                             : 'text-warning',
                         )}
                       >
-                        {DAY_STATUS_LABELS[day.status]}
+                        {day.absenceType
+                          ? ABSENCE_TYPE_LABELS[day.absenceType]
+                          : DAY_STATUS_LABELS[day.status]}
                       </span>
                     )}
                     <span className="tabular-nums">{formatDuration(day.trackedMinutes)}</span>

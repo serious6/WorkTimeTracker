@@ -290,6 +290,77 @@ pub struct ProjectBudget {
     pub updated_at: String,
 }
 
+/// Reasons that excuse a day from the working-time target.
+pub const ABSENCE_TYPES: [&str; 4] = ["vacation", "sick", "unpaid", "halfDay"];
+
+/// The only absence type that keeps part of the target.
+pub const HALF_DAY_ABSENCE: &str = "halfDay";
+
+/// Target of a day after an absence: a full-day absence neutralises it, a half
+/// day halves it rounded to whole minutes. A day outside the schedule has no
+/// target, so marking it as an absence changes nothing.
+///
+/// `adjustedDailyTarget` in `src/features/settings/work-schedule.ts` implements
+/// the same rule; both sides are driven by `contract/domain-rules.json`.
+pub fn adjusted_daily_target(daily_target: f64, working_day: bool, absence: Option<&str>) -> f64 {
+    if !working_day {
+        return 0.0;
+    }
+    match absence {
+        None => daily_target,
+        Some(HALF_DAY_ABSENCE) => (daily_target / 2.0).round(),
+        Some(_) => 0.0,
+    }
+}
+
+/// A single day excused from the working-time target. A range is stored as one
+/// record per day, so a day can never carry two absences.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAbsence {
+    #[serde(rename = "type")]
+    pub absence_type: String,
+    pub date: String,
+}
+
+impl SaveAbsence {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize(&mut self.absence_type);
+        normalize(&mut self.date);
+        if !ABSENCE_TYPES.contains(&self.absence_type.as_str()) {
+            return Err("invalid absence type");
+        }
+        if !is_date(&self.date) {
+            return Err("invalid absence date");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Absence {
+    pub id: i64,
+    #[serde(rename = "type")]
+    pub absence_type: String,
+    pub date: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Audit record of one change to an absence, kept after the absence is gone.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AbsenceAudit {
+    pub id: i64,
+    pub absence_id: i64,
+    pub action: String,
+    pub actor: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub recorded_at: String,
+}
+
 pub const WEEKDAYS: [&str; 7] = [
     "monday",
     "tuesday",
@@ -542,6 +613,53 @@ mod tests {
             Err("budget must be greater than zero")
         );
         assert_eq!(budget(1, 60, "2026-13-31"), Err("invalid due date"));
+    }
+
+    #[test]
+    fn validates_and_normalizes_absence_input() {
+        let mut input = SaveAbsence {
+            absence_type: " vacation ".into(),
+            date: " 2026-09-01 ".into(),
+        };
+        input.validate().unwrap();
+        assert_eq!(input.absence_type, "vacation");
+        assert_eq!(input.date, "2026-09-01");
+    }
+
+    #[test]
+    fn rejects_invalid_absences() {
+        let absence = |absence_type: &str, date: &str| {
+            SaveAbsence {
+                absence_type: absence_type.into(),
+                date: date.into(),
+            }
+            .validate()
+        };
+
+        assert_eq!(
+            absence("holiday", "2026-09-01"),
+            Err("invalid absence type")
+        );
+        assert_eq!(
+            absence("vacation", "2026-02-30"),
+            Err("invalid absence date")
+        );
+        assert_eq!(
+            absence("vacation", "01.09.2026"),
+            Err("invalid absence date")
+        );
+    }
+
+    #[test]
+    fn neutralises_the_target_of_an_absence_day() {
+        assert_eq!(adjusted_daily_target(480.0, true, None), 480.0);
+        assert_eq!(adjusted_daily_target(480.0, true, Some("vacation")), 0.0);
+        assert_eq!(adjusted_daily_target(480.0, true, Some("sick")), 0.0);
+        assert_eq!(adjusted_daily_target(480.0, true, Some("unpaid")), 0.0);
+        assert_eq!(adjusted_daily_target(480.0, true, Some("halfDay")), 240.0);
+        assert_eq!(adjusted_daily_target(461.0, true, Some("halfDay")), 231.0);
+        assert_eq!(adjusted_daily_target(480.0, false, Some("vacation")), 0.0);
+        assert_eq!(adjusted_daily_target(480.0, false, None), 0.0);
     }
 
     fn settings(weekly_target_minutes: i64, working_days: &[&str]) -> WorkSettings {

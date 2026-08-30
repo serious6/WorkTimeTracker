@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { z } from 'zod'
+import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
 import { auditLogEntrySchema } from '@/features/audit/audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
@@ -61,6 +62,15 @@ export const tauriRepository: Repository = {
   deleteProjectBudget: async (id) => {
     await run('delete_project_budget', { id })
   },
+  listAbsences: () => call('list_absences', {}, absenceSchema.array()),
+  createAbsence: (input) => call('create_absence', { input }, absenceSchema),
+  updateAbsence: (id, input) => call('update_absence', { id, input }, absenceSchema),
+  saveAbsences: (inputs, replacementIds, updateId) =>
+    call('save_absences', { inputs, replacementIds, updateId }, absenceSchema.array()),
+  deleteAbsence: async (id) => {
+    await run('delete_absence', { id })
+  },
+  listAbsenceAudits: () => call('list_absence_audits', {}, absenceAuditSchema.array()),
   getWorkSettings: () => call('get_work_settings', {}, workSettingsSchema),
   updateWorkSettings: (settings) => call('update_work_settings', { settings }, workSettingsSchema),
   getAppVersion: () => call('get_app_version', {}, appVersionSchema),

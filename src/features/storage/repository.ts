@@ -1,3 +1,4 @@
+import type { Absence, AbsenceAudit, SaveAbsence } from '@/features/absences/absence-schema'
 import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
 import type { AuditLogEntry } from '@/features/audit/audit-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
@@ -27,6 +28,16 @@ export type Repository = {
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>
   deleteProjectBudget: (id: number) => Promise<void>
+  listAbsences: () => Promise<Absence[]>
+  createAbsence: (input: SaveAbsence) => Promise<Absence>
+  updateAbsence: (id: number, input: SaveAbsence) => Promise<Absence>
+  saveAbsences: (
+    inputs: SaveAbsence[],
+    replacementIds: number[],
+    updateId?: number,
+  ) => Promise<Absence[]>
+  deleteAbsence: (id: number) => Promise<void>
+  listAbsenceAudits: () => Promise<AbsenceAudit[]>
   getWorkSettings: () => Promise<WorkSettings>
   updateWorkSettings: (settings: SaveWorkSettings) => Promise<WorkSettings>
   getAppVersion: () => Promise<string | null>

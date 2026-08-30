@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useNavigationStore } from '@/app/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAbsenceIndex } from '@/features/absences/absence-queries'
 import { useProjectBudgets } from '@/features/budgets/budget-queries'
 import { BudgetReportCard } from '@/features/budgets/components/budget-report-card'
 import {
@@ -30,6 +31,7 @@ export function ReportsPage() {
   const { data: projects = [] } = useProjects()
   const { data: budgets = [] } = useProjectBudgets()
   const projectFilter = useNavigationStore((state) => state.projectFilter)
+  const absences = useAbsenceIndex()
   const now = useTicker(true)
   const [budgetProjectId, setBudgetProjectId] = useState<number | null>(projectFilter)
 
@@ -37,7 +39,7 @@ export function ReportsPage() {
   const selectedWeekRange = weekRange(selectedDate, settings.weekStartsOn)
   const weekEntries = entriesInRange(entries, selectedWeekRange, now)
   const weekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
-  const weekTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange)
+  const weekTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange, absences)
 
   const data = Array.from({ length: 7 }, (_, index) => {
     const day = addDays(weekStart, index)
@@ -45,7 +47,7 @@ export function ReportsPage() {
     return {
       day: day.toLocaleDateString('en-US', { weekday: 'short' }),
       hours: totalMinutes(entriesInRange(entries, range, now), now, range) / 60,
-      target: targetMinutesForDay(settings, day) / 60,
+      target: targetMinutesForDay(settings, day, absences) / 60,
     }
   })
 

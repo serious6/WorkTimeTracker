@@ -3,6 +3,9 @@ import { AlertTriangle, Download, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { useAbsenceIndex } from '@/features/absences/absence-queries'
+import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
+import { absenceWorkWarnings } from '@/features/absences/absence-warnings'
 import { useSession } from '@/features/auth/session-queries'
 import { useTimeEntryAudits } from '@/features/compliance/audit-queries'
 import { complianceWarningsForEntries, RETENTION_YEARS } from '@/features/compliance/compliance-rules'
@@ -31,14 +34,21 @@ export function WorkingTimePage() {
   const settings = useWorkSettings()
   const { data: entries = [] } = useTimeEntries()
   const { data: audits = [] } = useTimeEntryAudits()
+  const absences = useAbsenceIndex()
   const now = useTicker(true)
   const [month, setMonth] = useState(() => monthKey(new Date()))
 
   const selectedMonth = fromDateKey(`${month}-01`)
-  const report = monthlyExport(entries, settings, selectedMonth, user?.email ?? '', now)
+  const report = monthlyExport(entries, settings, selectedMonth, user?.email ?? '', now, absences)
   const warnings = complianceWarningsForEntries(entries, settings.complianceLimits, now).filter((warning) =>
     warning.dateKey.startsWith(month),
   )
+  // Recording time on an absence day never blocks, it only warns.
+  const absenceWarnings = absenceWorkWarnings(
+    entries,
+    absences,
+    now,
+  ).filter((warning) => warning.dateKey.startsWith(month))
 
   return (
     <div className="space-y-5">
@@ -67,7 +77,7 @@ export function WorkingTimePage() {
           <CardTitle>Compliance warnings</CardTitle>
         </CardHeader>
         <CardContent>
-          {warnings.length === 0 ? (
+          {warnings.length === 0 && absenceWarnings.length === 0 ? (
             <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
               <ShieldCheck className="size-4 text-success" />
               No break, daily maximum or rest period issues in this month.
@@ -78,6 +88,18 @@ export function WorkingTimePage() {
                 <li
                   className="flex items-start gap-3 py-2 text-sm"
                   key={`${warning.dateKey}-${warning.rule}`}
+                >
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <span>
+                    <span className="font-medium">{formatDay(fromDateKey(warning.dateKey))}</span>{' '}
+                    <span className="text-muted-foreground">{warning.message}</span>
+                  </span>
+                </li>
+              ))}
+              {absenceWarnings.map((warning) => (
+                <li
+                  className="flex items-start gap-3 py-2 text-sm"
+                  key={`${warning.dateKey}-absence`}
                 >
                   <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
                   <span>
@@ -119,7 +141,9 @@ export function WorkingTimePage() {
         </CardHeader>
         <CardContent>
           {report.rows.length === 0 ? (
-            <p className="py-6 text-sm text-muted-foreground">No time recorded in this month.</p>
+            <p className="py-6 text-sm text-muted-foreground">
+              No time recorded and no absence in this month.
+            </p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -129,6 +153,7 @@ export function WorkingTimePage() {
                   <th className="py-2 font-medium">End</th>
                   <th className="py-2 font-medium">Break</th>
                   <th className="py-2 font-medium">Daily total</th>
+                  <th className="py-2 font-medium">Absence</th>
                   <th className="py-2 font-medium">Overtime balance</th>
                 </tr>
               </thead>
@@ -140,6 +165,9 @@ export function WorkingTimePage() {
                     <td className="py-2 tabular-nums">{row.end ?? '—'}</td>
                     <td className="py-2 tabular-nums">{formatDuration(row.breakMinutes)}</td>
                     <td className="py-2 tabular-nums">{formatDuration(row.workMinutes)}</td>
+                    <td className="py-2">
+                      {row.absenceType ? ABSENCE_TYPE_LABELS[row.absenceType] : '—'}
+                    </td>
                     <td className="py-2 tabular-nums">
                       {row.balanceMinutes < 0 ? '-' : '+'}
                       {formatDuration(Math.abs(row.balanceMinutes))}

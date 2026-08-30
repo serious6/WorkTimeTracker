@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { absenceIndex } from '@/features/absences/absence-index'
+import type { Absence, AbsenceType } from '@/features/absences/absence-schema'
 import { DEFAULT_WORK_SETTINGS } from '@/features/settings/work-settings-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { cumulativeBalance, trackedMinutesByDay } from './balance'
@@ -23,6 +25,18 @@ function breakEntry(id: number, start: Date, end: Date): TimeEntry {
 // August 2026: the 17th is a Monday, the 24th the Monday of the following week.
 const at = (day: number, hour: number, minute = 0) => new Date(2026, 7, day, hour, minute)
 const settings = DEFAULT_WORK_SETTINGS
+
+function absences(...days: [string, AbsenceType][]) {
+  return absenceIndex(
+    days.map<Absence>(([date, type], index) => ({
+      id: index + 1,
+      type,
+      date,
+      createdAt: date,
+      updatedAt: date,
+    })),
+  )
+}
 
 describe('cumulative balance', () => {
   it('is empty without any tracked time', () => {
@@ -93,6 +107,54 @@ describe('cumulative balance', () => {
 
     expect(balance.startDate?.getDate()).toBe(24)
     expect(balance.balanceMinutes).toBe(0)
+  })
+})
+
+describe('cumulative balance with absences', () => {
+  const entries = [entry(1, at(17, 8), at(17, 16))] // Monday, exactly the target.
+
+  it('keeps the balance unchanged across a vacation range', () => {
+    const vacation = absences(
+      ['2026-08-18', 'vacation'],
+      ['2026-08-19', 'vacation'],
+      ['2026-08-20', 'vacation'],
+      ['2026-08-21', 'vacation'],
+    )
+    const balance = cumulativeBalance({
+      entries,
+      settings,
+      throughDate: at(21, 18),
+      absences: vacation,
+      now: at(21, 18).getTime(),
+    })
+
+    expect(balance.targetMinutes).toBe(480)
+    expect(balance.balanceMinutes).toBe(0)
+  })
+
+  it('still expects half of the target on a half day', () => {
+    const balance = cumulativeBalance({
+      entries,
+      settings,
+      throughDate: at(18, 18),
+      absences: absences(['2026-08-18', 'halfDay']),
+      now: at(18, 18).getTime(),
+    })
+
+    expect(balance.targetMinutes).toBe(720)
+    expect(balance.balanceMinutes).toBe(-240)
+  })
+
+  it('ignores an absence on a day outside the schedule', () => {
+    const balance = cumulativeBalance({
+      entries,
+      settings,
+      throughDate: at(22, 18), // Saturday
+      absences: absences(['2026-08-22', 'vacation']),
+      now: at(22, 18).getTime(),
+    })
+
+    expect(balance.targetMinutes).toBe(2_400)
   })
 })
 

@@ -6,7 +6,7 @@ application and the browser storage fallback used only for UI development and en
 There is no remote application server and no external integration; the bundled compose database runs
 locally unless you point `DATABASE_URL` at another Postgres instance.
 
-Sources: `drizzle/0000_init.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
+Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
 `src-tauri/src/models.rs`, `src/features/storage/local-repository.ts`, and the Zod schemas under
 `src/features/*/*-schema.ts`.
 
@@ -39,13 +39,15 @@ flowchart TB
     entries_t["time_entries"]
     budgets_t["project_budgets"]
     audits_t["time_entry_audits"]
+    absences_t["absences"]
+    absence_audits_t["absence_audits"]
     settings_t["work_settings"]
     meta_t["app_metadata"]
   end
 
   subgraph browser["Browser storage (fallback)"]
     ls_users["localStorage: work-time-tracker.users"]
-    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings"]
+    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings,<br/>.absence-state"]
     ls_sessions["localStorage: work-time-tracker.sessions"]
     ss_session["sessionStorage: work-time-tracker.session"]
   end
@@ -64,10 +66,12 @@ flowchart TB
 | --- | --- | --- |
 | `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `absences` | One row per absent calendar day, scoped by user | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
+| `absence_audits` | Append-only trail of every change to an absence | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
-| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings | `src/features/storage/local-repository.ts` (`scopedKey`) |
+| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, absences | `src/features/storage/local-repository.ts` (`scopedKey`) |
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.timer` | Timer session bookkeeping: project, carried milliseconds, paused | `src/features/timer/timer-store.ts` |
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
@@ -85,6 +89,9 @@ erDiagram
   USERS o|--o{ PROJECT_BUDGETS : owns
   USERS o|--o| WORK_SETTINGS : configures
   USERS o|--o{ TIME_ENTRY_AUDITS : owns
+  USERS o|--o{ ABSENCES : owns
+  USERS o|--o{ ABSENCE_AUDITS : owns
+  ABSENCES ||..o{ ABSENCE_AUDITS : "changes recorded in"
   TIME_ENTRIES ||..o{ TIME_ENTRY_AUDITS : "changes recorded in"
   PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
@@ -120,6 +127,24 @@ erDiagram
     bigint id PK
     bigint user_id FK
     bigint time_entry_id "no FK, survives the entry"
+    text action "created, updated, deleted"
+    text actor
+    text old_value "JSON, nullable"
+    text new_value "JSON, nullable"
+    text recorded_at
+  }
+  ABSENCES {
+    bigint id PK
+    bigint user_id FK
+    text absence_date "UK with user_id"
+    text absence_type "vacation, sick, unpaid, halfDay"
+    text created_at
+    text updated_at
+  }
+  ABSENCE_AUDITS {
+    bigint id PK
+    bigint user_id FK
+    bigint absence_id "no FK, survives the absence"
     text action "created, updated, deleted"
     text actor
     text old_value "JSON, nullable"
@@ -215,6 +240,34 @@ erDiagram
 Rows are only inserted, never updated or deleted, and are kept for at least the retention period of
 two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 
+### absences
+
+`drizzle/0001_absences.sql`, `src/features/absences/absence-schema.ts`
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT | yes | Surrogate key | PK, generated identity |
+| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `absences_user_id` |
+| `absence_date` | TEXT | yes | Calendar date `YYYY-MM-DD`; a range is stored as one row per day | UNIQUE with `user_id` (`absences_day_unique`) |
+| `absence_type` | TEXT | yes | `vacation`, `sick`, `unpaid` or `halfDay` (`CHECK`) | — |
+| `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
+
+### absence_audits
+
+`drizzle/0001_absences.sql`, `src/features/absences/absence-schema.ts`
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT | yes | Surrogate key | PK, generated identity |
+| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `absence_audits_user_id` |
+| `absence_id` | BIGINT | yes | Changed absence; no foreign key, so the trail outlives a deleted absence | — |
+| `action` | TEXT | yes | `created`, `updated` or `deleted` | — |
+| `actor` | TEXT | yes | E-mail of the signed-in user | — |
+| `old_value`, `new_value` | TEXT | no | JSON of the absence before and after the change | — |
+| `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
+
+Rows are only inserted, never updated or deleted.
+
 ### project_budgets
 
 `drizzle/0000_init.sql`, `src/features/budgets/budget-schema.ts`
@@ -268,6 +321,11 @@ Validation, overlap detection, and the security limits are defined once in
 - Timestamps must be canonical UTC ISO 8601 with milliseconds, `due_date` must be a real calendar
   date.
 - At most one budget per project, and `budget_minutes` greater than zero.
+- At most one absence per user and calendar day; replacing one deletes or updates the existing row
+  instead of adding a second.
+- An absence neutralises the target of a configured working day only: a full-day absence sets it to
+  `0`, a half day to half of the daily target rounded to whole minutes, and a non-working day is
+  unaffected. Time recorded on an absence day is kept and counted, only a warning is shown.
 - At least one working day must be selected, working days are stored deduplicated in weekday order.
 - A break entry carries no project, and `entry_type` is `work` or `break`.
 - Working time limits are between 1 and 1440 minutes; the long break threshold and duration must not
@@ -277,12 +335,13 @@ Validation, overlap detection, and the security limits are defined once in
 - Security limits: session idle timeout 480 minutes, 5 failed logins, 15 minutes lockout.
 
 Enums: `week_starts_on` is `monday` or `sunday`; `working_days` is a subset of `WEEKDAYS`
-(`monday` to `sunday`); `color` is a `#rrggbb` value, offered from `PROJECT_COLORS`.
+(`monday` to `sunday`); `absence_type` is `vacation`, `sick`, `unpaid` or `halfDay`; `color` is a
+`#rrggbb` value, offered from `PROJECT_COLORS`.
 
 ## Migration
 
 Because WorkTimeTracker has not been released yet, the native database starts from the single
-baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies every migration listed
+baseline migration `drizzle/0000_init.sql`, followed by `drizzle/0001_absences.sql`. `PostgresStore::connect` applies every migration listed
 in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
 an existing database is upgraded exactly once instead of re-running the baseline and concurrent
@@ -293,10 +352,11 @@ directory. Existing pre-release local database files are not migrated by this ve
 ## Derived data (not persisted)
 
 - Durations of entries and totals per project or range: `src/features/dashboard/metrics.ts`
-- Daily target, working day checks, and scheduled minutes of a range:
+- Daily target, working day checks, absence neutralisation, and scheduled minutes of a range:
   `src/features/settings/work-schedule.ts`
 - Budget consumption and forecast: `src/features/budgets/budget-metrics.ts`
 - Free slots for quick-added entries: `src/features/time-management/quick-add.ts`
 - Elapsed time of a running timer, computed from `start_time`: `src/features/timer/use-timer.ts`
 - Working days, break and rest compliance warnings: `src/features/compliance/compliance-rules.ts`
-- Monthly CSV and PDF record per employee: `src/features/compliance/monthly-export.ts`
+- Monthly CSV and PDF record per employee, including absence rows and totals:
+  `src/features/compliance/monthly-export.ts`

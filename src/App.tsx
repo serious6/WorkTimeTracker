@@ -42,6 +42,9 @@ const pages = {
   'working-time': lazy(() =>
     import('@/pages/working-time-page').then((module) => ({ default: module.WorkingTimePage })),
   ),
+  absences: lazy(() =>
+    import('@/pages/absences-page').then((module) => ({ default: module.AbsencesPage })),
+  ),
   calendar: lazy(() =>
     import('@/pages/calendar-page').then((module) => ({ default: module.CalendarPage })),
   ),

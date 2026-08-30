@@ -13,6 +13,9 @@ in a Postgres database you control, for example the bundled local compose servic
 - **Budgets**: per-project hour budgets with a due date; consumption and forecast appear in `Reports`.
 - **Working Time**: breaks as entries of their own, warnings for the break, daily maximum and rest
   period limits, a monthly CSV or PDF record per employee, and the audit trail of every change.
+- **Absences**: mark a day or a range as vacation, sick leave, unpaid leave, or half day. A full-day
+  absence drops the target of a working day to zero, a half day keeps half of it, so the overtime
+  balance stays correct. Absences appear in the monthly record and in their own audit trail.
 - **Settings**: weekly working time and working days; the daily target is derived from both. The
   working time limits default to the German ArbZG and can be adjusted or restored.
 - **Accounts**: registration with a strict password policy, Argon2id hashes, login lockout, and

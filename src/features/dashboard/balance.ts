@@ -1,3 +1,4 @@
+import { NO_ABSENCES, type AbsenceIndex } from '@/features/absences/absence-index'
 import { targetMinutesForDay } from '@/features/settings/work-schedule'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import { isBreak, type TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -59,11 +60,13 @@ export function cumulativeBalance({
   entries,
   settings,
   throughDate,
+  absences = NO_ABSENCES,
   now = Date.now(),
 }: {
   entries: TimeEntry[]
   settings: WorkSettings
   throughDate: Date
+  absences?: AbsenceIndex
   now?: number
 }): CumulativeBalance {
   const today = startOfDay(new Date(now))
@@ -79,7 +82,7 @@ export function cumulativeBalance({
   for (let day = startDate; day.getTime() <= endDate.getTime(); day = addDays(day, 1)) {
     if (day.getTime() === endDate.getTime()) carriedOverMinutes = trackedMinutes - targetMinutes
     trackedMinutes += minutesByDay.get(toDateKey(day)) ?? 0
-    targetMinutes += targetMinutesForDay(settings, day)
+    targetMinutes += targetMinutesForDay(settings, day, absences)
   }
 
   return {

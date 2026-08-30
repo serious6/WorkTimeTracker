@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { bigint, boolean, check, pgTable, text } from 'drizzle-orm/pg-core'
+import { bigint, boolean, check, pgTable, text, unique } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -99,4 +99,38 @@ export const workSettings = pgTable('work_settings', {
 export const appMetadata = pgTable('app_metadata', {
   key: text().primaryKey(),
   value: text().notNull(),
+})
+
+/**
+ * One record per excused calendar day; a range is stored as several rows so
+ * the unique constraint keeps a day from carrying two absences.
+ */
+export const absences = pgTable(
+  'absences',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    absenceType: text('absence_type', {
+      enum: ['vacation', 'sick', 'unpaid', 'halfDay'],
+    }).notNull(),
+    absenceDate: text('absence_date').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [unique('absences_day_unique').on(table.userId, table.absenceDate)],
+)
+
+export const absenceAudits = pgTable('absence_audits', {
+  id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  userId: bigint('user_id', { mode: 'number' })
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  absenceId: bigint('absence_id', { mode: 'number' }).notNull(),
+  action: text({ enum: ['created', 'updated', 'deleted'] }).notNull(),
+  actor: text().notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  recordedAt: text('recorded_at').notNull(),
 })

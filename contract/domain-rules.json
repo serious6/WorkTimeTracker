@@ -515,6 +515,162 @@
       "accepted": false
     }
   ],
+  "absences": [
+    {
+      "name": "accepts a vacation day",
+      "input": {
+        "type": "vacation",
+        "date": "2026-09-01"
+      },
+      "accepted": true
+    },
+    {
+      "name": "accepts a sick day",
+      "input": {
+        "type": "sick",
+        "date": "2026-09-01"
+      },
+      "accepted": true
+    },
+    {
+      "name": "accepts unpaid leave",
+      "input": {
+        "type": "unpaid",
+        "date": "2026-09-01"
+      },
+      "accepted": true
+    },
+    {
+      "name": "accepts a half day",
+      "input": {
+        "type": "halfDay",
+        "date": "2026-09-01"
+      },
+      "accepted": true
+    },
+    {
+      "name": "trims the date",
+      "input": {
+        "type": "vacation",
+        "date": " 2026-09-01 "
+      },
+      "accepted": true,
+      "normalizedDate": "2026-09-01"
+    },
+    {
+      "name": "rejects an unknown absence type",
+      "input": {
+        "type": "sabbatical",
+        "date": "2026-09-01"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a public holiday, there is no holiday calendar",
+      "input": {
+        "type": "holiday",
+        "date": "2026-09-01"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unknown month",
+      "input": {
+        "type": "vacation",
+        "date": "2026-13-01"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a day outside the month",
+      "input": {
+        "type": "vacation",
+        "date": "2026-02-30"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a malformed date",
+      "input": {
+        "type": "vacation",
+        "date": "01.09.2026"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a timestamp instead of a date",
+      "input": {
+        "type": "vacation",
+        "date": "2026-09-01T08:00:00.000Z"
+      },
+      "accepted": false
+    }
+  ],
+  "absenceTargets": [
+    {
+      "name": "keeps the full target of a working day without an absence",
+      "dailyTargetMinutes": 480,
+      "workingDay": true,
+      "absenceType": null,
+      "targetMinutes": 480
+    },
+    {
+      "name": "neutralises the target of a vacation day",
+      "dailyTargetMinutes": 480,
+      "workingDay": true,
+      "absenceType": "vacation",
+      "targetMinutes": 0
+    },
+    {
+      "name": "neutralises the target of a sick day",
+      "dailyTargetMinutes": 480,
+      "workingDay": true,
+      "absenceType": "sick",
+      "targetMinutes": 0
+    },
+    {
+      "name": "neutralises the target of unpaid leave",
+      "dailyTargetMinutes": 480,
+      "workingDay": true,
+      "absenceType": "unpaid",
+      "targetMinutes": 0
+    },
+    {
+      "name": "halves the target of a half day",
+      "dailyTargetMinutes": 480,
+      "workingDay": true,
+      "absenceType": "halfDay",
+      "targetMinutes": 240
+    },
+    {
+      "name": "rounds a half day to whole minutes",
+      "dailyTargetMinutes": 461,
+      "workingDay": true,
+      "absenceType": "halfDay",
+      "targetMinutes": 231
+    },
+    {
+      "name": "leaves a non-working day without a target",
+      "dailyTargetMinutes": 480,
+      "workingDay": false,
+      "absenceType": null,
+      "targetMinutes": 0
+    },
+    {
+      "name": "changes no target on a non-working vacation day",
+      "dailyTargetMinutes": 480,
+      "workingDay": false,
+      "absenceType": "vacation",
+      "targetMinutes": 0
+    },
+    {
+      "name": "changes no target on a non-working half day",
+      "dailyTargetMinutes": 480,
+      "workingDay": false,
+      "absenceType": "halfDay",
+      "targetMinutes": 0
+    }
+  ],
   "uniqueness": [
     {
       "name": "rejects a duplicate email",
@@ -531,6 +687,14 @@
         "projectId": 1,
         "budgetMinutes": 2400,
         "dueDate": "2026-09-01"
+      }
+    },
+    {
+      "name": "rejects a second absence on the same day",
+      "kind": "absenceDay",
+      "input": {
+        "type": "vacation",
+        "date": "2026-09-01"
       }
     }
   ],

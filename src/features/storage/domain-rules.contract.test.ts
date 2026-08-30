@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import domainRules from '../../../contract/domain-rules.json'
+import {
+  saveAbsenceSchema,
+  type AbsenceType,
+} from '@/features/absences/absence-schema'
 import { credentialsSchema, registrationSchema } from '@/features/auth/auth-schema'
 import {
   LOGIN_LOCKOUT_MINUTES,
@@ -8,6 +12,7 @@ import {
 } from '@/features/auth/security-policy'
 import { saveProjectBudgetSchema } from '@/features/budgets/budget-schema'
 import { saveProjectSchema } from '@/features/projects/project-schema'
+import { adjustedDailyTarget } from '@/features/settings/work-schedule'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { findOverlap } from '@/features/time-entries/overlap'
 import { saveTimeEntrySchema, type TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -21,6 +26,16 @@ type Case = {
   normalizedEmail?: string
   normalizedName?: string
   normalizedWorkingDays?: string[]
+  normalizedDate?: string
+}
+
+/** A daily target before and after an absence neutralises it. */
+type AbsenceTargetCase = {
+  name: string
+  dailyTargetMinutes: number
+  workingDay: boolean
+  absenceType: AbsenceType | null
+  targetMinutes: number
 }
 
 type OverlapCase = {
@@ -33,7 +48,7 @@ type OverlapCase = {
 
 type UniquenessCase = {
   name: string
-  kind: 'email' | 'projectBudget'
+  kind: 'email' | 'projectBudget' | 'absenceDay'
   input: unknown
 }
 
@@ -52,6 +67,8 @@ const rules = domainRules as unknown as {
   timeEntries: Case[]
   projectBudgets: Case[]
   workSettings: Case[]
+  absences: Case[]
+  absenceTargets: AbsenceTargetCase[]
   uniqueness: UniquenessCase[]
   overlaps: OverlapCase[]
 }
@@ -119,12 +136,45 @@ describe('domain rule contract', () => {
     }
   })
 
+  it.each(rules.absences)('absence: $name', (testCase) => {
+    const parsed = saveAbsenceSchema.safeParse(testCase.input)
+
+    expect(parsed.success).toBe(testCase.accepted)
+    if (parsed.success && testCase.normalizedDate) {
+      expect(parsed.data.date).toBe(testCase.normalizedDate)
+    }
+  })
+
+  it.each(rules.absenceTargets)('absence target: $name', (testCase) => {
+    expect(
+      adjustedDailyTarget(
+        testCase.dailyTargetMinutes,
+        testCase.workingDay,
+        testCase.absenceType,
+      ),
+    ).toBe(testCase.targetMinutes)
+  })
+
   it.each(rules.uniqueness)('uniqueness: $name', async (testCase) => {
     if (testCase.kind === 'email') {
       const credentials = registrationSchema.parse(testCase.input)
       await localRepository.register(credentials)
 
       await expect(localRepository.register(credentials)).rejects.toMatchObject({ kind: 'conflict' })
+      return
+    }
+
+    if (testCase.kind === 'absenceDay') {
+      await localRepository.register({
+        email: 'absence@example.com',
+        password: 'Str0ng-Passphrase!!x',
+      })
+      const absence = saveAbsenceSchema.parse(testCase.input)
+      await localRepository.createAbsence(absence)
+
+      await expect(localRepository.createAbsence(absence)).rejects.toMatchObject({
+        kind: 'conflict',
+      })
       return
     }
 

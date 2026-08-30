@@ -185,4 +185,14 @@ describe('complianceWarningsForEntries', () => {
     expect(rules(entries)).toEqual(['break', 'continuousWork', 'dailyMaximum'])
     expect(workingDays(entries)[0].workMinutes).toBe(690)
   })
+
+  it('raises no warning for an absence day that carries no time entries', () => {
+    expect(workingDays([])).toEqual([])
+    expect(rules([])).toEqual([])
+    expect(
+      complianceWarningsForEntries([entry('2026-03-02', '08:00', '14:00')]).map(
+        (warning) => warning.dateKey,
+      ),
+    ).not.toContain('2026-03-03')
+  })
 })
