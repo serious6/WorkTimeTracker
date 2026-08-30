@@ -21,9 +21,9 @@ null pointer.
 (`tauri` → `gtk`/`webkit2gtk`/`wry` → `glib` `^0.18`). The fix was never backported: the 0.18 line
 ends at 0.18.5, and moving to `glib` 0.20 requires the whole gtk-rs stack to move with it.
 
-The unsound code is unreachable here. Neither this repository nor any crate in the dependency tree
-constructs a `VariantStrIter` (`Variant::array_iter_str`); it is only reachable through
-`Iterator`/`DoubleEndedIterator` on that type. Windows and macOS builds do not link `glib` at all.
+The unsound code is unreachable in this repository: no code here constructs a `VariantStrIter`
+(`Variant::array_iter_str`), and it is only entered via `Iterator`/`DoubleEndedIterator` on that type.
+Windows and macOS builds do not link `glib` at all.
 
 **Re-evaluate when** Tauri ships a release whose Linux backend depends on `glib` >= 0.20; then drop
 this entry and take the upgrade via the weekly `cargo` Dependabot group.
