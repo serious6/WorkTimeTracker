@@ -85,8 +85,12 @@ pub fn fresh_database() -> Option<FreshDatabase> {
     let url = std::env::var("DATABASE_URL").expect("test_store checked DATABASE_URL");
     let mut client = postgres::Client::connect(&url, postgres::NoTls)
         .expect("test_store already connected to this server");
-    // The generated name only contains digits and underscores.
     let name = format!("wtt_test_{}", unique_tag().replace('-', "_"));
+    // Guards the identifier interpolated into the statements below.
+    assert!(
+        name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'),
+        "unexpected database name {name}"
+    );
     client
         .batch_execute(&format!("CREATE DATABASE {name}"))
         .expect("the test database can be created");

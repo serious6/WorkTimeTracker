@@ -28,6 +28,9 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `schema_migrations`. `0000_init` is the immutable baseline: every later
 /// schema change is a new file in `drizzle/` that is appended here, so an
 /// existing database is upgraded instead of silently kept on a stale schema.
+/// `migrate` runs them inside one transaction, so a migration must not use a
+/// statement that Postgres refuses in a transaction block, such as
+/// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
 const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
 
 /// Arbitrary but stable key for the advisory lock that serializes `migrate`.
