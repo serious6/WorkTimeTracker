@@ -65,6 +65,44 @@ export function isBreak(entry: { entryType: EntryType }): boolean {
   return entry.entryType === 'break'
 }
 
+/** Normalises common time-of-day shorthand to the canonical `HH:MM` form. */
+export function parseTimeOfDay(value: string): string | undefined {
+  const input = value.trim().toLowerCase()
+  let hours: number
+  let minutes: number
+  const decimal = input.match(/^(\d{1,2})(?:[.,](\d+))h$/)
+  const colon = input.match(/^(\d{1,2}):(\d{1,2})$/)
+  const compact = input.match(/^(\d{2})(\d{2})$/)
+
+  if (decimal) {
+    hours = Number(decimal[1])
+    minutes = Math.round(Number(`0.${decimal[2]}`) * 60)
+  } else if (colon) {
+    hours = Number(colon[1])
+    minutes = Number(colon[2])
+  } else if (compact) {
+    hours = Number(compact[1])
+    minutes = Number(compact[2])
+  } else if (/^\d{1,2}$/.test(input)) {
+    hours = Number(input)
+    minutes = 0
+  } else {
+    return undefined
+  }
+
+  if (hours > 23 || minutes > 59) return undefined
+  return `${hours}`.padStart(2, '0') + ':' + `${minutes}`.padStart(2, '0')
+}
+
+const timeOfDaySchema = z.string().transform((value, context) => {
+  const parsed = parseTimeOfDay(value)
+  if (!parsed) {
+    context.addIssue({ code: 'custom', message: 'Enter a valid time' })
+    return z.NEVER
+  }
+  return parsed
+})
+
 /** Values of the manual time entry dialog. */
 export const timeEntryFormSchema = z
   .object({
@@ -76,8 +114,8 @@ export const timeEntryFormSchema = z
       .nullish()
       .transform((value) => value ?? null),
     date: z.string().min(1, 'Date is required'),
-    startTime: z.string().min(1, 'Start time is required'),
-    endTime: z.string().min(1, 'End time is required'),
+    startTime: timeOfDaySchema,
+    endTime: timeOfDaySchema,
     note: z.string().trim().max(500).optional(),
   })
   .refine((values) => values.entryType === 'break' || values.projectId !== null, {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { Button } from './button'
 
 export type MenuItem = {
   label: string
@@ -30,23 +31,24 @@ export function Menu({ trigger, items, label }: { trigger: ReactNode; items: Men
 
   return (
     <div className="relative" ref={container}>
-      <button
+      <Button
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={label}
-        className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex size-10 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => setOpen((current) => !current)}
-        type="button"
+        size="icon"
+        variant="ghost"
       >
         {trigger}
-      </button>
+      </Button>
       {open && (
         <div
           className="absolute right-0 z-40 mt-1 w-44 overflow-hidden rounded-md border border-border bg-card py-1 shadow-lg"
           role="menu"
         >
           {items.map((item) => (
-            <button
+            <Button
               className={cn(
                 'block w-full px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted',
                 item.destructive && 'text-destructive',
@@ -57,10 +59,10 @@ export function Menu({ trigger, items, label }: { trigger: ReactNode; items: Men
                 item.onSelect()
               }}
               role="menuitem"
-              type="button"
+              variant="ghost"
             >
               {item.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}

@@ -9,6 +9,7 @@ import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
+import { cn } from '@/lib/utils'
 
 export function CurrentlyTrackingCard({
   timer,
@@ -25,12 +26,14 @@ export function CurrentlyTrackingCard({
   onPickerOpenChange: (open: boolean) => void
   onCreateProject: () => void
 }) {
-  const { status, start, stop, pause, resume, switchTo, correctStart, setNote } = timer
+  const { status, isPending, start, stop, pause, resume, switchTo, correctStart, setNote } = timer
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [note, setNoteValue] = useState('')
   const active = Boolean(status.running) || status.paused
   const project = projects.find((candidate) => candidate.id === status.projectId)
+  /** The running state is named, not only coloured, so it does not rely on colour alone. */
+  const state = status.paused ? 'Paused' : 'Running'
 
   const [noteSource, setNoteSource] = useState(status.running?.note ?? null)
   if (noteSource !== (status.running?.note ?? null)) {
@@ -41,7 +44,7 @@ export function CurrentlyTrackingCard({
   if (!active) {
     return (
       <Card aria-label="Currently Tracking" className="p-5" role="region">
-        <p className="text-sm font-medium text-primary">Currently Tracking</p>
+        <h2 className="text-sm font-medium text-primary">Currently Tracking</h2>
         {projects.length === 0 ? (
           <div className="flex flex-col items-start gap-3 pt-3">
             <p className="text-sm text-muted-foreground">Create your first project to start tracking.</p>
@@ -57,11 +60,12 @@ export function CurrentlyTrackingCard({
               value={selectedProjectId}
             />
             <Button
-              disabled={selectedProjectId === null}
+              disabled={selectedProjectId === null || isPending}
               onClick={() => selectedProjectId !== null && void start(selectedProjectId)}
+              size="lg"
             >
               <Play className="size-4" />
-              Start timer
+              {isPending ? 'Starting…' : 'Start timer'}
             </Button>
           </div>
         )}
@@ -70,8 +74,12 @@ export function CurrentlyTrackingCard({
   }
 
   return (
-    <Card aria-label="Currently Tracking" className="p-5" role="region">
-      <p className="text-sm font-medium text-primary">Currently Tracking</p>
+    <Card
+      aria-label="Currently Tracking"
+      className={cn('p-5', status.running && 'border-success/60')}
+      role="region"
+    >
+      <h2 className="text-sm font-medium text-primary">Currently Tracking</h2>
       <div className="flex flex-col gap-4 pt-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <span
@@ -82,11 +90,17 @@ export function CurrentlyTrackingCard({
           <div className="min-w-0">
             <p className="truncate text-xl font-semibold">{project?.name ?? DELETED_PROJECT_NAME}</p>
             <p className="text-sm text-muted-foreground">
-              {status.paused ? 'Paused' : (project?.description ?? 'Tracking')}
+              <span className="font-medium">{state}</span>
+              {project?.description ? <span> · {project.description}</span> : null}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isPending && (
+            <span className="text-sm text-muted-foreground" role="status">
+              Updating timer…
+            </span>
+          )}
           <output
             aria-label="Elapsed time"
             className="text-2xl font-semibold tabular-nums text-success"
@@ -96,21 +110,38 @@ export function CurrentlyTrackingCard({
           {status.running && (
             <Button
               aria-label="Correct start time"
+              disabled={isPending}
               onClick={() => setCorrectionOpen(true)}
               variant="subtle"
             >
               <Clock className="size-4" />
             </Button>
           )}
-          <Button aria-label="Stop timer" onClick={() => void stop()} variant="destructive">
+          <Button
+            aria-label="Stop timer"
+            disabled={isPending}
+            onClick={() => void stop()}
+            size="lg"
+            variant="destructive"
+          >
             <Square className="size-4" />
           </Button>
           {status.paused ? (
-            <Button aria-label="Resume timer" onClick={() => void resume()} variant="subtle">
+            <Button
+              aria-label="Resume timer"
+              disabled={isPending}
+              onClick={() => void resume()}
+              variant="subtle"
+            >
               <Play className="size-4" />
             </Button>
           ) : (
-            <Button aria-label="Pause timer" onClick={() => void pause()} variant="subtle">
+            <Button
+              aria-label="Pause timer"
+              disabled={isPending}
+              onClick={() => void pause()}
+              variant="subtle"
+            >
               <Pause className="size-4" />
             </Button>
           )}
@@ -123,6 +154,7 @@ export function CurrentlyTrackingCard({
           <Input
             aria-label="Add a note"
             className="border-0 px-0 focus-visible:ring-0"
+            disabled={isPending}
             onBlur={() => void setNote(note)}
             onChange={(event) => setNoteValue(event.target.value)}
             placeholder="Add a note..."
@@ -131,7 +163,7 @@ export function CurrentlyTrackingCard({
         </div>
         <ProjectPicker
           onCreate={onCreateProject}
-          onOpenChange={onPickerOpenChange}
+          onOpenChange={(open) => !isPending && onPickerOpenChange(open)}
           onSelect={(projectId) => {
             if (projectId !== status.projectId) void switchTo(projectId)
           }}

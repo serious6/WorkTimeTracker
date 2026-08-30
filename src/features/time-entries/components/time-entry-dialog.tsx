@@ -11,6 +11,7 @@ import {
   BREAK_LABEL,
   entryToForm,
   formToSaveTimeEntry,
+  parseTimeOfDay,
   timeEntryFormSchema,
   type TimeEntry,
 } from '../time-entry-schema'
@@ -64,10 +65,12 @@ export function TimeEntryDialog({
   }
   if (!open && openedFor !== null) setOpenedFor(null)
 
+  const parsedStartTime = parseTimeOfDay(values.startTime)
+  const parsedEndTime = parseTimeOfDay(values.endTime)
   const durationMinutes =
-    values.date && values.startTime && values.endTime
-      ? (combineDateAndTime(values.date, values.endTime).getTime() -
-          combineDateAndTime(values.date, values.startTime).getTime()) /
+    values.date && parsedStartTime && parsedEndTime
+      ? (combineDateAndTime(values.date, parsedEndTime).getTime() -
+          combineDateAndTime(values.date, parsedStartTime).getTime()) /
         60_000
       : 0
 
@@ -156,8 +159,13 @@ export function TimeEntryDialog({
             Start time
             <Input
               name="startTime"
+              onBlur={(event) => {
+                const parsed = parseTimeOfDay(event.target.value)
+                if (parsed) update('startTime', parsed)
+              }}
               onChange={(event) => update('startTime', event.target.value)}
-              type="time"
+              placeholder="09:00"
+              type="text"
               value={values.startTime}
             />
           </label>
@@ -165,8 +173,13 @@ export function TimeEntryDialog({
             End time
             <Input
               name="endTime"
+              onBlur={(event) => {
+                const parsed = parseTimeOfDay(event.target.value)
+                if (parsed) update('endTime', parsed)
+              }}
               onChange={(event) => update('endTime', event.target.value)}
-              type="time"
+              placeholder="17:30"
+              type="text"
               value={values.endTime}
             />
           </label>
@@ -189,7 +202,13 @@ export function TimeEntryDialog({
           <Button onClick={onClose} variant="outline">
             Cancel
           </Button>
-          <Button type="submit">{entry ? 'Save entry' : 'Add entry'}</Button>
+          <Button disabled={createEntry.isPending || updateEntry.isPending} type="submit">
+            {createEntry.isPending || updateEntry.isPending
+              ? 'Saving…'
+              : entry
+                ? 'Save entry'
+                : 'Add entry'}
+          </Button>
         </div>
       </form>
     </Dialog>

@@ -8,6 +8,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-sidebar: var(--sidebar);
   --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
   --color-primary-foreground: var(--primary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
@@ -15,6 +16,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
+  --color-destructive-strong: var(--destructive-strong);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --radius-sm: calc(var(--radius) - 4px);
@@ -35,14 +37,19 @@
   --card: oklch(0.21 0.016 258);
   --card-foreground: oklch(0.96 0.004 258);
   --sidebar: oklch(0.19 0.015 258);
+  /* Accent for text and icons: 4.77:1 on --card, 5.15:1 on --background. */
   --primary: oklch(0.62 0.19 258);
+  /* Filled buttons need a darker surface so the light label reaches 5.35:1. */
+  --primary-strong: oklch(0.52 0.19 258);
   --primary-foreground: oklch(0.98 0 0);
   --muted: oklch(0.27 0.017 258);
   --muted-foreground: oklch(0.71 0.017 258);
   --border: oklch(0.3 0.017 258);
-  --input: oklch(0.3 0.017 258);
+  /* Field boundaries carry meaning, so they clear the 3:1 rule for UI parts. */
+  --input: oklch(0.52 0.017 258);
   --ring: oklch(0.62 0.19 258);
-  --destructive: oklch(0.58 0.22 27);
+  --destructive: oklch(0.64 0.22 27);
+  --destructive-strong: oklch(0.52 0.22 27);
   --success: oklch(0.72 0.18 150);
   --warning: oklch(0.79 0.16 78);
 }

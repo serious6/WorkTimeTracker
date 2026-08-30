@@ -207,7 +207,7 @@ export function WeekPage() {
           {week.days.map((day) => {
             const width = day.targetMinutes > 0 ? (day.trackedMinutes / day.targetMinutes) * 100 : 0
             return (
-              <button
+              <Button
                 className={cn(
                   'w-full rounded-md border border-border p-3 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
                   activeDayKey === day.dateKey && 'border-primary',
@@ -217,7 +217,7 @@ export function WeekPage() {
                   setSelectedDayKey(day.dateKey)
                   dayRefs.current[day.dateKey]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                 }}
-                type="button"
+                variant="ghost"
               >
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="font-medium">
@@ -248,7 +248,7 @@ export function WeekPage() {
                     style={{ width: `${Math.max(0, Math.min(100, width))}%` }}
                   />
                 </div>
-              </button>
+              </Button>
             )
           })}
         </CardContent>
@@ -469,14 +469,14 @@ export function WeekPage() {
                 const key = toDateKey(item.weekStart)
                 return (
                   <li key={key}>
-                    <button
+                    <Button
                       aria-current={key === selectedWeekStartKey ? 'page' : undefined}
                       className={cn(
                         'w-full rounded-md border border-border p-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
                         key === selectedWeekStartKey && 'border-primary',
                       )}
                       onClick={() => setSelectedDate(key)}
-                      type="button"
+                      variant="ghost"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span>{item.label}</span>
@@ -485,7 +485,7 @@ export function WeekPage() {
                           {formatSignedDuration(item.balanceMinutes)})
                         </span>
                       </div>
-                    </button>
+                    </Button>
                   </li>
                 )
               })}

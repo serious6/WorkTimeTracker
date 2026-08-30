@@ -15,3 +15,20 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={cn(fieldClasses, 'h-20 resize-none', className)} {...props} />
 }
+
+/** Checkbox field so option lists share the focus ring and accent of the other inputs. */
+export function Checkbox({
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  return (
+    <input
+      className={cn(
+        'size-4 shrink-0 cursor-pointer accent-primary outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50',
+        className,
+      )}
+      {...props}
+      type="checkbox"
+    />
+  )
+}

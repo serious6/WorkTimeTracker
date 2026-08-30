@@ -59,16 +59,16 @@ export function ProjectsPage() {
                     className="size-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: project.color }}
                   />
-                  <button
+                  <Button
                     className="min-w-0 flex-1 truncate rounded-md px-1 text-left font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => navigate('time-entries', { projectFilter: project.id })}
-                    type="button"
+                    variant="ghost"
                   >
                     {project.name}
                     {project.description && (
                       <span className="ml-2 text-xs text-muted-foreground">{project.description}</span>
                     )}
-                  </button>
+                  </Button>
                   <span className="tabular-nums text-muted-foreground">
                     {formatDuration(
                       totals.find((item) => item.projectId === project.id)?.minutes ?? 0,
@@ -87,6 +87,7 @@ export function ProjectsPage() {
                   </Button>
                   <Button
                     aria-label={`Delete ${project.name}`}
+                    className="ml-2 text-destructive hover:bg-destructive/10"
                     onClick={() => setDeleting(project)}
                     size="icon"
                     variant="ghost"

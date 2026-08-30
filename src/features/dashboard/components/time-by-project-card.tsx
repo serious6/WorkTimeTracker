@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Input, Select } from '@/components/ui/input'
 import type { Project } from '@/features/projects/project-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -42,7 +43,7 @@ export function TimeByProjectCard({
         <CardTitle>Time by Project</CardTitle>
         <Select
           aria-label="Chart range"
-          className="h-8 w-32 text-xs"
+          className="w-32 text-xs"
           onChange={(event) => setRange(event.target.value as RangeKey)}
           value={range}
         >
@@ -119,10 +120,10 @@ export function TimeByProjectCard({
             <ul className="w-full space-y-2">
               {totals.map((item) => (
                 <li key={`${item.projectId}`}>
-                  <button
+                  <Button
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => onSelectProject(item.projectId)}
-                    type="button"
+                    variant="ghost"
                   >
                     <span
                       aria-hidden
@@ -133,7 +134,7 @@ export function TimeByProjectCard({
                     <span className="tabular-nums text-muted-foreground">
                       {formatDuration(item.minutes)} ({item.percentage}%)
                     </span>
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

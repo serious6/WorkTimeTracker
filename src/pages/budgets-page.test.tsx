@@ -6,6 +6,7 @@ import {
   resetAppState,
   seedBudget,
   seedProject,
+  seedTimeEntry,
   signIn,
 } from '@/test/harness'
 import { BudgetsPage } from './budgets-page'
@@ -34,6 +35,24 @@ describe('BudgetsPage', () => {
     await seedBudget({ projectId: project.id, budgetMinutes: 4800, dueDate: FUTURE_DATE })
     renderWithProviders(<BudgetsPage />)
     expect(await screen.findByText('Alpha')).toBeInTheDocument()
+  })
+
+  it('shows budget consumption as progress towards the goal', async () => {
+    const project = await seedProject('Alpha')
+    await seedBudget({ projectId: project.id, budgetMinutes: 600, dueDate: FUTURE_DATE })
+    const start = new Date()
+    start.setHours(9, 0, 0, 0)
+    const end = new Date(start)
+    end.setHours(10, 0, 0, 0)
+    await seedTimeEntry({ projectId: project.id, startTime: start, endTime: end })
+    renderWithProviders(<BudgetsPage />)
+    const progress = await screen.findByRole('progressbar', {
+      name: 'Budget consumption for Alpha',
+    })
+    expect(progress).toHaveAttribute('aria-valuenow', '10')
+    expect(
+      screen.getByText('1h 00m tracked (10%)'),
+    ).toBeInTheDocument()
   })
 
   it('disabled "Create budget" button when no projects', async () => {

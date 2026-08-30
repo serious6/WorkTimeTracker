@@ -82,19 +82,19 @@ export function ProjectDialog({
         </label>
         <fieldset className="space-y-2 text-sm font-medium">
           <legend>Color</legend>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             {PROJECT_COLORS.map((option) => (
-              <button
+              <Button
                 aria-label={`Color ${option}`}
                 aria-pressed={color === option}
                 className={cn(
-                  'size-7 rounded-full outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring',
+                  'relative size-7 rounded-full outline-none transition-transform after:absolute after:-inset-1.5 after:content-[\'\'] focus-visible:ring-2 focus-visible:ring-ring',
                   color === option && 'ring-2 ring-ring ring-offset-2 ring-offset-card',
                 )}
                 key={option}
                 onClick={() => setColor(option)}
                 style={{ backgroundColor: option }}
-                type="button"
+                variant="ghost"
               />
             ))}
           </div>

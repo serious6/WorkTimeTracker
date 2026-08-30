@@ -104,6 +104,11 @@ export function KpiCards({
         caption={targetCaption('of', weeklyTargetMinutes)}
         icon={CalendarCheck}
         label="Weekly Total"
+        progress={
+          weeklyTargetMinutes > 0
+            ? progressPercentage(trackedWeekMinutes, weeklyTargetMinutes)
+            : undefined
+        }
         value={formatDuration(trackedWeekMinutes)}
       />
     </section>

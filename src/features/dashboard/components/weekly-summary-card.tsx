@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/input'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { addDays, formatDuration, formatSignedDuration, type WeekStart } from '@/lib/date'
@@ -46,7 +47,7 @@ export function WeeklySummaryCard({
         <CardTitle>Weekly Summary</CardTitle>
         <Select
           aria-label="Summary range"
-          className="h-8 w-36 text-xs"
+          className="w-36 text-xs"
           onChange={(event) => setRange(event.target.value as SummaryRange)}
           value={range}
         >
@@ -58,10 +59,10 @@ export function WeeklySummaryCard({
         </Select>
       </CardHeader>
       <CardContent>
-        <button
+        <Button
           className="w-full rounded-md p-2 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenReports}
-          type="button"
+          variant="ghost"
         >
           <p className="text-2xl font-semibold tabular-nums">{formatDuration(currentMinutes)}</p>
           <p className="pt-1 text-xs text-muted-foreground">
@@ -70,7 +71,7 @@ export function WeeklySummaryCard({
             </span>{' '}
             compared with the previous period
           </p>
-        </button>
+        </Button>
       </CardContent>
     </Card>
   )
