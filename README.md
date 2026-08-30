@@ -1,7 +1,7 @@
 # WorkTimeTracker
 
-A local-first, open-source desktop work-time tracker built with Tauri 2. All data stays in a local
-SQLite database, no proprietary runtime service is required.
+A local-first, open-source desktop work-time tracker built with Tauri 2. The native app stores data
+in a Postgres database you control, for example the bundled local compose service.
 
 ## Features
 
@@ -21,14 +21,16 @@ SQLite database, no proprietary runtime service is required.
 ## Stack
 
 Tauri 2 with typed Rust commands, React, TypeScript, Vite, Tailwind CSS, Zustand, TanStack Query,
-Zod, Drizzle schema with `rusqlite_migration`, Recharts, Vitest, Playwright, and LikeC4.
+Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and LikeC4.
 
 ## Getting started
 
 ```sh
 npm ci
-npm run tauri dev   # desktop application
-npm run dev         # browser-only UI at http://localhost:1420
+cp .env.example .env
+podman compose up -d db   # or: docker compose up -d db
+npm run tauri dev         # desktop application
+npm run dev               # browser-only UI at http://localhost:1420
 ```
 
 Prerequisites and the contribution workflow are described in
@@ -36,29 +38,29 @@ Prerequisites and the contribution workflow are described in
 
 The development container runs the browser UI with `docker compose up --build` or
 `podman compose up --build`. Native Tauri windows need a desktop display server and should be run
-on the host. Its SQLite database persists in the `app_data` volume at
-`/root/.local/share/io.github.serious6.worktimetracker/work-time-tracker.sqlite`.
+on the host. The compose stack starts Postgres by default and persists it in the `postgres_data`
+volume.
 
 ## Database backend
 
-The app defaults to an embedded SQLite file and needs no extra setup. It can be pointed at a
-Postgres server instead, for example one started locally via Podman/Docker compose:
+Postgres is required for the native Tauri application. Copy `.env.example` to `.env`, keep the
+default `DATABASE_URL` for the bundled local database, and start the compose service:
 
 ```sh
-cp .env.example .env             # then edit as needed
-podman compose --profile postgres up -d   # or: docker compose --profile postgres up -d
-npm run tauri dev                # or: npm run dev
+cp .env.example .env
+podman compose up -d db   # or: docker compose up -d db
+npm run tauri dev
 ```
 
-Backend selection is driven by environment variables (see `.env.example`):
+`DATABASE_URL` defaults in code and tooling to
+`******localhost:5432/worktimetracker`, matching the
+compose `db` service. Use another Postgres instance by changing `DATABASE_URL`.
 
-- `WTT_DB_BACKEND` — `sqlite` (default) or `postgres`.
-- `DATABASE_URL` — Postgres connection string, only read when the backend is `postgres`.
-- `WTT_SQLITE_PATH` — optional override of the SQLite file location.
+This is a breaking storage change. Earlier local database files are not read or migrated by this
+version; export any data you need before switching to the Postgres-only application.
 
-Running `podman compose up -d` (without `--profile postgres`) behaves exactly as before and never
-starts the `db` service. `podman compose down -v` removes the `postgres_data` volume and
-permanently deletes the Postgres database — only use it when you intend to discard local data.
+`podman compose down -v` or `docker compose down -v` removes the `postgres_data` volume and
+permanently deletes the local Postgres database.
 
 ## Project layout
 
@@ -66,10 +68,10 @@ permanently deletes the Postgres database — only use it when you intend to dis
 architecture/   LikeC4 model and decision records
 contract/       Domain rules shared by the Rust backend and the browser fallback
 docs/           Data model and further documentation
-drizzle/        Versioned SQLite migrations (drizzle/postgres for the optional Postgres backend)
+drizzle/        Single Postgres migration applied by the Rust backend and Drizzle
 e2e/            Playwright tests
 src/            React application (app, components, db, features, lib, pages)
-src-tauri/src/  Rust backend (auth, commands, contract, database, error, logging, window_state)
+src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, window_state)
 ```
 
 ## Logs

@@ -1,4 +1,4 @@
-//! Postgres backend, used when `WTT_DB_BACKEND=postgres`. Talks to the
+//! Postgres backend. Talks to the
 //! database with the synchronous `postgres` crate through a small `r2d2`
 //! connection pool (see `Cargo.toml` for why this crate was chosen over
 //! `sqlx`/`tokio-postgres`+`deadpool`).
@@ -14,13 +14,15 @@ use crate::{
     models::{
         AuditLogEntry, ComplianceLimits, Project, ProjectBudget, SaveProject, SaveProjectBudget,
         SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, DEFAULT_WORKING_DAYS,
-        ENTRY_TYPE_BREAK, ENTRY_TYPE_WORK, GERMAN_COMPLIANCE_LIMITS,
+        ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
     },
     store::{Store, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OPEN_END: &str = "9999-12-31T23:59:59.999Z";
 const AUDIT_LOG_LIMIT: i64 = 200;
+const APP_VERSION_KEY: &str = "app_version";
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 type Manager = PostgresConnectionManager<NoTls>;
 
@@ -28,8 +30,7 @@ pub struct PostgresStore {
     pool: Pool<Manager>,
 }
 
-/// Timestamp string in the same ISO 8601 UTC/millisecond format that the
-/// SQLite backend produces via `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`.
+/// Timestamp string in the ISO 8601 UTC/millisecond format expected by the frontend.
 fn now_iso() -> String {
     Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
@@ -62,9 +63,11 @@ impl PostgresStore {
             .connection_timeout(Duration::from_secs(5))
             .build(manager)?;
         let store = Self { pool };
-        store
-            .conn()?
-            .batch_execute(include_str!("../../drizzle/postgres/0000_init.sql"))?;
+        {
+            let mut client = store.conn()?;
+            client.batch_execute(include_str!("../../drizzle/0000_init.sql"))?;
+            write_app_version(&mut *client, APP_VERSION)?;
+        }
         Ok(store)
     }
 
@@ -158,6 +161,18 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
         .query_opt("SELECT email FROM users WHERE id = $1", &[&user_id])?
         .map(|row| row.get(0));
     Ok(email.unwrap_or_else(|| format!("user:{user_id}")))
+}
+
+fn write_app_version(
+    client: &mut impl postgres::GenericClient,
+    version: &str,
+) -> Result<String, StoreError> {
+    client.execute(
+        "INSERT INTO app_metadata (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
+        &[&APP_VERSION_KEY, &version],
+    )?;
+    Ok(version.to_owned())
 }
 
 fn record_audit(
@@ -770,8 +785,8 @@ impl Store for PostgresStore {
         let mut client = self.conn()?;
         Ok(client
             .query_opt(
-                "SELECT value FROM app_metadata WHERE key = 'app_version'",
-                &[],
+                "SELECT value FROM app_metadata WHERE key = $1",
+                &[&APP_VERSION_KEY],
             )?
             .map(|row| row.get(0)))
     }
@@ -845,7 +860,7 @@ mod tests {
 
     /// Reads `DATABASE_URL` for the integration tests below, so they only run
     /// when a real Postgres server is reachable (see README for how to start
-    /// one via `podman compose --profile postgres up -d`).
+    /// one via compose).
     fn test_store() -> Option<PostgresStore> {
         let url = std::env::var("DATABASE_URL").ok()?;
         PostgresStore::connect(&url).ok()
@@ -860,11 +875,11 @@ mod tests {
     }
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
-    /// the frontend expects (matches SQLite's `strftime('%Y-%m-%dT%H:%M:%fZ')`),
+    /// the frontend expects,
     /// e.g. `2024-01-01T12:34:56.789Z`. Regression test for a bug where a
     /// missing `%S` dropped the whole-seconds field.
     #[test]
-    fn now_iso_matches_the_sqlite_timestamp_format() {
+    fn now_iso_matches_the_expected_timestamp_format() {
         let timestamp = now_iso();
         assert_eq!(timestamp.len(), "2024-01-01T12:34:56.789Z".len());
         assert_eq!(&timestamp[4..5], "-");
@@ -924,7 +939,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(created.name, "Postgres project");
-        // ISO 8601 UTC with milliseconds, matching the SQLite backend's format.
+        // ISO 8601 UTC with milliseconds.
         assert!(created.created_at.ends_with('Z'));
 
         let listed = store.list_projects(user.id).unwrap();
@@ -961,6 +976,7 @@ mod tests {
                     project_id: Some(project.id),
                     start_time: "2024-01-01T09:00:00.000Z".into(),
                     end_time: Some("2024-01-01T10:00:00.000Z".into()),
+                    entry_type: None,
                     note: None,
                 },
             )
@@ -973,6 +989,7 @@ mod tests {
                     project_id: Some(project.id),
                     start_time: "2024-01-01T09:30:00.000Z".into(),
                     end_time: Some("2024-01-01T10:30:00.000Z".into()),
+                    entry_type: None,
                     note: None,
                 },
             )

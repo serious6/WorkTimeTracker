@@ -60,17 +60,6 @@ impl From<&str> for AppError {
     }
 }
 
-impl From<rusqlite::Error> for AppError {
-    fn from(error: rusqlite::Error) -> Self {
-        match &error {
-            rusqlite::Error::QueryReturnedNoRows => {
-                Self::NotFound("The record was not found".to_owned())
-            }
-            _ => Self::Database(error.to_string()),
-        }
-    }
-}
-
 /// Generic mapping used for storage failures that are not a known-message
 /// conflict (unique violations get their per-command message via
 /// `commands::unique_error` before reaching here).
@@ -110,9 +99,9 @@ mod tests {
     }
 
     #[test]
-    fn maps_missing_rows_to_not_found() {
+    fn maps_missing_store_rows_to_not_found() {
         assert_eq!(
-            AppError::from(rusqlite::Error::QueryReturnedNoRows),
+            AppError::from(crate::store::StoreError::NotFound),
             AppError::NotFound("The record was not found".to_owned())
         );
     }
@@ -131,7 +120,7 @@ mod tests {
         assert_eq!(AppError::validation("nope").kind(), "validation");
         assert_eq!(AppError::conflict("taken").kind(), "conflict");
         assert_eq!(
-            AppError::from(rusqlite::Error::QueryReturnedNoRows).kind(),
+            AppError::from(crate::store::StoreError::NotFound).kind(),
             "notFound"
         );
         assert_eq!(AppError::RateLimited(String::new()).kind(), "rateLimited");

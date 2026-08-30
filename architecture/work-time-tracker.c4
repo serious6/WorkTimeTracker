@@ -16,8 +16,8 @@ model {
       description 'Validates input and returns structured AppError kinds'
     }
     database = container 'Local database' {
-      technology 'SQLite, Drizzle schema'
-      description 'One process-wide mutex serializes every access; see architecture/decisions.md'
+      technology 'Postgres, Drizzle schema'
+      description 'Local Postgres database accessed through a small connection pool'
     }
 
     session = container 'Session' {

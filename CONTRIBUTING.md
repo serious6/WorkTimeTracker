@@ -20,9 +20,9 @@ npm ci
 npm run tauri dev
 ```
 
-Starts the Rust backend and the frontend in a native window. Data is stored in a local SQLite
-database by default; set `WTT_DB_BACKEND=postgres` and `DATABASE_URL` to use Postgres instead (see
-the README's "Database backend" section).
+Starts the Rust backend and the frontend in a native window. The native backend requires Postgres;
+copy `.env.example` to `.env` and start the compose `db` service first (see the README's
+"Database backend" section).
 
 ### Web application (browser)
 
@@ -54,8 +54,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 - Keep documentation concise.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- Schema changes need a versioned migration in `drizzle/` plus the matching update in
-  `src/db/schema.ts` and `src-tauri/src/database.rs`.
+- Schema changes need an update to the consolidated Postgres migration in `drizzle/0000_init.sql`
+  plus the matching update in `src/db/schema.ts` and `src-tauri/src/postgres_store.rs`.
 
 ## Pull requests
 

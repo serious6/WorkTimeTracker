@@ -35,10 +35,10 @@ describe('redact', () => {
   })
 
   it('removes file system paths', () => {
-    expect(redact('unable to open /home/jane/.local/share/db.sqlite')).toBe(
+    expect(redact('unable to open /home/jane/.local/share/app.db')).toBe(
       'unable to open [redacted path]',
     )
-    expect(redact('unable to open C:\\Users\\jane\\db.sqlite')).toBe(
+    expect(redact('unable to open C:\\Users\\jane\\app.db')).toBe(
       'unable to open [redacted path]',
     )
   })

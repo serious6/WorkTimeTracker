@@ -1,12 +1,8 @@
--- Postgres equivalent of the SQLite schema built up by drizzle/0000_*.sql
--- through drizzle/0006_break_project_constraint.sql. Kept as a single init
--- migration since Postgres deployments start from a clean database; see
--- docs/data-model.md for how the two migration sets relate.
+-- Initial Postgres schema for WorkTimeTracker.
 --
--- Timestamps are stored as TEXT in the same ISO 8601 UTC format the SQLite
--- backend produces (e.g. "2024-01-01T12:34:56.789Z"), written by the
--- application layer (see src-tauri/src/postgres_store.rs) so both backends
--- return byte-for-byte identical values to the frontend.
+-- Timestamps are stored as TEXT in ISO 8601 UTC format
+-- (e.g. "2024-01-01T12:34:56.789Z"), written by the application layer
+-- (see src-tauri/src/postgres_store.rs).
 
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

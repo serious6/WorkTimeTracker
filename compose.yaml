@@ -10,7 +10,6 @@ services:
       - "1420:1420"
     environment:
       XDG_DATA_HOME: /root/.local/share
-      WTT_DB_BACKEND: ${WTT_DB_BACKEND:-sqlite}
       DATABASE_URL: ${DATABASE_URL:-postgresql://worktimetracker:worktimetracker@db:5432/worktimetracker}
     volumes:
       - .:/workspace:z
@@ -21,14 +20,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-        required: false
 
-  # Optional containerised Postgres for `WTT_DB_BACKEND=postgres`. Only started
-  # with `podman compose --profile postgres up -d`; plain `podman compose up -d`
-  # keeps using embedded SQLite as before.
   db:
     image: docker.io/library/postgres:16-alpine
-    profiles: ["postgres"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-worktimetracker}
       POSTGRES_USER: ${POSTGRES_USER:-worktimetracker}
