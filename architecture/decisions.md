@@ -48,8 +48,14 @@ failed logins, in memory only. The limits are part of the contract file, so both
 The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
 session record with an expiry. Client-side storage stays fully readable and writable, therefore the
 fallback is a development and test tool only, not a security boundary. It is never shipped as the
-production path, which is also why it hashes passwords with PBKDF2-SHA256 (210,000 iterations, the
-strongest KDF available in the browser) while the Rust backend uses Argon2id for real credentials.
+production path, which is also why it hashes passwords with PBKDF2-SHA256 (the strongest KDF
+available in the browser) while the Rust backend uses Argon2id for real credentials.
+
+Both key derivations are pinned instead of using library defaults: Argon2id runs with 19 MiB of
+memory, two passes and one lane, PBKDF2-SHA256 with 210,000 iterations, both following the OWASP
+recommendation. The numbers live in `contract/domain-rules.json` (`keyDerivation`), so a dependency
+update cannot silently change the cost of a hash. Verification still reads the parameters from the
+stored hash, so older hashes keep working.
 
 ## 5. Postgres connection pool
 

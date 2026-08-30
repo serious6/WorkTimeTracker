@@ -4,6 +4,14 @@
     "maxLoginAttempts": 5,
     "loginLockoutMinutes": 15
   },
+  "keyDerivation": {
+    "argon2id": {
+      "memoryKib": 19456,
+      "iterations": 2,
+      "parallelism": 1
+    },
+    "pbkdf2Sha256Iterations": 210000
+  },
   "credentials": [
     {
       "name": "accepts a login",

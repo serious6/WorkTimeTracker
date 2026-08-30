@@ -6,7 +6,7 @@ use std::{
 
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
+    Algorithm, Argon2, Params, Version,
 };
 
 use crate::error::{AppError, AppResult};
@@ -17,6 +17,16 @@ pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
 pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
 /// Duration of the lockout that follows the last allowed attempt.
 pub const LOGIN_LOCKOUT_MINUTES: u64 = 15;
+
+/// Argon2id cost parameters, pinned instead of taken from `Argon2::default()`
+/// so a dependency update cannot silently weaken or slow down the hashing.
+/// They follow the OWASP recommendation for Argon2id (19 MiB of memory, two
+/// passes, one lane), which keeps a hash well below a second on a desktop
+/// machine while staying expensive for an attacker. The same numbers are part
+/// of `contract/domain-rules.json`.
+pub const ARGON2_MEMORY_KIB: u32 = 19_456;
+pub const ARGON2_ITERATIONS: u32 = 2;
+pub const ARGON2_PARALLELISM: u32 = 1;
 
 const LOCKED_OUT: &str = "Too many failed sign in attempts, please try again later";
 
@@ -118,15 +128,24 @@ impl LoginAttempts {
     }
 }
 
+/// Argon2id with the pinned parameters above.
+fn argon2() -> AppResult<Argon2<'static>> {
+    let params = Params::new(ARGON2_MEMORY_KIB, ARGON2_ITERATIONS, ARGON2_PARALLELISM, None)
+        .map_err(|error| AppError::internal(format!("invalid argon2 parameters: {error}")))?;
+    Ok(Argon2::new(Algorithm::Argon2id, Version::V0x13, params))
+}
+
 /// Passwords are never stored in plaintext; Argon2id derives a salted hash.
 pub fn hash_password(password: &str) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
+    argon2()?
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|error| AppError::internal(format!("password hashing failed: {error}")))
 }
 
+/// Verification reads the cost parameters from the stored hash, so hashes
+/// written with earlier parameters keep working.
 pub fn verify_password(password: &str, hash: &str) -> bool {
     PasswordHash::new(hash).is_ok_and(|parsed| {
         Argon2::default()
@@ -146,6 +165,19 @@ mod tests {
         assert!(!hash.contains("Str0ng-Passphrase!!x"));
         assert!(verify_password("Str0ng-Passphrase!!x", &hash));
         assert!(!verify_password("str0ng-passphrase!!x", &hash));
+    }
+
+    #[test]
+    fn hashes_with_the_pinned_parameters() {
+        let hash = hash_password("Str0ng-Passphrase!!x").unwrap();
+
+        assert!(hash.starts_with("$argon2id$v=19$"), "{hash}");
+        assert!(
+            hash.contains(&format!(
+                "m={ARGON2_MEMORY_KIB},t={ARGON2_ITERATIONS},p={ARGON2_PARALLELISM}"
+            )),
+            "{hash}"
+        );
     }
 
     #[test]

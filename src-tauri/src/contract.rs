@@ -8,7 +8,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
-    auth::{LOGIN_LOCKOUT_MINUTES, MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES},
+    auth::{
+        ARGON2_ITERATIONS, ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, LOGIN_LOCKOUT_MINUTES,
+        MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES,
+    },
     models::{
         adjusted_daily_target, Credentials, SaveAbsence, SaveProject, SaveProjectBudget,
         SaveTimeEntry, WorkSettings,
@@ -25,6 +28,22 @@ struct SecurityLimits {
     session_timeout_minutes: u64,
     max_login_attempts: u32,
     login_lockout_minutes: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Argon2Params {
+    memory_kib: u32,
+    iterations: u32,
+    parallelism: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyDerivation {
+    argon2id: Argon2Params,
+    #[allow(dead_code)]
+    pbkdf2_sha256_iterations: u32,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +121,16 @@ fn shares_the_security_limits_with_the_browser_fallback() {
     assert_eq!(limits.session_timeout_minutes, SESSION_TIMEOUT_MINUTES);
     assert_eq!(limits.max_login_attempts, MAX_LOGIN_ATTEMPTS);
     assert_eq!(limits.login_lockout_minutes, LOGIN_LOCKOUT_MINUTES);
+}
+
+#[test]
+fn pins_the_key_derivation_parameters_of_the_contract() {
+    let derivation: KeyDerivation =
+        serde_json::from_value(rules()["keyDerivation"].clone()).unwrap();
+
+    assert_eq!(derivation.argon2id.memory_kib, ARGON2_MEMORY_KIB);
+    assert_eq!(derivation.argon2id.iterations, ARGON2_ITERATIONS);
+    assert_eq!(derivation.argon2id.parallelism, ARGON2_PARALLELISM);
 }
 
 #[test]

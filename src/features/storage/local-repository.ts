@@ -45,6 +45,7 @@ import {
 import {
   LOCKED_OUT_MESSAGE,
   LoginAttempts,
+  PBKDF2_ITERATIONS,
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
@@ -305,8 +306,6 @@ function readBudgets(): ProjectBudget[] {
 function nextId(records: { id: number }[]): number {
   return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
 }
-
-const PBKDF2_ITERATIONS = 210_000
 
 function toBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))

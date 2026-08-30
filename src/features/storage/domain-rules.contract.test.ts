@@ -8,6 +8,7 @@ import { credentialsSchema, registrationSchema } from '@/features/auth/auth-sche
 import {
   LOGIN_LOCKOUT_MINUTES,
   MAX_LOGIN_ATTEMPTS,
+  PBKDF2_ITERATIONS,
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { saveProjectBudgetSchema } from '@/features/budgets/budget-schema'
@@ -62,6 +63,10 @@ const rules = domainRules as unknown as {
     maxLoginAttempts: number
     loginLockoutMinutes: number
   }
+  keyDerivation: {
+    argon2id: { memoryKib: number; iterations: number; parallelism: number }
+    pbkdf2Sha256Iterations: number
+  }
   credentials: Case[]
   projects: Case[]
   timeEntries: Case[]
@@ -98,6 +103,10 @@ describe('domain rule contract', () => {
       maxLoginAttempts: MAX_LOGIN_ATTEMPTS,
       loginLockoutMinutes: LOGIN_LOCKOUT_MINUTES,
     })
+  })
+
+  it('pins the key derivation of the browser fallback', () => {
+    expect(rules.keyDerivation.pbkdf2Sha256Iterations).toBe(PBKDF2_ITERATIONS)
   })
 
   it.each(rules.credentials)('credentials: $name', (testCase) => {
