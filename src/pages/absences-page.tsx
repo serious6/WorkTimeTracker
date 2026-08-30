@@ -22,7 +22,7 @@ export function AbsencesPage() {
   const [deleting, setDeleting] = useState<Absence>()
 
   const index = absenceIndex(absences)
-  const upcomingFirst = [...absences].sort((left, right) => right.date.localeCompare(left.date))
+  const newestFirst = [...absences].sort((left, right) => right.date.localeCompare(left.date))
   const neutralisedMinutes = absences.reduce(
     (total, absence) =>
       total +
@@ -67,7 +67,7 @@ export function AbsencesPage() {
             </p>
           ) : (
             <ul className="divide-y divide-border">
-              {upcomingFirst.map((absence) => {
+              {newestFirst.map((absence) => {
                 const date = fromDateKey(absence.date)
                 const target = targetMinutesForDay(settings, date, index)
                 const full = targetMinutesForDay(settings, date)
