@@ -19,6 +19,7 @@ const buttonVariants = cva(
       // area vertically; their width already exceeds 40px through padding and label.
       size: {
         default: 'h-10 px-4',
+        lg: 'h-12 px-5',
         sm: "relative h-8 px-3 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']",
         icon: 'size-10',
         inline: "relative h-6 text-xs after:absolute after:-inset-x-2 after:-inset-y-2 after:content-['']",

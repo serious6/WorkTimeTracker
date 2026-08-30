@@ -26,7 +26,7 @@ export function CurrentlyTrackingCard({
   onPickerOpenChange: (open: boolean) => void
   onCreateProject: () => void
 }) {
-  const { status, start, stop, pause, resume, switchTo, correctStart, setNote } = timer
+  const { status, isPending, start, stop, pause, resume, switchTo, correctStart, setNote } = timer
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [note, setNoteValue] = useState('')
@@ -60,11 +60,12 @@ export function CurrentlyTrackingCard({
               value={selectedProjectId}
             />
             <Button
-              disabled={selectedProjectId === null}
+              disabled={selectedProjectId === null || isPending}
               onClick={() => selectedProjectId !== null && void start(selectedProjectId)}
+              size="lg"
             >
               <Play className="size-4" />
-              Start timer
+              {isPending ? 'Starting…' : 'Start timer'}
             </Button>
           </div>
         )}
@@ -95,6 +96,11 @@ export function CurrentlyTrackingCard({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {isPending && (
+            <span className="text-sm text-muted-foreground" role="status">
+              Updating timer…
+            </span>
+          )}
           <output
             aria-label="Elapsed time"
             className="text-2xl font-semibold tabular-nums text-success"
@@ -104,21 +110,38 @@ export function CurrentlyTrackingCard({
           {status.running && (
             <Button
               aria-label="Correct start time"
+              disabled={isPending}
               onClick={() => setCorrectionOpen(true)}
               variant="subtle"
             >
               <Clock className="size-4" />
             </Button>
           )}
-          <Button aria-label="Stop timer" onClick={() => void stop()} variant="destructive">
+          <Button
+            aria-label="Stop timer"
+            disabled={isPending}
+            onClick={() => void stop()}
+            size="lg"
+            variant="destructive"
+          >
             <Square className="size-4" />
           </Button>
           {status.paused ? (
-            <Button aria-label="Resume timer" onClick={() => void resume()} variant="subtle">
+            <Button
+              aria-label="Resume timer"
+              disabled={isPending}
+              onClick={() => void resume()}
+              variant="subtle"
+            >
               <Play className="size-4" />
             </Button>
           ) : (
-            <Button aria-label="Pause timer" onClick={() => void pause()} variant="subtle">
+            <Button
+              aria-label="Pause timer"
+              disabled={isPending}
+              onClick={() => void pause()}
+              variant="subtle"
+            >
               <Pause className="size-4" />
             </Button>
           )}
@@ -131,6 +154,7 @@ export function CurrentlyTrackingCard({
           <Input
             aria-label="Add a note"
             className="border-0 px-0 focus-visible:ring-0"
+            disabled={isPending}
             onBlur={() => void setNote(note)}
             onChange={(event) => setNoteValue(event.target.value)}
             placeholder="Add a note..."
@@ -139,7 +163,7 @@ export function CurrentlyTrackingCard({
         </div>
         <ProjectPicker
           onCreate={onCreateProject}
-          onOpenChange={onPickerOpenChange}
+          onOpenChange={(open) => !isPending && onPickerOpenChange(open)}
           onSelect={(projectId) => {
             if (projectId !== status.projectId) void switchTo(projectId)
           }}

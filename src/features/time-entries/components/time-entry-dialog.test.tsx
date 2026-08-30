@@ -41,6 +41,18 @@ describe('TimeEntryDialog – create', () => {
     await waitFor(() => expect(closed).toBe(true))
   })
 
+  it('accepts and normalises lenient manual times', async () => {
+    const project = await seedProject('Alpha')
+    let closed = false
+    renderWithProviders(<TimeEntryDialog open onClose={() => { closed = true }} />)
+    await waitFor(() => screen.getByRole('option', { name: 'Alpha' }))
+    fireEvent.change(screen.getByRole('combobox', { name: /project/i }), { target: { value: String(project.id) } })
+    fireEvent.change(screen.getByRole('textbox', { name: /start time/i }), { target: { value: '9.5h' } })
+    fireEvent.change(screen.getByRole('textbox', { name: /end time/i }), { target: { value: '1100' } })
+    fireEvent.click(screen.getByRole('button', { name: /add entry/i }))
+    await waitFor(() => expect(closed).toBe(true))
+  })
+
   it('calls onClose when Cancel is clicked', () => {
     let closed = false
     renderWithProviders(<TimeEntryDialog open onClose={() => { closed = true }} />)

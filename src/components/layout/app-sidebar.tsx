@@ -12,6 +12,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useNavigationStore, type View } from '@/app/navigation'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 /**
@@ -45,7 +46,7 @@ export function AppSidebar() {
         </div>
         <nav aria-label="Main" className="flex flex-col gap-1 px-2">
           {items.map((item) => (
-            <button
+            <Button
               aria-current={view === item.view ? 'page' : undefined}
               className={cn(
                 'flex min-h-10 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
@@ -53,11 +54,11 @@ export function AppSidebar() {
               )}
               key={item.view}
               onClick={() => navigate(item.view)}
-              type="button"
+              variant="ghost"
             >
               <item.icon aria-hidden className="size-4 shrink-0" />
               <span className="sr-only lg:not-sr-only">{item.label}</span>
-            </button>
+            </Button>
           ))}
         </nav>
       </div>

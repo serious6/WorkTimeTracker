@@ -11,6 +11,7 @@ import { useDeleteProjectBudget, useProjectBudgets } from '@/features/budgets/bu
 import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import { useProjects } from '@/features/projects/project-queries'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
+import { useTicker } from '@/features/timer/use-ticker'
 import { DELETED_PROJECT_NAME, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { formatDay, formatDuration, fromDateKey } from '@/lib/date'
 
@@ -19,12 +20,14 @@ function BudgetProgress({
   budget,
   entries,
   projectName,
+  now,
 }: {
   budget: ProjectBudget
   entries: TimeEntry[]
   projectName: string
+  now: number
 }) {
-  const report = budgetReport(budget, entries)
+  const report = budgetReport(budget, entries, now)
   return (
     <div className="flex items-center gap-3">
       <Progress
@@ -44,6 +47,7 @@ export function BudgetsPage() {
   const { data: budgets = [] } = useProjectBudgets()
   const { data: projects = [] } = useProjects()
   const { data: entries = [] } = useTimeEntries()
+  const now = useTicker(true)
   const deleteBudget = useDeleteProjectBudget()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ProjectBudget>()
@@ -120,6 +124,7 @@ export function BudgetsPage() {
                   <BudgetProgress
                     budget={budget}
                     entries={entries}
+                    now={now}
                     projectName={projectName(budget.projectId)}
                   />
                 </li>

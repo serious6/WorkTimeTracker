@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, Plus, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useProjects } from '../project-queries'
 import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
@@ -52,12 +53,12 @@ export function ProjectPicker({
 
   return (
     <div className="relative w-full sm:w-72" ref={container}>
-      <button
+      <Button
         aria-expanded={open}
         aria-haspopup="listbox"
         className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => onOpenChange(!open)}
-        type="button"
+        variant="outline"
       >
         <span className="flex min-w-0 items-center gap-2">
           {selected && (
@@ -72,7 +73,7 @@ export function ProjectPicker({
           </span>
         </span>
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-      </button>
+      </Button>
 
       {open && (
         <div className="absolute z-40 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-lg">
@@ -88,7 +89,7 @@ export function ProjectPicker({
           </div>
           <div className="max-h-56 overflow-y-auto py-1" role="listbox">
             {matches.map((project) => (
-              <button
+              <Button
                 aria-selected={project.id === value}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
                 key={project.id}
@@ -97,7 +98,7 @@ export function ProjectPicker({
                   onOpenChange(false)
                 }}
                 role="option"
-                type="button"
+                variant="ghost"
               >
                 <span
                   aria-hidden
@@ -105,23 +106,23 @@ export function ProjectPicker({
                   style={{ backgroundColor: project.color }}
                 />
                 {project.name}
-              </button>
+              </Button>
             ))}
             {matches.length === 0 && (
               <p className="px-3 py-2 text-sm text-muted-foreground">No projects found</p>
             )}
           </div>
-          <button
+          <Button
             className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-left text-sm text-primary outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
             onClick={() => {
               onOpenChange(false)
               onCreate()
             }}
-            type="button"
+            variant="ghost"
           >
             <Plus className="size-4" />
             Create project
-          </button>
+          </Button>
         </div>
       )}
     </div>

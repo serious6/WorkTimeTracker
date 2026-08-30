@@ -94,10 +94,6 @@ One pattern per job. A deviation needs a comment that explains why.
 - Do: use `Button` with its variants, `Dialog`/`ConfirmDialog` for modals and `Input`/`Select`/
   `Textarea`/`Checkbox` for fields.
 - Don't: write one-off markup such as `<button className="rounded-md bg-blue-500 …">`.
-- Accepted deviation: rows that make a whole list item or grid cell clickable (project rows in
-  `recent-projects-card.tsx`, day cells in `week-page.tsx`, options in `project-picker.tsx`) stay
-  plain `<button>` elements. They are regions, not buttons, and must keep the shared focus ring
-  (`focus-visible:ring-2 focus-visible:ring-ring`) and a full-width hit area.
 
 ### 4. Contrast
 
@@ -130,6 +126,8 @@ Related controls belong together, dangerous ones do not.
 
 ### 7. Alignment
 
+Consistent alignment makes related information easier to scan and compare.
+
 - Do: use `space-y-5` for page sections, `gap-4`/`gap-5` for card grids, `Card` for grouping and
   `tabular-nums` for every number that is read in a column.
 - Don't: use arbitrary values such as `p-[13px]` or `mt-[7px]`; if the scale does not fit, explain
@@ -145,17 +143,17 @@ considered laws need judgement, rejected laws must not be reintroduced.
 | Law | Why here | How it is applied |
 | --- | --- | --- |
 | Jakob's Law | Users arrive from Toggl, Clockify or Harvest. | Sidebar navigation, a start/stop control at the top of the dashboard and a reverse chronological entry list (`time-entry-list.tsx`). |
-| Fitts's Law | Starting and stopping is the most frequent action. | The timer controls sit in the first card of the dashboard; every interactive control keeps a 40×40 px hit area (`Button` `size="icon"`, `size="sm"` and `size="inline"` extend their box with a transparent pseudo element). |
+| Fitts's Law | Starting and stopping is the most frequent action. | The primary start/stop control uses the largest `Button` size in the first dashboard card; every interactive control keeps a 40×40 px hit area (`size="sm"` and `size="inline"` extend their box with a transparent pseudo element). |
 | Hick's Law | Settings, budgets and reports offer many options. | Options are grouped into `Card` sections; ranges are chosen from one `Select` instead of many toggles. |
 | Miller's Law | Dashboard and reports carry many numbers. | Four KPI cards per row at most, further metrics chunked into labelled cards. |
 | Law of Proximity | See principle 6. | Timer controls are one group; deleting is separated. |
 | Law of Common Region | Cards are the grouping device. | Use `Card`/`CardHeader`/`CardContent` instead of ad-hoc spacing. |
 | Law of Similarity / Uniform Connectedness | Reinforces principle 3. | A `Button` variant always means the same thing; row triggers always look like rows. |
 | Aesthetic-Usability Effect | Polish raises trust in the tracked data. | One spacing scale, one radius (`--radius`), one type scale. |
-| Doherty Threshold | Timer ticks and storage reads. | React Query caches keep re-renders under 400 ms and mutations report through `toast`; never block the UI on a write. |
+| Doherty Threshold | Timer ticks and storage reads. | Timer and entry controls show a pending state immediately while writes complete, then mutations report through `toast`. |
 | Peak-End Rule | Stopping the timer is the emotional peak. | Stopping and saving confirm with a toast that names the tracked duration. |
 | Goal-Gradient Effect | Daily and weekly targets, project budgets. | `Progress` bars for the daily target, the weekly target and every budget instead of raw totals. |
-| Postel's Law | Manual time entry. | Native `type="time"`/`type="date"` fields normalise what users type, durations accept decimal hours, and invalid input is reported inline instead of silently corrected. |
+| Postel's Law | Manual time entry. | Time fields accept `9`, `0900`, `09:00` and decimal hours such as `9.5h`; invalid input is reported inline instead of silently corrected. |
 | Von Restorff Effect | The running timer must stand out. | Only the active timer combines the `success` accent with a `success` card border. |
 | Serial Position Effect | Sidebar order. | Dashboard and Time Entries open the list, Settings closes it, rarely used views sit in the middle (`app-sidebar.tsx`). |
 | Tesler's Law | Rounding, overtime and break rules are complex. | The complexity lives in `contract/domain-rules.json` and the backend, not in user-facing options. |

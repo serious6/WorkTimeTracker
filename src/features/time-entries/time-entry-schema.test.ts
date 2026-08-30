@@ -52,6 +52,30 @@ describe('timeEntryFormSchema', () => {
     expect(result.success).toBe(true)
   })
 
+  it.each([
+    ['9', '09:00'],
+    ['0900', '09:00'],
+    ['9.5h', '09:30'],
+  ])('normalises lenient time input %s', (input, expected) => {
+    const result = timeEntryFormSchema.parse({
+      projectId: 1,
+      date: '2026-08-27',
+      startTime: input,
+      endTime: '18',
+    })
+    expect(result.startTime).toBe(expected)
+  })
+
+  it('rejects invalid time input', () => {
+    const result = timeEntryFormSchema.safeParse({
+      projectId: 1,
+      date: '2026-08-27',
+      startTime: '25',
+      endTime: '18',
+    })
+    expect(result.success).toBe(false)
+  })
+
   it('rejects missing project', () => {
     const result = timeEntryFormSchema.safeParse({
       projectId: undefined,

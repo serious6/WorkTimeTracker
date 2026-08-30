@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { addDays, formatDay, formatWeekRange, formatDuration } from '@/lib/date'
 import { overtimeMinutes, progressPercentage } from '../metrics'
@@ -19,10 +20,10 @@ function OvertimeSection({
   onOpen: () => void
 }) {
   return (
-    <button
+    <Button
       className="w-full rounded-md p-2 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onOpen}
-      type="button"
+      variant="ghost"
     >
       <p className="text-sm font-medium text-primary">{label}</p>
       <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
@@ -47,7 +48,7 @@ function OvertimeSection({
           <p className="pt-1 text-xs text-muted-foreground">{caption}</p>
         </div>
       </div>
-    </button>
+    </Button>
   )
 }
 

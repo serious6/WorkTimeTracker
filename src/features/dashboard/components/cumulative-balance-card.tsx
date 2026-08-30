@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { formatDay, formatDuration, formatSignedDuration } from '@/lib/date'
 import type { CumulativeBalance } from '../balance'
 
@@ -22,10 +23,10 @@ export function CumulativeBalanceCard({
         </p>
       </CardHeader>
       <CardContent>
-        <button
+        <Button
           className="w-full rounded-md p-2 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenWeek}
-          type="button"
+          variant="ghost"
         >
           <p
             className={`text-2xl font-semibold tabular-nums ${
@@ -40,7 +41,7 @@ export function CumulativeBalanceCard({
           <p className="pt-1 text-xs text-muted-foreground">
             Carried into this day: {formatSignedDuration(balance.carriedOverMinutes)}
           </p>
-        </button>
+        </Button>
       </CardContent>
     </Card>
   )

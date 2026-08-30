@@ -39,7 +39,7 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 | `components/ui/input.tsx` | Consistency | no shared checkbox, so option lists styled their own | **fixed**: added `Checkbox` |
 | `components/ui/toast.tsx` | Accessibility, Peak-End | toasts already render in an `aria-live="polite"` region with `role="status"` | no change |
 | All icons | Accessibility | most decorative `lucide` icons are not marked `aria-hidden` | **accepted**: they carry no accessible name, so assistive technology ignores them; new code follows the rule in `CONTRIBUTING.md` |
-| Row triggers | Consistency | clickable list rows and grid cells are plain `<button>` elements | **accepted**: documented deviation, they are regions, not buttons, and keep the shared focus ring |
+| Row triggers | Consistency | clickable list rows and grid cells used one-off `<button>` markup | **fixed**: they use the shared `Button` ghost variant with a 40 px minimum target |
 | In-card range selects | Consistency, Fitts's Law | `time-by-project-card.tsx` and `weekly-summary-card.tsx` shrank the shared field to 32 px | **fixed**: they use the shared field height |
 | `recent-projects-card.tsx` | Consistency | hand-written link button in the card header | **fixed**: `Button variant="link" size="inline"` |
 | `project-dialog.tsx` | Fitts's Law | 28 px colour swatches sitting 8 px apart | **fixed**: 40 px hit area, gap widened so the areas do not overlap |
@@ -56,10 +56,10 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 - Accessibility: the running state was conveyed by the green elapsed time only — **fixed**, the card
   names `Running`/`Paused` in text.
 - Goal-Gradient: daily target had a progress bar, the weekly total did not — **fixed**.
-- Fitts's Law: start/stop sit in the first card, above the entry list; all timer buttons are ≥40 px.
+- Fitts's Law: start/stop use the largest button size in the first card; all other timer buttons are ≥40 px.
 - Miller's Law: four KPI cards plus five labelled cards, all chunked; no flat wall of numbers.
-- Doherty Threshold: the timer ticks locally through `use-ticker`, mutations are React Query
-  mutations with immediate toast feedback.
+- Doherty Threshold: the timer ticks locally through `use-ticker`; controls show an immediate pending
+  state while React Query mutations complete, followed by toast feedback.
 - Proximity: correct-start, stop, pause/resume form one group; deleting an entry lives in the row
   `Menu`, not next to them.
 
@@ -71,7 +71,7 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
   "Secondary stats" cards instead of one table.
 - Accessibility: week navigation buttons are icon-only but labelled (`Previous week`, `Next week`)
   and now 40×40 px.
-- Consistency: day cells are row triggers (accepted deviation).
+- Consistency: day cells use the shared `Button` ghost variant.
 
 ### Projects (`pages/projects-page.tsx`)
 
@@ -79,7 +79,7 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
   **fixed**, delete is separated (`ml-2`) and uses the destructive tone.
 - Accessibility: both icon actions are labelled per project (`Edit Alpha`, `Delete Alpha`), deletion
   is confirmed through `ConfirmDialog`.
-- Consistency: the project name is a row trigger opening the filtered entry list (accepted).
+- Consistency: the project-name row trigger uses the shared `Button` ghost variant.
 
 ### Time Entries (`pages/time-entries-page.tsx`, `features/time-entries/`)
 
@@ -87,6 +87,8 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 - Accessibility: play/pause and the row menu are labelled; destructive actions live inside the
   `Menu`, so they cannot be hit by accident.
 - Serial Position Effect: the view moved to the second sidebar slot — **fixed** (see Sidebar).
+- Postel's Law: manual start/end fields normalise `9`, `0900`, `09:00` and `9.5h`, while invalid
+  values produce an inline error.
 
 ### Time Management (`pages/time-management-page.tsx`)
 

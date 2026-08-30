@@ -37,10 +37,10 @@ export function RecentProjectsCard({
           <ul className="space-y-1">
             {recent.map((item) => (
               <li key={item.projectId}>
-                <button
+                <Button
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                   onClick={() => item.projectId !== null && onSelectProject(item.projectId)}
-                  type="button"
+                  variant="ghost"
                 >
                   <span
                     aria-hidden
@@ -51,7 +51,7 @@ export function RecentProjectsCard({
                   <span className="tabular-nums text-muted-foreground">
                     {formatDuration(item.minutes)}
                   </span>
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

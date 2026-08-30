@@ -1,5 +1,6 @@
 import { useNavigationStore } from '@/app/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboard-store'
 import { dayRange, entriesInRange, monthRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
@@ -48,7 +49,7 @@ export function CalendarPage() {
               const minutes = totalMinutes(entriesInRange(entries, range, now), now, range)
               const inMonth = day.getMonth() === selectedDate.getMonth()
               return (
-                <button
+                <Button
                   className={cn(
                     'rounded-md border border-border p-2 text-left text-xs outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
                     !inMonth && 'opacity-40',
@@ -59,13 +60,13 @@ export function CalendarPage() {
                     setSelectedDate(toDateKey(day))
                     navigate('dashboard')
                   }}
-                  type="button"
+                  variant="ghost"
                 >
                   <span className="block font-medium">{day.getDate()}</span>
                   <span className="block tabular-nums text-muted-foreground">
                     {minutes > 0 ? formatDuration(minutes) : '–'}
                   </span>
-                </button>
+                </Button>
               )
             })}
           </div>

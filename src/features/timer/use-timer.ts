@@ -39,6 +39,8 @@ export function useTimer(now: number) {
   const updateEntry = useUpdateTimeEntry()
   const updateNote = useUpdateTimeEntryNote()
   const switchEntry = useSwitchRunningTimeEntry()
+  const isPending =
+    createEntry.isPending || updateEntry.isPending || updateNote.isPending || switchEntry.isPending
 
   const running = findRunningEntry(entries)
 
@@ -213,5 +215,5 @@ export function useTimer(now: number) {
     [running, updateNote],
   )
 
-  return { status, start, stop, pause, resume, switchTo, correctStart, setNote }
+  return { status, isPending, start, stop, pause, resume, switchTo, correctStart, setNote }
 }

@@ -14,6 +14,7 @@ function project(id: number, name: string, color = '#22c55e'): Project {
 function makeTimer(overrides: Partial<ReturnType<typeof useTimer>> = {}): ReturnType<typeof useTimer> {
   return {
     status: { running: undefined, paused: false, projectId: null, elapsedMs: 0 },
+    isPending: false,
     start: vi.fn(),
     stop: vi.fn(),
     pause: vi.fn(),

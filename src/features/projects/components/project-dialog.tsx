@@ -84,7 +84,7 @@ export function ProjectDialog({
           <legend>Color</legend>
           <div className="flex flex-wrap gap-3">
             {PROJECT_COLORS.map((option) => (
-              <button
+              <Button
                 aria-label={`Color ${option}`}
                 aria-pressed={color === option}
                 className={cn(
@@ -94,7 +94,7 @@ export function ProjectDialog({
                 key={option}
                 onClick={() => setColor(option)}
                 style={{ backgroundColor: option }}
-                type="button"
+                variant="ghost"
               />
             ))}
           </div>

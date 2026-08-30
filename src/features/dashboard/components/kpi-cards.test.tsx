@@ -41,6 +41,17 @@ describe('KpiCards', () => {
     expect(screen.queryByLabelText('Tracked Today progress')).not.toBeInTheDocument()
   })
 
+  it('renders weekly progress with its computed percentage', () => {
+    renderKpi(240, 1200, 480, 2400)
+    expect(screen.getByLabelText('Weekly Total progress')).toHaveAttribute('aria-valuenow', '50')
+    expect(screen.getByLabelText('Weekly Total progress').nextElementSibling).toHaveTextContent('50%')
+  })
+
+  it('does not render weekly progress when no weekly target', () => {
+    renderKpi(120, 480, 480, 0)
+    expect(screen.queryByLabelText('Weekly Total progress')).not.toBeInTheDocument()
+  })
+
   it('shows weekly overtime when weekly tracked exceeds target', () => {
     renderKpi(0, 2520, 480, 2400)
     // 2520 - 2400 = 120 mins = 2h
