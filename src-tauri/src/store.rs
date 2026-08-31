@@ -4,8 +4,8 @@ use crate::{
     config::DbConfig,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ListRange, Project, ProjectBudget, SaveAbsence,
-        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
-        WorkSettings,
+        SaveProject, SaveProjectBudget, SaveTimeEntry, SaveWorkItem, TimeEntry, TimeEntryAudit,
+        User, WorkItem, WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -106,6 +106,19 @@ pub trait Store: LoginAttemptStore {
         input: &SaveProject,
     ) -> Result<Project, StoreError>;
     fn delete_project(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
+
+    /// Answers the user's work items, seeding the four leave/absence presets
+    /// the first time they are listed for that user.
+    fn list_work_items(&self, user_id: i64) -> Result<Vec<WorkItem>, StoreError>;
+    fn insert_work_item(&self, user_id: i64, input: &SaveWorkItem)
+        -> Result<WorkItem, StoreError>;
+    fn update_work_item(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveWorkItem,
+    ) -> Result<WorkItem, StoreError>;
+    fn delete_work_item(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
     fn list_time_entries(
         &self,

@@ -213,10 +213,83 @@ pub struct Project {
 pub const ENTRY_TYPE_WORK: &str = "work";
 pub const ENTRY_TYPE_BREAK: &str = "break";
 
+/// The four leave/absence presets seeded for every user, plus the
+/// user-extensible `project` kind, each carrying its own cost center.
+pub const WORK_ITEM_KIND_FLEXTIME_COMPENSATION: &str = "flextime_compensation";
+pub const WORK_ITEM_KIND_UNPAID_LEAVE: &str = "unpaid_leave";
+pub const WORK_ITEM_KIND_SICKNESS: &str = "sickness";
+pub const WORK_ITEM_KIND_TRAINING: &str = "training";
+pub const WORK_ITEM_KIND_PROJECT: &str = "project";
+
+pub const WORK_ITEM_KINDS: [&str; 5] = [
+    WORK_ITEM_KIND_FLEXTIME_COMPENSATION,
+    WORK_ITEM_KIND_UNPAID_LEAVE,
+    WORK_ITEM_KIND_SICKNESS,
+    WORK_ITEM_KIND_TRAINING,
+    WORK_ITEM_KIND_PROJECT,
+];
+
+/// The presets seeded for a user on first use, as `(kind, name)`. `project`
+/// is not seeded, a user creates as many of those as they need.
+pub const WORK_ITEM_PRESETS: [(&str, &str); 4] = [
+    (WORK_ITEM_KIND_FLEXTIME_COMPENSATION, "Flextime Compensation"),
+    (WORK_ITEM_KIND_UNPAID_LEAVE, "Unpaid leave of absence"),
+    (WORK_ITEM_KIND_SICKNESS, "Sickness"),
+    (WORK_ITEM_KIND_TRAINING, "Training"),
+];
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveWorkItem {
+    pub kind: String,
+    pub name: String,
+    pub cost_center: Option<String>,
+    pub active: bool,
+}
+
+impl SaveWorkItem {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize(&mut self.kind);
+        normalize(&mut self.name);
+        normalize_optional(&mut self.cost_center);
+        if !WORK_ITEM_KINDS.contains(&self.kind.as_str()) {
+            return Err("invalid work item kind");
+        }
+        if self.name.is_empty() || self.name.chars().count() > MAX_NAME {
+            return Err("invalid work item name");
+        }
+        if self.kind != WORK_ITEM_KIND_PROJECT && self.cost_center.is_some() {
+            return Err("only a project work item carries a cost center");
+        }
+        if self
+            .cost_center
+            .as_ref()
+            .is_some_and(|text| text.chars().count() > MAX_NAME)
+        {
+            return Err("invalid cost center");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkItem {
+    pub id: i64,
+    pub kind: String,
+    pub name: String,
+    pub cost_center: Option<String>,
+    pub active: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveTimeEntry {
     pub project_id: Option<i64>,
+    #[serde(default)]
+    pub work_item_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
     /// Missing input records work, breaks have to be requested explicitly.
@@ -243,11 +316,17 @@ impl SaveTimeEntry {
         if !matches!(self.entry_type(), ENTRY_TYPE_WORK | ENTRY_TYPE_BREAK) {
             return Err("invalid entry type");
         }
-        if self.is_break() && self.project_id.is_some() {
+        if self.is_break() && (self.project_id.is_some() || self.work_item_id.is_some()) {
             return Err("a break is not booked on a project");
         }
         if self.project_id.is_some_and(|project_id| project_id <= 0) {
             return Err("invalid project");
+        }
+        if self.work_item_id.is_some_and(|work_item_id| work_item_id <= 0) {
+            return Err("invalid work item");
+        }
+        if self.project_id.is_some() && self.work_item_id.is_some() {
+            return Err("choose either a project or a work item");
         }
         if !is_timestamp(&self.start_time) {
             return Err("invalid start time");
@@ -276,6 +355,7 @@ impl SaveTimeEntry {
 pub struct TimeEntry {
     pub id: i64,
     pub project_id: Option<i64>,
+    pub work_item_id: Option<i64>,
     pub start_time: String,
     pub end_time: Option<String>,
     pub entry_type: String,
@@ -581,6 +661,7 @@ mod tests {
     fn rejects_entries_that_end_before_they_start() {
         let mut input = SaveTimeEntry {
             project_id: Some(1),
+            work_item_id: None,
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: Some("2026-08-27T09:00:00.000Z".into()),
             entry_type: None,
@@ -596,6 +677,7 @@ mod tests {
     fn accepts_a_running_entry_without_an_end_time() {
         let mut input = SaveTimeEntry {
             project_id: Some(1),
+            work_item_id: None,
             start_time: "2026-08-27T10:00:00.000Z".into(),
             end_time: None,
             entry_type: None,
@@ -610,6 +692,7 @@ mod tests {
     fn accepts_a_break_without_a_project() {
         let mut input = SaveTimeEntry {
             project_id: None,
+            work_item_id: None,
             start_time: "2026-08-27T12:00:00.000Z".into(),
             end_time: Some("2026-08-27T12:30:00.000Z".into()),
             entry_type: Some(" break ".into()),
@@ -623,6 +706,7 @@ mod tests {
     fn rejects_breaks_that_are_booked_on_a_project() {
         let mut input = SaveTimeEntry {
             project_id: Some(1),
+            work_item_id: None,
             start_time: "2026-08-27T12:00:00.000Z".into(),
             end_time: Some("2026-08-27T12:30:00.000Z".into()),
             entry_type: Some(ENTRY_TYPE_BREAK.into()),
@@ -635,6 +719,7 @@ mod tests {
     fn rejects_an_unknown_entry_type() {
         let mut input = SaveTimeEntry {
             project_id: Some(1),
+            work_item_id: None,
             start_time: "2026-08-27T12:00:00.000Z".into(),
             end_time: None,
             entry_type: Some("holiday".into()),
@@ -647,6 +732,7 @@ mod tests {
     fn rejects_malformed_timestamp_strings() {
         let mut input = SaveTimeEntry {
             project_id: Some(1),
+            work_item_id: None,
             start_time: "xxxxxxxxxxxxTxxxxxxxxxxZ".into(),
             end_time: None,
             entry_type: None,
@@ -654,6 +740,74 @@ mod tests {
         };
 
         assert_eq!(input.validate(), Err("invalid start time"));
+    }
+
+    #[test]
+    fn rejects_entries_booked_on_both_a_project_and_a_work_item() {
+        let mut input = SaveTimeEntry {
+            project_id: Some(1),
+            work_item_id: Some(2),
+            start_time: "2026-08-27T10:00:00.000Z".into(),
+            end_time: None,
+            entry_type: None,
+            note: None,
+        };
+        assert_eq!(
+            input.validate(),
+            Err("choose either a project or a work item")
+        );
+    }
+
+    #[test]
+    fn accepts_a_work_entry_booked_on_a_work_item_instead_of_a_project() {
+        let mut input = SaveTimeEntry {
+            project_id: None,
+            work_item_id: Some(2),
+            start_time: "2026-08-27T10:00:00.000Z".into(),
+            end_time: None,
+            entry_type: None,
+            note: None,
+        };
+        input.validate().unwrap();
+    }
+
+    #[test]
+    fn validates_work_item_input() {
+        let mut input = SaveWorkItem {
+            kind: " project ".into(),
+            name: " Client X ".into(),
+            cost_center: Some(" CC-42 ".into()),
+            active: true,
+        };
+        input.validate().unwrap();
+        assert_eq!(input.kind, "project");
+        assert_eq!(input.name, "Client X");
+        assert_eq!(input.cost_center.as_deref(), Some("CC-42"));
+    }
+
+    #[test]
+    fn rejects_an_unknown_work_item_kind() {
+        let mut input = SaveWorkItem {
+            kind: "vacation".into(),
+            name: "Vacation".into(),
+            cost_center: None,
+            active: true,
+        };
+        assert_eq!(input.validate(), Err("invalid work item kind"));
+    }
+
+    #[test]
+    fn rejects_a_cost_center_on_a_preset_work_item() {
+        let mut input = SaveWorkItem {
+            kind: WORK_ITEM_KIND_SICKNESS.into(),
+            name: "Sickness".into(),
+            cost_center: Some("CC-1".into()),
+            active: true,
+        };
+        assert_eq!(
+            input.validate(),
+            Err("only a project work item carries a cost center")
+        );
     }
 
     #[test]

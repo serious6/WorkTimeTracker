@@ -15,7 +15,7 @@ use crate::{
     models::{
         adjusted_daily_target, Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Credentials,
         ListRange, Project, ProjectBudget, SaveAbsence, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT,
+        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkItem, WorkSettings, AUDIT_LOG_LIMIT,
         DEFAULT_LIST_LIMIT, GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
     },
     store::{Store, StoreError},
@@ -259,6 +259,7 @@ fn serializes_the_models_of_the_entity_contract() {
         json(&TimeEntry {
             id: 1,
             project_id: None,
+            work_item_id: None,
             start_time: moment.clone(),
             end_time: None,
             entry_type: "work".into(),
@@ -321,7 +322,7 @@ fn serializes_the_models_of_the_entity_contract() {
             actor: "user@example.com".into(),
             old_value: None,
             new_value: None,
-            recorded_at: moment,
+            recorded_at: moment.clone(),
         }),
     );
     assert_entity(
@@ -337,6 +338,18 @@ fn serializes_the_models_of_the_entity_contract() {
         "complianceLimits",
         json(&ComplianceLimits {
             ..GERMAN_COMPLIANCE_LIMITS
+        }),
+    );
+    assert_entity(
+        "workItem",
+        json(&WorkItem {
+            id: 1,
+            kind: "project".into(),
+            name: "Client X".into(),
+            cost_center: None,
+            active: true,
+            created_at: moment.clone(),
+            updated_at: moment,
         }),
     );
 }

@@ -6,8 +6,8 @@ use crate::{
     logging,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, Project, ProjectBudget,
-        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
-        User, WorkSettings,
+        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, SaveWorkItem, TimeEntry,
+        TimeEntryAudit, User, WorkItem, WorkSettings,
     },
     store::{Database, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
@@ -209,6 +209,32 @@ authed_command!(
 );
 
 authed_command!(
+    fn list_work_items() -> Vec<WorkItem>,
+    |db, user| Ok(db.0.list_work_items(user)?)
+);
+
+authed_command!(
+    fn create_work_item(mut input: SaveWorkItem) -> WorkItem,
+    |db, user| {
+        input.validate()?;
+        Ok(db.0.insert_work_item(user, &input)?)
+    }
+);
+
+authed_command!(
+    fn update_work_item(id: i64, mut input: SaveWorkItem) -> WorkItem,
+    |db, user| {
+        input.validate()?;
+        Ok(db.0.update_work_item(id, user, &input)?)
+    }
+);
+
+authed_command!(
+    fn delete_work_item(id: i64) -> (),
+    |db, user| Ok(db.0.delete_work_item(id, user)?)
+);
+
+authed_command!(
     fn list_time_entries(range: Option<ListRange>) -> Vec<TimeEntry>,
     |db, user| {
         let range = list_range(range)?;
@@ -220,7 +246,7 @@ authed_command!(
     fn create_time_entry(mut input: SaveTimeEntry) -> TimeEntry,
     |db, user| {
         input.validate()?;
-        if input.project_id.is_none() && !input.is_break() {
+        if input.project_id.is_none() && input.work_item_id.is_none() && !input.is_break() {
             return Err(AppError::validation("Project is required"));
         }
         db.0.create_time_entry(user, &input)

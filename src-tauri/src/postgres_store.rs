@@ -13,9 +13,9 @@ use r2d2_postgres::PostgresConnectionManager;
 use crate::{
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, Project, ProjectBudget,
-        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
-        User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK,
-        GERMAN_COMPLIANCE_LIMITS,
+        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, SaveWorkItem, TimeEntry,
+        TimeEntryAudit, User, WorkItem, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS,
+        ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS, WORK_ITEM_KIND_PROJECT, WORK_ITEM_PRESETS,
     },
     store::{
         LoginAttempt, LoginAttemptStore, Store, StoreError, SwitchEntryError, TimeEntryWriteError,
@@ -42,6 +42,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0002_login_attempts",
         include_str!("../../drizzle/0002_login_attempts.sql"),
+    ),
+    (
+        "0003_work_items",
+        include_str!("../../drizzle/0003_work_items.sql"),
     ),
 ];
 
@@ -165,6 +169,46 @@ impl PostgresStore {
             Err(StoreError::NotFound)
         }
     }
+
+    fn assert_owns_work_item(
+        client: &mut impl postgres::GenericClient,
+        user_id: i64,
+        work_item_id: Option<i64>,
+    ) -> Result<(), StoreError> {
+        let Some(work_item_id) = work_item_id else {
+            return Ok(());
+        };
+        let owned: bool = client
+            .query_one(
+                "SELECT EXISTS (SELECT 1 FROM work_items WHERE id = $1 AND user_id = $2)",
+                &[&work_item_id, &user_id],
+            )?
+            .get(0);
+        if owned {
+            Ok(())
+        } else {
+            Err(StoreError::NotFound)
+        }
+    }
+
+    /// Inserts the leave/absence presets that do not exist for `user_id` yet,
+    /// so a freshly registered account, and one whose presets were deleted,
+    /// both see the full set the next time it lists its work items.
+    fn seed_work_item_presets(
+        client: &mut impl postgres::GenericClient,
+        user_id: i64,
+    ) -> Result<(), StoreError> {
+        let now = now_iso();
+        for (kind, name) in WORK_ITEM_PRESETS {
+            client.execute(
+                "INSERT INTO work_items (user_id, kind, name, cost_center, active, created_at, updated_at)
+                 VALUES ($1, $2, $3, NULL, TRUE, $4, $4)
+                 ON CONFLICT DO NOTHING",
+                &[&user_id, &kind, &name, &now],
+            )?;
+        }
+        Ok(())
+    }
 }
 
 fn project_from_row(row: &postgres::Row) -> Project {
@@ -183,12 +227,25 @@ fn entry_from_row(row: &postgres::Row) -> TimeEntry {
     TimeEntry {
         id: row.get(0),
         project_id: row.get(1),
-        start_time: row.get(2),
-        end_time: row.get(3),
-        entry_type: row.get(4),
-        note: row.get(5),
-        created_at: row.get(6),
-        updated_at: row.get(7),
+        work_item_id: row.get(2),
+        start_time: row.get(3),
+        end_time: row.get(4),
+        entry_type: row.get(5),
+        note: row.get(6),
+        created_at: row.get(7),
+        updated_at: row.get(8),
+    }
+}
+
+fn work_item_from_row(row: &postgres::Row) -> WorkItem {
+    WorkItem {
+        id: row.get(0),
+        kind: row.get(1),
+        name: row.get(2),
+        cost_center: row.get(3),
+        active: row.get(4),
+        created_at: row.get(5),
+        updated_at: row.get(6),
     }
 }
 
@@ -241,7 +298,8 @@ impl<'a> Params<'a> {
 
 const PROJECT_COLUMNS: &str = "id, name, description, color, active, created_at, updated_at";
 const ENTRY_COLUMNS: &str =
-    "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
+    "id, project_id, work_item_id, start_time, end_time, entry_type, note, created_at, updated_at";
+const WORK_ITEM_COLUMNS: &str = "id, kind, name, cost_center, active, created_at, updated_at";
 const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
 const AUDIT_COLUMNS: &str = "id, time_entry_id, action, actor, old_value, new_value, recorded_at";
 const ABSENCE_COLUMNS: &str = "id, absence_type, absence_date, created_at, updated_at";
@@ -589,6 +647,100 @@ impl Store for PostgresStore {
         Ok(())
     }
 
+    fn list_work_items(&self, user_id: i64) -> Result<Vec<WorkItem>, StoreError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        PostgresStore::seed_work_item_presets(&mut transaction, user_id)?;
+        let rows = transaction.query(
+            &format!(
+                "SELECT {WORK_ITEM_COLUMNS} FROM work_items WHERE user_id = $1
+                 ORDER BY (kind = '{WORK_ITEM_KIND_PROJECT}'), name"
+            ),
+            &[&user_id],
+        )?;
+        let items = rows.iter().map(work_item_from_row).collect();
+        transaction.commit()?;
+        Ok(items)
+    }
+
+    fn insert_work_item(&self, user_id: i64, input: &SaveWorkItem) -> Result<WorkItem, StoreError> {
+        let mut client = self.conn()?;
+        let now = now_iso();
+        let row = client.query_one(
+            &format!(
+                "INSERT INTO work_items (user_id, kind, name, cost_center, active, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING {WORK_ITEM_COLUMNS}"
+            ),
+            &[
+                &user_id,
+                &input.kind,
+                &input.name,
+                &input.cost_center,
+                &input.active,
+                &now,
+            ],
+        )?;
+        Ok(work_item_from_row(&row))
+    }
+
+    fn update_work_item(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveWorkItem,
+    ) -> Result<WorkItem, StoreError> {
+        let mut client = self.conn()?;
+        let row = client
+            .query_opt(
+                &format!(
+                    "UPDATE work_items SET name = $3, cost_center = $4, active = $5, updated_at = $6
+                     WHERE id = $1 AND user_id = $2 RETURNING {WORK_ITEM_COLUMNS}"
+                ),
+                &[
+                    &id,
+                    &user_id,
+                    &input.name,
+                    &input.cost_center,
+                    &input.active,
+                    &now_iso(),
+                ],
+            )?
+            .ok_or(StoreError::NotFound)?;
+        Ok(work_item_from_row(&row))
+    }
+
+    fn delete_work_item(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        let affected: Vec<TimeEntry> = transaction
+            .query(
+                &format!(
+                    "SELECT {ENTRY_COLUMNS} FROM time_entries WHERE work_item_id = $1 AND user_id = $2"
+                ),
+                &[&id, &user_id],
+            )?
+            .iter()
+            .map(entry_from_row)
+            .collect();
+        transaction.execute(
+            "DELETE FROM work_items WHERE id = $1 AND user_id = $2",
+            &[&id, &user_id],
+        )?;
+        for current in affected {
+            let updated = read_entry(&mut transaction, current.id, user_id)?;
+            record_audit(
+                &mut transaction,
+                user_id,
+                current.id,
+                "updated",
+                Some(&current),
+                Some(&updated),
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     fn list_time_entries(
         &self,
         user_id: i64,
@@ -651,15 +803,17 @@ impl Store for PostgresStore {
             return Err(TimeEntryWriteError::Overlap);
         }
         PostgresStore::assert_owns_project(&mut transaction, user_id, input.project_id)?;
+        PostgresStore::assert_owns_work_item(&mut transaction, user_id, input.work_item_id)?;
         let now = now_iso();
         let row = transaction.query_one(
             &format!(
-                "INSERT INTO time_entries (user_id, project_id, start_time, end_time, entry_type, note, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING {ENTRY_COLUMNS}"
+                "INSERT INTO time_entries (user_id, project_id, work_item_id, start_time, end_time, entry_type, note, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING {ENTRY_COLUMNS}"
             ),
             &[
                 &user_id,
                 &input.project_id,
+                &input.work_item_id,
                 &input.start_time,
                 &input.end_time,
                 &input.entry_type(),
@@ -705,6 +859,7 @@ impl Store for PostgresStore {
             return Err(TimeEntryWriteError::Overlap);
         }
         PostgresStore::assert_owns_project(&mut transaction, user_id, input.project_id)?;
+        PostgresStore::assert_owns_work_item(&mut transaction, user_id, input.work_item_id)?;
         let current = read_entry(&mut transaction, id, user_id)?;
         let entry_type = input
             .entry_type
@@ -712,12 +867,13 @@ impl Store for PostgresStore {
             .unwrap_or(current.entry_type.as_str());
         transaction
             .execute(
-                "UPDATE time_entries SET project_id = $3, start_time = $4, end_time = $5, entry_type = $6, note = $7, updated_at = $8
+                "UPDATE time_entries SET project_id = $3, work_item_id = $4, start_time = $5, end_time = $6, entry_type = $7, note = $8, updated_at = $9
                  WHERE id = $1 AND user_id = $2",
                 &[
                     &id,
                     &user_id,
                     &input.project_id,
+                    &input.work_item_id,
                     &input.start_time,
                     &input.end_time,
                     &entry_type,
@@ -810,16 +966,19 @@ impl Store for PostgresStore {
         .map_err(SwitchEntryError::from)?;
         PostgresStore::assert_owns_project(&mut transaction, user_id, input.project_id)
             .map_err(SwitchEntryError::from)?;
+        PostgresStore::assert_owns_work_item(&mut transaction, user_id, input.work_item_id)
+            .map_err(SwitchEntryError::from)?;
         let now = now_iso();
         let row = transaction
             .query_one(
                 &format!(
-                    "INSERT INTO time_entries (user_id, project_id, start_time, end_time, entry_type, note, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING {ENTRY_COLUMNS}"
+                    "INSERT INTO time_entries (user_id, project_id, work_item_id, start_time, end_time, entry_type, note, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING {ENTRY_COLUMNS}"
                 ),
                 &[
                     &user_id,
                     &input.project_id,
+                    &input.work_item_id,
                     &input.start_time,
                     &input.end_time,
                     &input.entry_type(),
@@ -1532,6 +1691,7 @@ mod tests {
             .unwrap();
         let entry = |day: &str| SaveTimeEntry {
             project_id: Some(project.id),
+            work_item_id: None,
             start_time: format!("{day}T08:00:00.000Z"),
             end_time: Some(format!("{day}T09:00:00.000Z")),
             note: None,
@@ -1673,6 +1833,7 @@ mod tests {
                 user.id,
                 &SaveTimeEntry {
                     project_id: Some(project.id),
+                    work_item_id: None,
                     start_time: "2024-01-01T09:00:00.000Z".into(),
                     end_time: Some("2024-01-01T10:00:00.000Z".into()),
                     entry_type: None,
@@ -1686,6 +1847,7 @@ mod tests {
                 user.id,
                 &SaveTimeEntry {
                     project_id: Some(project.id),
+                    work_item_id: None,
                     start_time: "2024-01-01T09:30:00.000Z".into(),
                     end_time: Some("2024-01-01T10:30:00.000Z".into()),
                     entry_type: None,
