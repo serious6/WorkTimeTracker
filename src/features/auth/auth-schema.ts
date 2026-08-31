@@ -5,7 +5,6 @@ import { isPasswordCompliant, MIN_PASSWORD_LENGTH } from './password-policy'
 export const INVALID_CREDENTIALS_MESSAGE = 'Email or password is incorrect'
 export const DUPLICATE_EMAIL_MESSAGE = 'An account with this email already exists'
 export const PASSWORD_POLICY_MESSAGE = `The password does not meet the policy of at least ${MIN_PASSWORD_LENGTH} characters, upper and lower case letters, and two special characters`
-const EMAIL_TOO_LONG_MESSAGE = `Too big: expected string to have <=${MAX_EMAIL_LENGTH} characters`
 
 export const authUserSchema = z.object({
   id: z.number().int().positive(),
@@ -18,7 +17,7 @@ const emailSchema = z
   .trim()
   .toLowerCase()
   .min(1, 'Email is required')
-  .max(MAX_EMAIL_LENGTH, EMAIL_TOO_LONG_MESSAGE)
+  .max(MAX_EMAIL_LENGTH)
   .refine(isPlausibleEmail, 'Enter a valid email address')
 
 export const credentialsSchema = z.object({
