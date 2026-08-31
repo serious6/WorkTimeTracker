@@ -11,7 +11,8 @@ services:
     environment:
       XDG_DATA_HOME: /root/.local/share
       # `localhost` in the host-native URL would name this container itself.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-worktimetracker}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@db:5432/${POSTGRES_DB:-worktimetracker}
+      DATABASE_URL: ${POSTGRES_CONTAINER_URL:?POSTGRES_CONTAINER_URL must be set in .env}
+      WORK_TIME_TRACKER_COMPOSE: "true"
     volumes:
       - .:/workspace:z
       - node_modules:/workspace/node_modules

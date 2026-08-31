@@ -3,17 +3,29 @@
 use std::collections::HashMap;
 
 pub const DATABASE_URL_ENV: &str = "DATABASE_URL";
-pub const DEFAULT_DATABASE_URL: &str =
-    "postgresql://worktimetracker:worktimetracker@localhost:5432/worktimetracker";
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct DbConfig {
     pub database_url: String,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConfigError;
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{DATABASE_URL_ENV} must be set to a non-empty PostgreSQL connection string"
+        )
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
 impl DbConfig {
     /// Resolves the configuration from the real process environment.
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Result<Self, ConfigError> {
         let vars: HashMap<String, String> = [DATABASE_URL_ENV]
             .into_iter()
             .filter_map(|key| std::env::var(key).ok().map(|value| (key.to_owned(), value)))
@@ -23,13 +35,13 @@ impl DbConfig {
 
     /// Pure resolution from a map of env vars, so it can be unit tested
     /// without mutating the real process environment.
-    pub fn resolve(vars: &HashMap<String, String>) -> Self {
+    pub fn resolve(vars: &HashMap<String, String>) -> Result<Self, ConfigError> {
         let database_url = vars
             .get(DATABASE_URL_ENV)
             .filter(|value| !value.trim().is_empty())
             .cloned()
-            .unwrap_or_else(|| DEFAULT_DATABASE_URL.to_owned());
-        Self { database_url }
+            .ok_or(ConfigError)?;
+        Ok(Self { database_url })
     }
 }
 
@@ -58,17 +70,24 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_the_local_compose_postgres_url_when_unset() {
-        let config = DbConfig::resolve(&HashMap::new());
+    fn rejects_an_unset_database_url() {
+        let error = DbConfig::resolve(&HashMap::new()).expect_err("must require DATABASE_URL");
 
-        assert_eq!(config.database_url, DEFAULT_DATABASE_URL);
+        assert_eq!(
+            error.to_string(),
+            "DATABASE_URL must be set to a non-empty PostgreSQL connection string"
+        );
     }
 
     #[test]
-    fn defaults_to_the_local_compose_postgres_url_when_blank() {
-        let config = DbConfig::resolve(&vars(&[(DATABASE_URL_ENV, "   ")]));
+    fn rejects_a_blank_database_url() {
+        let error =
+            DbConfig::resolve(&vars(&[(DATABASE_URL_ENV, "   ")])).expect_err("must reject blank");
 
-        assert_eq!(config.database_url, DEFAULT_DATABASE_URL);
+        assert_eq!(
+            error.to_string(),
+            "DATABASE_URL must be set to a non-empty PostgreSQL connection string"
+        );
     }
 
     #[test]
@@ -76,7 +95,7 @@ mod tests {
         let user = "worktimetracker";
         let secret = "secret";
         let url = format!("postgresql://{user}:{secret}@localhost/worktimetracker");
-        let config = DbConfig::resolve(&vars(&[(DATABASE_URL_ENV, &url)]));
+        let config = DbConfig::resolve(&vars(&[(DATABASE_URL_ENV, &url)])).unwrap();
 
         assert_eq!(config.database_url, url);
     }

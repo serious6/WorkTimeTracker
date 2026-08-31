@@ -54,12 +54,15 @@ pub struct PostgresStore {
     pool: Pool<Manager>,
 }
 
-fn validate_local_database_hosts(config: &postgres::Config) -> Result<(), LocalEndpointError> {
+fn validate_local_database_hosts(
+    config: &postgres::Config,
+    compose_mode: bool,
+) -> Result<(), LocalEndpointError> {
     for host in config.get_hosts() {
         match host {
             Host::Tcp(host) => {
                 let allowed = host.eq_ignore_ascii_case("localhost")
-                    || host.eq_ignore_ascii_case("db")
+                    || (compose_mode && host.eq_ignore_ascii_case("db"))
                     || host
                         .parse::<IpAddr>()
                         .is_ok_and(|address| address.is_loopback());
@@ -86,7 +89,7 @@ impl std::fmt::Display for LocalEndpointError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             formatter,
-            "database host {:?} is not local; allowed TCP hosts are localhost, loopback addresses, and db",
+            "database host {:?} is not local; allowed TCP hosts are localhost and loopback addresses",
             self.0
         )
     }
@@ -121,7 +124,9 @@ impl From<r2d2::Error> for StoreError {
 impl PostgresStore {
     pub fn connect(database_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let config: postgres::Config = database_url.parse()?;
-        validate_local_database_hosts(&config)?;
+        let compose_mode = std::env::var("WORK_TIME_TRACKER_COMPOSE")
+            .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+        validate_local_database_hosts(&config, compose_mode)?;
         let manager = PostgresConnectionManager::new(config, NoTls);
         let pool = Pool::builder()
             .max_size(4)
@@ -1351,31 +1356,38 @@ mod tests {
     #[test]
     fn accepts_supported_local_database_hosts() {
         for url in [
-            "******localhost/database",
-            "******LOCALHOST/database",
-            "******127.0.0.1/database",
-            "******127.42.0.9/database",
-            "******[::1]/database",
-            "******db/database",
+            "postgresql://user@localhost/database",
+            "postgresql://user@LOCALHOST/database",
+            "postgresql://user@127.0.0.1/database",
+            "postgresql://user@127.42.0.9/database",
+            "postgresql://user@[::1]/database",
             "host=localhost hostaddr=127.0.0.1 dbname=database",
         ] {
             assert!(
-                validate_local_database_hosts(&parsed_config(url)).is_ok(),
+                validate_local_database_hosts(&parsed_config(url), false).is_ok(),
                 "expected {url} to be accepted"
             );
         }
     }
 
     #[test]
+    fn accepts_the_compose_database_host_only_in_compose_mode() {
+        let config = parsed_config("postgresql://user@db/database");
+
+        assert!(validate_local_database_hosts(&config, true).is_ok());
+        assert!(validate_local_database_hosts(&config, false).is_err());
+    }
+
+    #[test]
     fn rejects_remote_database_hosts_before_connecting() {
         for url in [
-            "******example.com/database",
-            "******192.168.1.20/database",
-            "******10.0.0.5/database",
-            "******[2001:db8::1]/database",
+            "postgresql://user@example.com/database",
+            "postgresql://user@192.168.1.20/database",
+            "postgresql://user@10.0.0.5/database",
+            "postgresql://user@[2001:db8::1]/database",
             "host=localhost hostaddr=203.0.113.8 dbname=database",
         ] {
-            let error = validate_local_database_hosts(&parsed_config(url))
+            let error = validate_local_database_hosts(&parsed_config(url), false)
                 .expect_err("remote host should be rejected");
             assert!(error.to_string().contains("is not local"));
         }
@@ -1383,9 +1395,9 @@ mod tests {
 
     #[test]
     fn rejects_a_remote_database_host_in_a_multi_host_configuration() {
-        let config = parsed_config("******localhost:5432,example.com:5432/database");
+        let config = parsed_config("host=localhost,example.com dbname=database");
 
-        assert!(validate_local_database_hosts(&config).is_err());
+        assert!(validate_local_database_hosts(&config, false).is_err());
     }
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
@@ -1481,8 +1493,8 @@ mod tests {
                         store
                             .reserve_login_attempt(
                                 email,
-                                "1971-01-01T10:00:00.000Z",
-                                "1971-01-01T09:00:00.000Z",
+                                "2099-01-01T10:00:00.000Z",
+                                "2099-01-01T09:00:00.000Z",
                                 1000,
                             )
                             .unwrap()

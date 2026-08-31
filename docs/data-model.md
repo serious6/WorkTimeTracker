@@ -4,7 +4,7 @@ This document describes what WorkTimeTracker persists today, as a logical model 
 (context, container, component). It covers the native Postgres database used by the desktop
 application and the browser storage fallback used only for UI development and end-to-end tests.
 There is no remote application server and no external integration; the bundled compose database runs
-locally unless you point `DATABASE_URL` at another Postgres instance.
+locally through the bundled compose database.
 
 Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `drizzle/0002_login_attempts.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
 `src-tauri/src/models.rs`, `src/features/storage/local-repository.ts`, and the Zod schemas under
