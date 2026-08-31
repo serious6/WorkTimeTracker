@@ -102,6 +102,33 @@
       "accepted": false
     },
     {
+      "name": "accepts an email at the UTF-8 byte limit",
+      "input": {
+        "email": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééa@x.io",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": true
+    },
+    {
+      "name": "rejects an email over the UTF-8 byte limit",
+      "input": {
+        "email": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééab@x.io",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
+      "name": "rejects Unicode whitespace in the email",
+      "input": {
+        "email": "first\u0085name@example.com",
+        "password": "secret"
+      },
+      "registration": false,
+      "accepted": false
+    },
+    {
       "name": "accepts a policy compliant registration",
       "input": {
         "email": "first@example.com",

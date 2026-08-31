@@ -24,6 +24,7 @@ describe('isPlausibleEmail', () => {
   it('rejects whitespace', () => {
     expect(isPlausibleEmail('user name@example.com')).toBe(false)
     expect(isPlausibleEmail('user@example .com')).toBe(false)
+    expect(isPlausibleEmail('user\u0085name@example.com')).toBe(false)
   })
 
   it('enforces the max length boundary', () => {
@@ -34,5 +35,10 @@ describe('isPlausibleEmail', () => {
     expect(isPlausibleEmail(atLimit)).toBe(true)
     expect(overLimit).toHaveLength(255)
     expect(isPlausibleEmail(overLimit)).toBe(false)
+  })
+
+  it('measures the max length in UTF-8 bytes', () => {
+    expect(isPlausibleEmail(`${'é'.repeat(124)}a@x.io`)).toBe(true)
+    expect(isPlausibleEmail(`${'é'.repeat(125)}@x.io`)).toBe(false)
   })
 })
