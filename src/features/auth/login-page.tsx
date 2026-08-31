@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { AppLogo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
 import { credentialsSchema, INVALID_CREDENTIALS_MESSAGE } from './auth-schema'
 import { useLogin } from './session-queries'
@@ -10,7 +10,7 @@ import { useLogin } from './session-queries'
 /** Entry point of the application while nobody is signed in. */
 export function LoginPage({ onRegister }: { onRegister: () => void }) {
   const login = useLogin()
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<{ field: string | null; message: string }>()
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -20,14 +20,15 @@ export function LoginPage({ onRegister }: { onRegister: () => void }) {
       password: form.get('password'),
     })
     if (!result.success) {
-      setError(result.error.issues[0]?.message)
+      const issue = result.error.issues[0]
+      setError({ field: typeof issue?.path[0] === 'string' ? issue.path[0] : null, message: issue?.message ?? '' })
       return
     }
 
     try {
       await login.mutateAsync(result.data)
     } catch (failure) {
-      setError(errorMessage(failure, INVALID_CREDENTIALS_MESSAGE))
+      setError({ field: null, message: errorMessage(failure, INVALID_CREDENTIALS_MESSAGE) })
     }
   }
 
@@ -40,17 +41,15 @@ export function LoginPage({ onRegister }: { onRegister: () => void }) {
             <h1 className="text-lg font-semibold">Sign in to TimeTrack</h1>
           </div>
           <form className="space-y-4" onSubmit={submit}>
-            <label className="block space-y-1 text-sm font-medium">
-              Email
+            <Field error={error?.field === 'email' ? error.message : undefined} label="Email">
               <Input autoComplete="username" name="email" placeholder="you@example.com" type="email" />
-            </label>
-            <label className="block space-y-1 text-sm font-medium">
-              Password
+            </Field>
+            <Field error={error?.field === 'password' ? error.message : undefined} label="Password">
               <Input autoComplete="current-password" name="password" type="password" />
-            </label>
-            {error && (
+            </Field>
+            {error?.field === null && (
               <p className="text-sm text-destructive" role="alert">
-                {error}
+                {error.message}
               </p>
             )}
             <div className="flex justify-end gap-2">

@@ -3,7 +3,7 @@ import { MoreVertical, Pause, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import { Field, Input } from '@/components/ui/input'
 import { Menu } from '@/components/ui/menu'
 import { toast } from '@/components/ui/toast-store'
 import { entryMinutes, isRunning } from '@/features/dashboard/metrics'
@@ -138,11 +138,9 @@ export function TimeEntryList({
               )
           }}
         >
-          <label className="block space-y-1 text-sm font-medium">
-            Note
+          <Field error={noteError} label="Note">
             <Input defaultValue={noting?.note ?? ''} name="note" placeholder="What did you work on?" />
-          </label>
-          {noteError && <p className="text-sm text-destructive">{noteError}</p>}
+          </Field>
           <div className="flex justify-end gap-2">
             <Button
               onClick={() => {
