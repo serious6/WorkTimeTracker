@@ -166,6 +166,7 @@ describe('toCsv', () => {
   it.each([
     ['\t=1+1', "'\t=1+1"],
     ['\r@SUM(A1:A2)', "\"'\r@SUM(A1:A2)\""],
+    ['\n+1+1', "\"'\n+1+1\""],
   ])(
     'neutralizes an employee formula hidden behind leading control characters',
     (employee, expected) => {
