@@ -27,7 +27,12 @@ describe('isPlausibleEmail', () => {
   })
 
   it('enforces the max length boundary', () => {
-    expect(isPlausibleEmail(`a@b.${'c'.repeat(250)}`)).toBe(true)
-    expect(isPlausibleEmail(`a@b.${'c'.repeat(251)}`)).toBe(false)
+    const atLimit = `a@b.${'c'.repeat(250)}`
+    const overLimit = `a@b.${'c'.repeat(251)}`
+
+    expect(atLimit).toHaveLength(254)
+    expect(isPlausibleEmail(atLimit)).toBe(true)
+    expect(overLimit).toHaveLength(255)
+    expect(isPlausibleEmail(overLimit)).toBe(false)
   })
 })

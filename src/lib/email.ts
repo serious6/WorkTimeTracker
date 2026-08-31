@@ -1,4 +1,4 @@
-const MAX_EMAIL_LENGTH = 254
+export const MAX_EMAIL_LENGTH = 254
 const PLAUSIBLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/
 
 /** Checks the shared login/register e-mail plausibility rules. */
