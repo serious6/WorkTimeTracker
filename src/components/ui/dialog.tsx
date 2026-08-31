@@ -171,10 +171,8 @@ export function Dialog({
     }
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('focusin', onFocusIn)
-    if (isTopDialog()) {
-      focusInitial()
-      if (previousPanel) hidePanel(previousPanel)
-    }
+    focusInitial()
+    if (previousPanel) hidePanel(previousPanel)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('focusin', onFocusIn)
