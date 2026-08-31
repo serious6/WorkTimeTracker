@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isPlausibleEmail } from '@/lib/email'
 import { isPasswordCompliant, MIN_PASSWORD_LENGTH } from './password-policy'
 
 export const INVALID_CREDENTIALS_MESSAGE = 'Email or password is incorrect'
@@ -17,7 +18,7 @@ const emailSchema = z
   .toLowerCase()
   .min(1, 'Email is required')
   .max(254)
-  .regex(/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/, 'Enter a valid email address')
+  .refine(isPlausibleEmail, 'Enter a valid email address')
 
 export const credentialsSchema = z.object({
   email: emailSchema,

@@ -92,6 +92,11 @@ pub const MIN_PASSWORD_LENGTH: usize = 20;
 /// Number of special characters required by the password policy.
 pub const MIN_PASSWORD_SPECIAL_CHARACTERS: usize = 2;
 
+/// Checks the shared login/register e-mail plausibility rules.
+///
+/// This is not full RFC validation. It accepts a non-empty local part followed
+/// by one `@`, a domain made of at least two non-empty dot-separated labels, no
+/// whitespace anywhere, and an overall length of at most [`MAX_EMAIL`] bytes.
 fn is_email(value: &str) -> bool {
     let mut parts = value.split('@');
     let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
@@ -866,6 +871,12 @@ mod tests {
     }
 
     #[test]
+    fn accepts_plausible_emails() {
+        assert!(is_email("user@example.com"));
+        assert!(is_email("first.last@example.co.uk"));
+    }
+
+    #[test]
     fn rejects_malformed_emails() {
         for email in [
             "user",
@@ -881,6 +892,19 @@ mod tests {
                 "{email}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_emails_with_whitespace() {
+        for email in ["user name@example.com", "user@example .com"] {
+            assert!(!is_email(email), "{email}");
+        }
+    }
+
+    #[test]
+    fn enforces_the_email_max_length_boundary() {
+        assert!(is_email(&format!("a@b.{}", "c".repeat(250))));
+        assert!(!is_email(&format!("a@b.{}", "c".repeat(251))));
     }
 
     #[test]
