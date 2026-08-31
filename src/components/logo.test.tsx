@@ -15,5 +15,8 @@ test('renders a decorative mark that inherits the text colour', () => {
 test('accepts sizing classes from the caller', () => {
   const { container } = render(<AppLogo className="size-7 text-primary" />)
 
-  expect(container.querySelector('svg')).toHaveClass('size-7', 'text-primary')
+  const svg = container.querySelector('svg')
+
+  expect(svg).toHaveClass('size-7', 'text-primary')
+  expect(svg).not.toHaveClass('size-6')
 })
