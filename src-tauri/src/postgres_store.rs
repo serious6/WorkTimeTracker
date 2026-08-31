@@ -3,10 +3,10 @@
 //! connection pool (see `Cargo.toml` for why this crate was chosen over
 //! `sqlx`/`tokio-postgres`+`deadpool`).
 
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 
 use chrono::Utc;
-use postgres::{error::SqlState, NoTls};
+use postgres::{config::Host, error::SqlState, NoTls};
 use r2d2::{Pool, PooledConnection};
 use r2d2_postgres::PostgresConnectionManager;
 
@@ -54,6 +54,46 @@ pub struct PostgresStore {
     pool: Pool<Manager>,
 }
 
+fn validate_local_database_hosts(config: &postgres::Config) -> Result<(), LocalEndpointError> {
+    for host in config.get_hosts() {
+        match host {
+            Host::Tcp(host) => {
+                let allowed = host.eq_ignore_ascii_case("localhost")
+                    || host.eq_ignore_ascii_case("db")
+                    || host
+                        .parse::<IpAddr>()
+                        .is_ok_and(|address| address.is_loopback());
+                if !allowed {
+                    return Err(LocalEndpointError(host.clone()));
+                }
+            }
+            #[cfg(unix)]
+            Host::Unix(_) => {}
+        }
+    }
+    for address in config.get_hostaddrs() {
+        if !address.is_loopback() {
+            return Err(LocalEndpointError(address.to_string()));
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct LocalEndpointError(String);
+
+impl std::fmt::Display for LocalEndpointError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "database host {:?} is not local; allowed TCP hosts are localhost, loopback addresses, and db",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for LocalEndpointError {}
+
 /// Timestamp string in the ISO 8601 UTC/millisecond format expected by the frontend.
 fn now_iso() -> String {
     Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
@@ -81,6 +121,7 @@ impl From<r2d2::Error> for StoreError {
 impl PostgresStore {
     pub fn connect(database_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let config: postgres::Config = database_url.parse()?;
+        validate_local_database_hosts(&config)?;
         let manager = PostgresConnectionManager::new(config, NoTls);
         let pool = Pool::builder()
             .max_size(4)
@@ -1302,6 +1343,50 @@ mod tests {
         models::{SaveProject, SaveTimeEntry},
         test_support::{fresh_database, test_store, unique_email},
     };
+
+    fn parsed_config(url: &str) -> postgres::Config {
+        url.parse().expect("test database URL should parse")
+    }
+
+    #[test]
+    fn accepts_supported_local_database_hosts() {
+        for url in [
+            "******localhost/database",
+            "******LOCALHOST/database",
+            "******127.0.0.1/database",
+            "******127.42.0.9/database",
+            "******[::1]/database",
+            "******db/database",
+            "host=localhost hostaddr=127.0.0.1 dbname=database",
+        ] {
+            assert!(
+                validate_local_database_hosts(&parsed_config(url)).is_ok(),
+                "expected {url} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_remote_database_hosts_before_connecting() {
+        for url in [
+            "******example.com/database",
+            "******192.168.1.20/database",
+            "******10.0.0.5/database",
+            "******[2001:db8::1]/database",
+            "host=localhost hostaddr=203.0.113.8 dbname=database",
+        ] {
+            let error = validate_local_database_hosts(&parsed_config(url))
+                .expect_err("remote host should be rejected");
+            assert!(error.to_string().contains("is not local"));
+        }
+    }
+
+    #[test]
+    fn rejects_a_remote_database_host_in_a_multi_host_configuration() {
+        let config = parsed_config("******localhost:5432,example.com:5432/database");
+
+        assert!(validate_local_database_hosts(&config).is_err());
+    }
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
     /// the frontend expects,

@@ -153,6 +153,27 @@ describe('toCsv', () => {
 
     expect(toCsv(quoted)).toContain('"Last, First"')
   })
+
+  it.each(['=1+1', '+1+1', '-1+1', '@SUM(A1:A2)'])(
+    'neutralizes an employee formula starting with %s',
+    (employee) => {
+      const exported = monthlyExport(ENTRIES, DEFAULT_WORK_SETTINGS, new Date(2026, 2, 15), employee)
+
+      expect(toCsv(exported).split('\n')[0]).toBe(`Employee,'${employee}`)
+    },
+  )
+
+  it.each([
+    ['\t=1+1', "'\t=1+1"],
+    ['\r@SUM(A1:A2)', "\"'\r@SUM(A1:A2)\""],
+  ])(
+    'neutralizes an employee formula hidden behind leading control characters',
+    (employee, expected) => {
+      const exported = monthlyExport(ENTRIES, DEFAULT_WORK_SETTINGS, new Date(2026, 2, 15), employee)
+
+      expect(toCsv(exported).startsWith(`Employee,${expected}\n`)).toBe(true)
+    },
+  )
 })
 
 describe('toPdf', () => {

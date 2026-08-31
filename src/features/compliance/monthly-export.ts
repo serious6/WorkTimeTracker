@@ -126,7 +126,12 @@ export function monthlyExport(
 }
 
 function csvField(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
+  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value
+}
+
+function csvTextField(value: string): string {
+  const safeValue = /^[\t\r]*[=+\-@]/.test(value) ? `'${value}` : value
+  return csvField(safeValue)
 }
 
 function rowValues(row: MonthlyExportRow): string[] {
@@ -156,7 +161,7 @@ function totalValues(report: MonthlyExport): string[] {
 
 export function toCsv(report: MonthlyExport): string {
   const lines = [
-    [`Employee`, report.employee].map(csvField).join(','),
+    [`Employee`, csvTextField(report.employee)].join(','),
     [`Month`, report.month].map(csvField).join(','),
     '',
     EXPORT_COLUMNS.join(','),
