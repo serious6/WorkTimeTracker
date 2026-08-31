@@ -1,8 +1,77 @@
 import { useEffect, useId, useRef, type PropsWithChildren } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { Button } from './button'
 
-function isVisible(element: HTMLElement, root: HTMLElement) {
+let openDialogCount = 0
+const dialogPanels: HTMLElement[] = []
+let bodyOverflow = ''
+let appRoot: HTMLElement | null = null
+let inertSupported = false
+let appRootWasInert = false
+let appRootAriaHidden: string | null = null
+const panelStates = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>()
+
+function hidePanel(panel: HTMLElement) {
+  panelStates.set(panel, {
+    inert: panel.hasAttribute('inert'),
+    ariaHidden: panel.getAttribute('aria-hidden'),
+  })
+  if (inertSupported) {
+    panel.setAttribute('inert', '')
+  } else {
+    panel.setAttribute('aria-hidden', 'true')
+  }
+}
+
+function restorePanel(panel: HTMLElement) {
+  const state = panelStates.get(panel)
+  if (!state) return
+  if (inertSupported) {
+    if (!state.inert) panel.removeAttribute('inert')
+  } else if (state.ariaHidden === null) {
+    panel.removeAttribute('aria-hidden')
+  } else {
+    panel.setAttribute('aria-hidden', state.ariaHidden)
+  }
+  panelStates.delete(panel)
+}
+
+function lockModalEnvironment() {
+  if (openDialogCount++ > 0) return
+
+  bodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  appRoot = document.getElementById('root')
+  if (!appRoot) return
+
+  inertSupported = 'inert' in appRoot
+  if (inertSupported) {
+    appRootWasInert = appRoot.hasAttribute('inert')
+    appRoot.setAttribute('inert', '')
+  } else {
+    appRootAriaHidden = appRoot.getAttribute('aria-hidden')
+    appRoot.setAttribute('aria-hidden', 'true')
+  }
+}
+
+function unlockModalEnvironment() {
+  if (--openDialogCount > 0) return
+
+  document.body.style.overflow = bodyOverflow
+  if (appRoot) {
+    if (inertSupported) {
+      if (!appRootWasInert) appRoot.removeAttribute('inert')
+    } else if (appRootAriaHidden === null) {
+      appRoot.removeAttribute('aria-hidden')
+    } else {
+      appRoot.setAttribute('aria-hidden', appRootAriaHidden)
+    }
+  }
+  appRoot = null
+}
+
+function isFocusable(element: HTMLElement, root: HTMLElement) {
   for (let current: HTMLElement | null = element; current; current = current.parentElement) {
     if (current.hidden || current.getAttribute('aria-hidden') === 'true' || current.hasAttribute('inert')) {
       return false
@@ -17,11 +86,6 @@ function isVisible(element: HTMLElement, root: HTMLElement) {
   }
 
   return false
-}
-
-function tryFocus(element: HTMLElement) {
-  element.focus()
-  return document.activeElement === element
 }
 
 export function Dialog({
@@ -39,6 +103,7 @@ export function Dialog({
   const panel = useRef<HTMLDivElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
   const closeRef = useRef(onClose)
+  const backdropMouseDown = useRef(false)
   const titleId = useId()
   const descriptionId = useId()
 
@@ -51,13 +116,32 @@ export function Dialog({
     const panelEl = panel.current
     if (!panelEl) return
     previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    lockModalEnvironment()
+    const previousPanel = dialogPanels.at(-1)
+    dialogPanels.push(panelEl)
+    const isTopDialog = () => dialogPanels.at(-1) === panelEl
     const focusable = () =>
       Array.from(
         panelEl.querySelectorAll<HTMLElement>(
           'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
-      ).filter((element) => isVisible(element, panelEl))
+      ).filter((element) => isFocusable(element, panelEl))
+    const focusInitial = () => {
+      const autofocusCandidates = [
+        ...panelEl.querySelectorAll<HTMLElement>(
+          'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
+        ),
+        ...focusable(),
+        panelEl,
+      ]
+      autofocusCandidates.find((element) => {
+        if (!isFocusable(element, panelEl)) return false
+        element.focus()
+        return document.activeElement === element
+      })
+    }
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopDialog()) return
       if (event.key === 'Escape') closeRef.current()
       if (event.key !== 'Tab') return
       const elements = focusable()
@@ -68,37 +152,57 @@ export function Dialog({
       }
       const first = elements[0]
       const last = elements.at(-1)
-      if (!event.shiftKey && document.activeElement === last) {
+      if (!panelEl.contains(document.activeElement)) {
+        event.preventDefault()
+        const destination = event.shiftKey ? last : first
+        destination?.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault()
         first.focus()
-      }
-      if (event.shiftKey && document.activeElement === first) {
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault()
         last?.focus()
       }
     }
+    const onFocusIn = (event: FocusEvent) => {
+      if (isTopDialog() && (!(event.target instanceof Node) || !panelEl.contains(event.target))) {
+        focusInitial()
+      }
+    }
     document.addEventListener('keydown', onKeyDown)
-    const autofocusCandidates = Array.from(new Set([
-      ...Array.from(
-        panelEl.querySelectorAll<HTMLElement>(
-          'input:not([disabled]):not([type="hidden"]), textarea:not([disabled]), select:not([disabled])',
-        ),
-      ),
-      ...focusable(),
-      panelEl,
-    ]))
-
-    autofocusCandidates.find((element) => isVisible(element, panelEl) && tryFocus(element))
+    document.addEventListener('focusin', onFocusIn)
+    focusInitial()
+    if (previousPanel) hidePanel(previousPanel)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('focusin', onFocusIn)
+      const index = dialogPanels.indexOf(panelEl)
+      const wasTopDialog = index === dialogPanels.length - 1
+      if (index !== -1) dialogPanels.splice(index, 1)
+      if (wasTopDialog) {
+        const nextPanel = dialogPanels.at(-1)
+        if (nextPanel) restorePanel(nextPanel)
+      }
+      panelStates.delete(panelEl)
+      unlockModalEnvironment()
       previousFocus.current?.focus()
     }
   }, [open])
 
   if (!open) return null
 
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+  const dialog = (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      data-testid="dialog-backdrop"
+      onClick={(event) => {
+        if (backdropMouseDown.current && event.target === event.currentTarget) closeRef.current()
+        backdropMouseDown.current = false
+      }}
+      onMouseDown={(event) => {
+        backdropMouseDown.current = event.target === event.currentTarget
+      }}
+    >
       <div
         aria-describedby={description ? descriptionId : undefined}
         aria-labelledby={titleId}
@@ -127,4 +231,6 @@ export function Dialog({
       </div>
     </div>
   )
+
+  return createPortal(dialog, document.body)
 }
