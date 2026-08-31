@@ -1,12 +1,16 @@
 import { defineConfig } from 'drizzle-kit'
 
-const defaultPostgresUrl = 'postgresql://worktimetracker:worktimetracker@localhost:5432/worktimetracker'
+const databaseUrl = process.env.DATABASE_URL?.trim()
+
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL must be set to a non-empty PostgreSQL connection string')
+}
 
 export default defineConfig({
   dialect: 'postgresql',
   schema: './src/db/schema.ts',
   out: './drizzle',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? defaultPostgresUrl,
+    url: databaseUrl,
   },
 })

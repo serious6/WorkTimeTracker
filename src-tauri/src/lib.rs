@@ -38,7 +38,8 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             logging::init(&data_dir);
             log_panics();
-            let db_config = DbConfig::from_env();
+            let db_config = DbConfig::from_env()
+                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
             let database = Database::open(&db_config)
                 .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
             app.manage(database);

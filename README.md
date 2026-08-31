@@ -31,6 +31,7 @@ Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and 
 ```sh
 npm ci
 cp .env.example .env
+# Set POSTGRES_PASSWORD and DATABASE_URL in .env.
 podman compose up -d db   # or: docker compose up -d db
 npm run tauri dev         # desktop application
 npm run dev               # browser-only UI at http://localhost:1420
@@ -46,20 +47,22 @@ volume.
 
 ## Database backend
 
-Postgres is required for the native Tauri application. Copy `.env.example` to `.env`, keep the
-default `DATABASE_URL` for the bundled local database, and start the compose service:
+Postgres is required for the native Tauri application. Copy `.env.example` to `.env`, set a local
+`POSTGRES_PASSWORD`, set `DATABASE_URL` to the bundled database using the same password, and start
+the compose service:
 
 ```sh
 cp .env.example .env
+# Set POSTGRES_PASSWORD and DATABASE_URL in .env.
 podman compose up -d db   # or: docker compose up -d db
 npm run tauri dev
 ```
 
-The built-in `DATABASE_URL` default matches the compose `db` service; `.env.example` shows
-the full local connection string. `DATABASE_URL` may point at another Postgres instance, but the
-connection is unencrypted (the backend connects without TLS), so only local endpoints such as
-`localhost` or a container on the same host are supported. Remote or TLS-required servers need
-transport encryption, which this version does not implement.
+Set `DATABASE_URL` to use `localhost` (or another loopback address) when running Tauri on the host.
+Compose constructs the development container's URL with the service hostname `db`, because
+`localhost` inside that container would not reach Postgres. The backend intentionally uses no TLS
+and enforces this local-only model: TCP hosts other than `localhost`, loopback addresses, and the
+compose hostname `db` are rejected before connecting. Remote Postgres servers are not supported.
 
 This is a breaking storage change. Earlier local database files are not read or migrated by this
 version; export any data you need before switching to the Postgres-only application.
