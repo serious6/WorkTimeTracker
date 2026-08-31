@@ -129,9 +129,9 @@ login and registration forms, and the Settings work-schedule fields.
 - Postel's Law: the quick-add duration field accepts `2h 45m`, `90m`, `1.5h` and similar formats
   (`parseDurationMinutes`) and previews the parsed value before saving; invalid input produces the
   inline `DURATION_ERROR_MESSAGE` instead of a silent correction.
-- Accessibility: the duration and date fields in the quick-add row and the custom-duration dialog
-  use `Field` — **fixed**, `DURATION_ERROR_MESSAGE` is now linked via `aria-describedby` and
-  announced (`role="alert"`) instead of only being visible text.
+- Accessibility: the project and date fields in the quick-add row and the duration and date fields
+  in the custom-duration dialog use `Field` — **fixed**, `DURATION_ERROR_MESSAGE` is now linked via
+  `aria-describedby` and announced (`role="alert"`) instead of only being visible text.
 - Progressive disclosure: the custom duration lives in a dialog, the common presets stay on the page.
 - Tesler's Law: free-slot placement (`findFreeSlot`) resolves overlaps instead of asking the user.
 

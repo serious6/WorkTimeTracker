@@ -53,6 +53,26 @@ describe('Field', () => {
     )
     expect(screen.getByRole('alert')).toHaveTextContent('Date is required')
   })
+
+  test('preserves accessibility metadata supplied by the control', () => {
+    render(
+      <>
+        <p id="existing-description">Existing description</p>
+        <Field error="Date is required" label="Date">
+          <Input aria-describedby="existing-description" aria-invalid="grammar" name="date" />
+        </Field>
+        <Field label="Project">
+          <Input aria-invalid="spelling" name="project" />
+        </Field>
+      </>,
+    )
+    const date = screen.getByLabelText('Date')
+    const error = screen.getByText('Date is required')
+    expect(date).toHaveAttribute('aria-describedby', `existing-description ${error.id}`)
+    expect(date).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Project')).toHaveAttribute('aria-invalid', 'spelling')
+  })
+
   test('does not dangle a hint id in aria-describedby when an error replaces the hint', () => {
     render(
       <Field error="Enter a duration such as 2h 45m, 90m or 1.5h" hint="Accepts 2h 45m or 90m" label="Duration">

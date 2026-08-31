@@ -36,9 +36,13 @@ const LIMIT_FIELDS: { field: keyof ComplianceLimits; label: string; hint: string
   { field: 'minRestMinutes', label: 'Minimum rest between working days', hint: 'ArbZG § 5' },
 ]
 
-function limitErrorMessage(path: PropertyKey | undefined): string {
-  if (path === 'workingDays') return NO_WORKING_DAY_MESSAGE
-  if (path === 'complianceLimits') return INVALID_LIMIT_MESSAGE
+type SettingsError = { path: PropertyKey[]; message: string }
+
+function settingsErrorMessage(path: PropertyKey[], message: string): string {
+  if (path[0] === 'workingDays') return NO_WORKING_DAY_MESSAGE
+  if (path[0] === 'complianceLimits') {
+    return message === BREAK_ORDER_MESSAGE ? BREAK_ORDER_MESSAGE : INVALID_LIMIT_MESSAGE
+  }
   return INVALID_WEEKLY_TARGET_MESSAGE
 }
 
@@ -57,7 +61,7 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
       LIMIT_FIELDS.map(({ field }) => [field, `${settings.complianceLimits[field]}`]),
     ) as Record<keyof ComplianceLimits, string>,
   )
-  const [error, setError] = useState<string>()
+  const [error, setError] = useState<SettingsError>()
 
   const dailyTarget = dailyTargetMinutes({
     weeklyTargetMinutes: Math.round(Number(weeklyHours) * 60),
@@ -94,11 +98,12 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
     })
     if (!result.success) {
       const issue = result.error.issues[0]
-      setError(
-        issue?.message === BREAK_ORDER_MESSAGE
-          ? BREAK_ORDER_MESSAGE
-          : limitErrorMessage(issue?.path[0]),
-      )
+      if (issue) {
+        setError({
+          path: issue.path,
+          message: settingsErrorMessage(issue.path, issue.message),
+        })
+      }
       return
     }
     setError(undefined)
@@ -116,7 +121,10 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
           <CardTitle>Work schedule</CardTitle>
         </CardHeader>
         <CardContent className="max-w-md space-y-4">
-          <Field label="Weekly working time (hours)">
+          <Field
+            error={error?.path[0] === 'weeklyTargetMinutes' ? error.message : undefined}
+            label="Weekly working time (hours)"
+          >
             <Input
               max="168"
               min="0"
@@ -127,7 +135,11 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
               value={weeklyHours}
             />
           </Field>
-          <fieldset className="space-y-2">
+          <fieldset
+            aria-describedby={error?.path[0] === 'workingDays' ? 'working-days-error' : undefined}
+            aria-invalid={error?.path[0] === 'workingDays' ? true : undefined}
+            className="space-y-2"
+          >
             <legend className="text-sm font-medium">Working days</legend>
             {WEEKDAYS.map((day) => (
               <Checkbox
@@ -137,6 +149,11 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
                 onChange={(event) => toggleWorkingDay(day, event.target.checked)}
               />
             ))}
+            {error?.path[0] === 'workingDays' && (
+              <p className="text-sm text-destructive" id="working-days-error" role="alert">
+                {error.message}
+              </p>
+            )}
           </fieldset>
           <p className="text-sm text-muted-foreground">
             Daily target:{' '}
@@ -175,13 +192,28 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
             Restore German defaults
           </Button>
         </CardHeader>
-        <CardContent className="max-w-md space-y-4">
+        <CardContent
+          aria-describedby={
+            error?.path[0] === 'complianceLimits' && error.path.length === 1
+              ? 'compliance-limits-error'
+              : undefined
+          }
+          aria-invalid={
+            error?.path[0] === 'complianceLimits' && error.path.length === 1 ? true : undefined
+          }
+          className="max-w-md space-y-4"
+        >
           <p className="text-sm text-muted-foreground">
             Limits behind the compliance warnings, in minutes. The defaults follow the German
             Arbeitszeitgesetz.
           </p>
           {LIMIT_FIELDS.map(({ field, label, hint }) => (
             <Field
+              error={
+                error?.path[0] === 'complianceLimits' && error.path[1] === field
+                  ? error.message
+                  : undefined
+              }
               key={field}
               label={
                 <>
@@ -202,10 +234,14 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
               />
             </Field>
           ))}
+          {error?.path[0] === 'complianceLimits' && error.path.length === 1 && (
+            <p className="text-sm text-destructive" id="compliance-limits-error" role="alert">
+              {error.message}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
       <Button disabled={updateSettings.isPending} type="submit">
         Save settings
       </Button>

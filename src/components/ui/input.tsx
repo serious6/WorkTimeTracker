@@ -91,11 +91,12 @@ export function Field({
   const controlId = id ?? (isValidElement(children) ? children.props.id : undefined) ?? generatedId
   const hintId = hint && !error ? `${controlId}-hint` : undefined
   const errorId = error ? `${controlId}-error` : undefined
-  const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined
+  const describedBy =
+    [children.props['aria-describedby'], hintId, errorId].filter(Boolean).join(' ') || undefined
 
   const control = cloneElement(children, {
     id: controlId,
-    'aria-invalid': error ? true : undefined,
+    'aria-invalid': error ? true : children.props['aria-invalid'],
     'aria-describedby': describedBy,
   })
 
