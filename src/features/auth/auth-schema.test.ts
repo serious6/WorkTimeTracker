@@ -27,6 +27,17 @@ describe('credentialsSchema', () => {
     expect(result.error?.issues[0]?.message).toMatch(/valid email/i)
   })
 
+  test('rejects emails above the length limit with the existing message', () => {
+    const result = credentialsSchema.safeParse({
+      email: `a@b.${'c'.repeat(251)}`,
+      password: 'pw',
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(
+      'Too big: expected string to have <=254 characters',
+    )
+  })
+
   test('rejects empty password', () => {
     const result = credentialsSchema.safeParse({ email: 'a@b.com', password: '' })
     expect(result.success).toBe(false)
