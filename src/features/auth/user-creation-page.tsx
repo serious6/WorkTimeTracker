@@ -1,5 +1,5 @@
-import { Clock } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { AppLogo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -41,7 +41,7 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
       <Card className="w-full max-w-sm">
         <CardContent className="space-y-5 p-6">
           <div className="flex items-center gap-2">
-            <Clock className="size-6 text-primary" />
+            <AppLogo className="size-6 text-primary" />
             <h1 className="text-lg font-semibold">Create your account</h1>
           </div>
           <form className="space-y-4" onSubmit={submit}>
