@@ -25,8 +25,8 @@ CREATE INDEX IF NOT EXISTS work_items_user_id ON work_items (user_id, name);
 CREATE UNIQUE INDEX IF NOT EXISTS work_items_preset_unique
   ON work_items (user_id, kind) WHERE kind <> 'project';
 
--- Time entries can book against a work item instead of, or in addition to
--- being tracked separately from, a project.
+-- Time entries can book against a work item instead of a project; the two
+-- are mutually exclusive (enforced in the application layer).
 ALTER TABLE time_entries ADD COLUMN IF NOT EXISTS work_item_id BIGINT
   REFERENCES work_items (id) ON DELETE SET NULL;
 

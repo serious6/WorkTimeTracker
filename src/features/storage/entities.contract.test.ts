@@ -11,6 +11,7 @@ import {
   workSettingsSchema,
 } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
+import { workItemSchema } from '@/features/work-items/work-item-schema'
 
 type Field = {
   name: string
@@ -42,6 +43,7 @@ const schemas: Record<string, z.ZodObject> = {
   absenceAudit: absenceAuditSchema,
   workSettings: workSettingsSchema,
   complianceLimits: complianceLimitsSchema,
+  workItem: workItemSchema,
 }
 
 const DEFAULTS: Record<string, unknown> = {

@@ -409,7 +409,8 @@
         {
           "name": "kind",
           "type": "string",
-          "nullable": false
+          "nullable": false,
+          "sample": "project"
         },
         {
           "name": "name",

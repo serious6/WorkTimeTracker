@@ -11,6 +11,7 @@ import {
 const BASE_ENTRY: TimeEntry = {
   id: 1,
   projectId: 42,
+  workItemId: null,
   startTime: '2026-08-27T08:00:00.000Z',
   endTime: '2026-08-27T10:00:00.000Z',
   entryType: 'work',
@@ -38,6 +39,30 @@ describe('saveTimeEntrySchema', () => {
         note: null,
       }),
     ).toThrow()
+  })
+
+  it('rejects an entry booked on both a project and a work item', () => {
+    expect(() =>
+      saveTimeEntrySchema.parse({
+        projectId: 1,
+        workItemId: 2,
+        startTime: '2026-08-27T08:00:00.000Z',
+        endTime: null,
+        note: null,
+      }),
+    ).toThrow()
+  })
+
+  it('accepts a work entry booked on a work item instead of a project', () => {
+    const parsed = saveTimeEntrySchema.parse({
+      projectId: null,
+      workItemId: 2,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: null,
+      note: null,
+    })
+    expect(parsed.workItemId).toBe(2)
+    expect(parsed.projectId).toBeNull()
   })
 })
 
@@ -85,6 +110,28 @@ describe('timeEntryFormSchema', () => {
     })
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.message).toMatch(/project/i)
+  })
+
+  it('accepts a work item instead of a project', () => {
+    const result = timeEntryFormSchema.safeParse({
+      workItemId: 3,
+      date: '2026-08-27',
+      startTime: '08:00',
+      endTime: '10:00',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects both a project and a work item', () => {
+    const result = timeEntryFormSchema.safeParse({
+      projectId: 1,
+      workItemId: 3,
+      date: '2026-08-27',
+      startTime: '08:00',
+      endTime: '10:00',
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toMatch(/either a project or a work item/i)
   })
 
   it('rejects end time before start time', () => {

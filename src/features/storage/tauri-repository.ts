@@ -7,6 +7,7 @@ import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
+import { workItemSchema } from '@/features/work-items/work-item-schema'
 import { toAppError } from '@/lib/errors'
 import type { Repository } from './repository'
 
@@ -72,6 +73,12 @@ export const tauriRepository: Repository = {
   updateProject: (id, input) => call('update_project', { id, input }, projectSchema),
   deleteProject: async (id) => {
     await run('delete_project', { id })
+  },
+  listWorkItems: () => call('list_work_items', {}, workItemSchema.array()),
+  createWorkItem: (input) => call('create_work_item', { input }, workItemSchema),
+  updateWorkItem: (id, input) => call('update_work_item', { id, input }, workItemSchema),
+  deleteWorkItem: async (id) => {
+    await run('delete_work_item', { id })
   },
   listTimeEntries: (range) => call('list_time_entries', { range }, timeEntrySchema.array()),
   createTimeEntry: (input) => call('create_time_entry', { input }, timeEntrySchema),

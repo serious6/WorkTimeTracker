@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox, Field, Input, Select } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import {
@@ -20,6 +21,7 @@ import {
   type Weekday,
   type WorkSettings,
 } from '@/features/settings/work-settings-schema'
+import { WorkItemsSettingsSection } from '@/features/work-items/components/work-item-settings-section'
 import { formatDuration } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 
@@ -261,33 +263,46 @@ export function SettingsPage() {
         </p>
       </header>
 
-      {isError ? (
-        <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          <p>
-            The settings could not be loaded. They cannot be edited until the database is available,
-            so the stored values are not overwritten.
-          </p>
-          <Button disabled={isFetching} onClick={() => void refetch()} variant="outline">
-            Try again
-          </Button>
-        </div>
-      ) : isPending ? (
-        <p className="text-sm text-muted-foreground">Loading settings…</p>
-      ) : (
-        <GeneralSettingsForm key={JSON.stringify(data)} settings={data} />
-      )}
+      <Tabs defaultValue="general">
+        <TabsList>
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="work-items">Work items</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Local data</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            All projects, time entries and settings are stored locally on this device. Nothing is sent
-            to a cloud service.
-          </p>
-        </CardContent>
-      </Card>
+        <TabsContent className="mt-5 space-y-5" value="general">
+          {isError ? (
+            <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              <p>
+                The settings could not be loaded. They cannot be edited until the database is
+                available, so the stored values are not overwritten.
+              </p>
+              <Button disabled={isFetching} onClick={() => void refetch()} variant="outline">
+                Try again
+              </Button>
+            </div>
+          ) : isPending ? (
+            <p className="text-sm text-muted-foreground">Loading settings…</p>
+          ) : (
+            <GeneralSettingsForm key={JSON.stringify(data)} settings={data} />
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Local data</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                All projects, time entries and settings are stored locally on this device. Nothing
+                is sent to a cloud service.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent className="mt-5" value="work-items">
+          <WorkItemsSettingsSection />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

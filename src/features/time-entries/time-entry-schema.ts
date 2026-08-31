@@ -26,6 +26,12 @@ export const timeEntrySchema = z.object({
     .positive()
     .nullish()
     .transform((value) => value ?? null),
+  workItemId: z
+    .number()
+    .int()
+    .positive()
+    .nullish()
+    .transform((value) => value ?? null),
   startTime: z.string(),
   endTime: z
     .string()
@@ -42,6 +48,7 @@ export const timeEntrySchema = z.object({
 
 export const saveTimeEntrySchema = z.object({
   projectId: z.number().int().positive().nullable(),
+  workItemId: z.number().int().positive().nullable().optional().transform((value) => value ?? null),
   startTime: z.string().refine(isCanonicalTimestamp, 'Invalid start time'),
   endTime: z.string().refine(isCanonicalTimestamp, 'Invalid end time').nullable(),
   /** Omitted input records work, breaks have to be requested explicitly. */
@@ -56,9 +63,26 @@ export const saveTimeEntrySchema = z.object({
     message: BREAK_PROJECT_MESSAGE,
     path: ['projectId'],
   })
+  .refine((entry) => entry.entryType !== 'break' || entry.workItemId === null, {
+    message: BREAK_PROJECT_MESSAGE,
+    path: ['workItemId'],
+  })
+  .refine((entry) => entry.projectId === null || entry.workItemId === null, {
+    message: 'Choose either a project or a work item',
+    path: ['workItemId'],
+  })
 
-export type TimeEntry = z.infer<typeof timeEntrySchema>
-export type SaveTimeEntry = z.infer<typeof saveTimeEntrySchema>
+/**
+ * `workItemId` is optional at the type level (though always resolved to `number | null` at
+ * runtime by the schemas above) so existing call sites and test fixtures that only ever deal
+ * with `projectId` keep compiling without having to name the new field everywhere.
+ */
+export type TimeEntry = Omit<z.infer<typeof timeEntrySchema>, 'workItemId'> & {
+  workItemId?: number | null
+}
+export type SaveTimeEntry = Omit<z.infer<typeof saveTimeEntrySchema>, 'workItemId'> & {
+  workItemId?: number | null
+}
 
 /** Breaks are recorded as entries of their own, never as gaps between entries. */
 export function isBreak(entry: { entryType: EntryType }): boolean {
@@ -113,18 +137,35 @@ export const timeEntryFormSchema = z
       .positive('Project is required')
       .nullish()
       .transform((value) => value ?? null),
+    workItemId: z.coerce
+      .number({ error: 'Work item is required' })
+      .int()
+      .positive('Work item is required')
+      .nullish()
+      .transform((value) => value ?? null),
     date: z.string().min(1, 'Date is required'),
     startTime: timeOfDaySchema,
     endTime: timeOfDaySchema,
     note: z.string().trim().max(500).optional(),
   })
-  .refine((values) => values.entryType === 'break' || values.projectId !== null, {
-    message: 'Project is required',
-    path: ['projectId'],
-  })
+  .refine(
+    (values) => values.entryType === 'break' || values.projectId !== null || values.workItemId !== null,
+    {
+      message: 'Project is required',
+      path: ['projectId'],
+    },
+  )
   .refine((values) => values.entryType === 'work' || values.projectId === null, {
     message: BREAK_PROJECT_MESSAGE,
     path: ['projectId'],
+  })
+  .refine((values) => values.entryType === 'work' || values.workItemId === null, {
+    message: BREAK_PROJECT_MESSAGE,
+    path: ['workItemId'],
+  })
+  .refine((values) => values.projectId === null || values.workItemId === null, {
+    message: 'Choose either a project or a work item',
+    path: ['workItemId'],
   })
   .refine(
     (values) =>
@@ -134,13 +175,15 @@ export const timeEntryFormSchema = z
   )
 
 export type TimeEntryForm = z.infer<typeof timeEntryFormSchema>
-export type TimeEntryFormValues = Omit<TimeEntryForm, 'projectId'> & {
+export type TimeEntryFormValues = Omit<TimeEntryForm, 'projectId' | 'workItemId'> & {
   projectId: number | undefined
+  workItemId: number | undefined
 }
 
 export function formToSaveTimeEntry(form: TimeEntryForm): SaveTimeEntry {
   return {
     projectId: form.projectId,
+    workItemId: form.workItemId,
     startTime: combineDateAndTime(form.date, form.startTime).toISOString(),
     endTime: combineDateAndTime(form.date, form.endTime).toISOString(),
     entryType: form.entryType,
@@ -154,6 +197,7 @@ export function entryToForm(entry: TimeEntry): TimeEntryFormValues {
   return {
     entryType: entry.entryType,
     projectId: entry.projectId ?? undefined,
+    workItemId: entry.workItemId ?? undefined,
     date: toDateKey(start),
     startTime: toTimeKey(start),
     endTime: toTimeKey(end),

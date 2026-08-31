@@ -4,6 +4,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast-store'
 import { useProjects } from '@/features/projects/project-queries'
+import { useWorkItems } from '@/features/work-items/work-item-queries'
 import { combineDateAndTime, formatDuration, toDateKey, toTimeKey } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { useCreateTimeEntry, useUpdateTimeEntry } from '../time-entry-queries'
@@ -23,6 +24,7 @@ function emptyForm(dateKey: string) {
   return {
     entryType: 'work',
     projectId: '',
+    workItemId: '',
     date: dateKey,
     startTime: toTimeKey(new Date(now.getTime() - 60 * 60_000)),
     endTime: toTimeKey(now),
@@ -44,6 +46,8 @@ export function TimeEntryDialog({
   onClose: () => void
 }) {
   const { data: projects = [] } = useProjects()
+  const { data: workItems = [] } = useWorkItems()
+  const activeWorkItems = workItems.filter((workItem) => workItem.active)
   const createEntry = useCreateTimeEntry()
   const updateEntry = useUpdateTimeEntry()
   const [values, setValues] = useState(() => emptyForm(toDateKey(date ?? new Date())))
@@ -60,6 +64,7 @@ export function TimeEntryDialog({
         ? {
             ...entryToForm(sourceEntry),
             projectId: `${sourceEntry.projectId ?? ''}`,
+            workItemId: `${sourceEntry.workItemId ?? ''}`,
             note: sourceEntry.note ?? '',
           }
         : emptyForm(toDateKey(date ?? new Date())),
@@ -79,11 +84,18 @@ export function TimeEntryDialog({
   const isBreakEntry = values.entryType === 'break'
 
   function update(field: keyof ReturnType<typeof emptyForm>, value: string) {
-    setValues((current) =>
-      field === 'entryType' && value === 'break'
-        ? { ...current, entryType: value, projectId: '' }
-        : { ...current, [field]: value },
-    )
+    setValues((current) => {
+      if (field === 'entryType' && value === 'break') {
+        return { ...current, entryType: value, projectId: '', workItemId: '' }
+      }
+      if (field === 'projectId' && value) {
+        return { ...current, projectId: value, workItemId: '' }
+      }
+      if (field === 'workItemId' && value) {
+        return { ...current, workItemId: value, projectId: '' }
+      }
+      return { ...current, [field]: value }
+    })
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -91,6 +103,7 @@ export function TimeEntryDialog({
     const result = timeEntryFormSchema.safeParse({
       ...values,
       projectId: values.projectId || undefined,
+      workItemId: values.workItemId || undefined,
       note: values.note || undefined,
     })
     if (!result.success) {
@@ -146,6 +159,21 @@ export function TimeEntryDialog({
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field error={fieldError('workItemId')} label="Work item">
+          <Select
+            disabled={isBreakEntry}
+            name="workItemId"
+            onChange={(event) => update('workItemId', event.target.value)}
+            value={values.workItemId}
+          >
+            <option value="">No work item</option>
+            {activeWorkItems.map((workItem) => (
+              <option key={workItem.id} value={workItem.id}>
+                {workItem.name}
               </option>
             ))}
           </Select>

@@ -5,6 +5,7 @@ import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { SaveWorkSettings, WorkSettings } from '@/features/settings/work-settings-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
+import type { SaveWorkItem, WorkItem } from '@/features/work-items/work-item-schema'
 import type { ListRange } from './list-range'
 
 export type Repository = {
@@ -16,6 +17,10 @@ export type Repository = {
   createProject: (input: SaveProject) => Promise<Project>
   updateProject: (id: number, input: SaveProject) => Promise<Project>
   deleteProject: (id: number) => Promise<void>
+  listWorkItems: () => Promise<WorkItem[]>
+  createWorkItem: (input: SaveWorkItem) => Promise<WorkItem>
+  updateWorkItem: (id: number, input: SaveWorkItem) => Promise<WorkItem>
+  deleteWorkItem: (id: number) => Promise<void>
   listTimeEntries: (range?: ListRange) => Promise<TimeEntry[]>
   createTimeEntry: (input: SaveTimeEntry) => Promise<TimeEntry>
   updateTimeEntry: (id: number, input: SaveTimeEntry) => Promise<TimeEntry>

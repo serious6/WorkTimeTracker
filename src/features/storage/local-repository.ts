@@ -57,6 +57,15 @@ import {
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
 import {
+  WORK_ITEM_PRESET_KINDS,
+  WORK_ITEM_KIND_LABELS,
+  WORK_ITEM_KIND_PROJECT,
+  saveWorkItemSchema,
+  workItemSchema,
+  type SaveWorkItem,
+  type WorkItem,
+} from '@/features/work-items/work-item-schema'
+import {
   AUDIT_LOG_LIMIT,
   filterListRange,
   filterPointRange,
@@ -71,6 +80,7 @@ import type { Repository } from './repository'
 const USERS_KEY = 'work-time-tracker.users'
 const SCOPED_KEYS = [
   'projects',
+  'work-items',
   'time-entries',
   'project-budgets',
   'work-settings',
@@ -187,6 +197,31 @@ function toAuthUser({ id, email, createdAt }: StoredUser): AuthUser {
 
 function readProjects(): Project[] {
   return read(scopedKey('projects'), [], (value) => projectSchema.array().parse(value))
+}
+
+/** Seeds the four fixed presets once per user, mirroring the Postgres store. */
+function readWorkItems(): WorkItem[] {
+  const stored = read(scopedKey('work-items'), [], (value) => workItemSchema.array().parse(value))
+  const missing = WORK_ITEM_PRESET_KINDS.filter(
+    (kind) => !stored.some((item) => item.kind === kind),
+  )
+  if (missing.length === 0) return stored
+  const now = new Date().toISOString()
+  let nextWorkItemId = nextId(stored)
+  const seeded = missing.map((kind) =>
+    workItemSchema.parse({
+      id: nextWorkItemId++,
+      kind,
+      name: WORK_ITEM_KIND_LABELS[kind],
+      costCenter: null,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    }),
+  )
+  const merged = [...stored, ...seeded]
+  write(scopedKey('work-items'), merged)
+  return merged
 }
 
 function readEntries(): TimeEntry[] {
@@ -475,6 +510,68 @@ const fallbackRepository: Repository = {
     )
     writeEntryState(updatedEntries, updatedAudits)
   },
+  listWorkItems: async () =>
+    readWorkItems().sort((left, right) => {
+      if (left.kind === WORK_ITEM_KIND_PROJECT && right.kind !== WORK_ITEM_KIND_PROJECT) return 1
+      if (left.kind !== WORK_ITEM_KIND_PROJECT && right.kind === WORK_ITEM_KIND_PROJECT) return -1
+      return left.name.localeCompare(right.name)
+    }),
+  createWorkItem: async (input) => {
+    const parsed: SaveWorkItem = validate(saveWorkItemSchema, input)
+    if (parsed.kind !== WORK_ITEM_KIND_PROJECT) {
+      throw new AppError('validation', 'Only project work items can be created')
+    }
+    const workItems = readWorkItems()
+    const now = new Date().toISOString()
+    const workItem = workItemSchema.parse({
+      ...parsed,
+      id: nextId(workItems),
+      createdAt: now,
+      updatedAt: now,
+    })
+    write(scopedKey('work-items'), [...workItems, workItem])
+    return workItem
+  },
+  updateWorkItem: async (id, input) => {
+    const parsed = validate(saveWorkItemSchema, input)
+    const workItems = readWorkItems()
+    const current = workItems.find((workItem) => workItem.id === id)
+    if (!current) throw new AppError('notFound', 'Work item not found')
+    if (parsed.kind !== current.kind) {
+      throw new AppError('validation', 'A work item kind cannot change')
+    }
+    const updated = {
+      ...current,
+      name: parsed.name,
+      costCenter: parsed.costCenter,
+      active: parsed.active,
+      updatedAt: new Date().toISOString(),
+    }
+    write(
+      scopedKey('work-items'),
+      workItems.map((workItem) => (workItem.id === id ? updated : workItem)),
+    )
+    return updated
+  },
+  deleteWorkItem: async (id) => {
+    write(
+      scopedKey('work-items'),
+      readWorkItems().filter((workItem) => workItem.id !== id),
+    )
+    const { entries, audits } = readEntryState()
+    const updatedAt = new Date().toISOString()
+    const updatedEntries = entries.map((entry) =>
+      entry.workItemId === id ? { ...entry, workItemId: null, updatedAt } : entry,
+    )
+    const updatedAudits = entries.reduce(
+      (all, entry) =>
+        entry.workItemId === id
+          ? appendAudit(all, entry.id, 'updated', entry, { ...entry, workItemId: null, updatedAt })
+          : all,
+      audits,
+    )
+    writeEntryState(updatedEntries, updatedAudits)
+  },
   listTimeEntries: async (range) => {
     const window = validateListRange(range)
     return limitAscending(
@@ -488,7 +585,7 @@ const fallbackRepository: Repository = {
   },
   createTimeEntry: async (input) => {
     const parsed: SaveTimeEntry = validate(saveTimeEntrySchema, input)
-    if (parsed.entryType !== 'break' && parsed.projectId === null) {
+    if (parsed.entryType !== 'break' && parsed.projectId === null && parsed.workItemId === null) {
       throw new AppError('validation', 'Project is required')
     }
     const { entries, audits } = readEntryState()
@@ -508,7 +605,7 @@ const fallbackRepository: Repository = {
     const { entries, audits } = readEntryState()
     const current = entries.find((entry) => entry.id === id)
     if (!current) throw new AppError('notFound', 'Time entry not found')
-    if ((parsed.entryType ?? current.entryType) === 'break' && parsed.projectId !== null) {
+    if ((parsed.entryType ?? current.entryType) === 'break' && (parsed.projectId !== null || parsed.workItemId !== null)) {
       throw new AppError('validation', 'A break is not booked on a project')
     }
     if (findOverlap(entries, parsed, id)) throw new AppError('conflict', OVERLAP_MESSAGE)
