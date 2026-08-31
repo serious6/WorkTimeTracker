@@ -21,6 +21,8 @@ const SENSITIVE_KEYS = [
 const HASH_PREFIXES = ['$argon2', '$pbkdf2', '$scrypt', '$2a$', '$2b$', '$2y$']
 
 function containsEmail(token: string): boolean {
+  // Redaction intentionally uses token-oriented PII detection, not the stricter
+  // login/register plausibility check in `src/lib/email.ts`.
   const at = token.indexOf('@')
   if (at < 0) return false
   const local = token.slice(0, at).replace(/^[^\w]+|[^\w]+$/g, '')

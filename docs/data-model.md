@@ -191,7 +191,7 @@ erDiagram
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `email` | TEXT | yes | Trimmed, lower-cased, at most 254 characters | UNIQUE |
+| `email` | TEXT | yes | Trimmed, lower-cased, at most 254 UTF-8 bytes | UNIQUE |
 | `password_hash` | TEXT | yes | Argon2id on the desktop, `pbkdf2-sha256$…` in the browser fallback | — |
 | `created_at` | TEXT | yes | ISO 8601 UTC | — |
 
