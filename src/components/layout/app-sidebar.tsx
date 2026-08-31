@@ -3,7 +3,6 @@ import {
   CalendarDays,
   CalendarOff,
   CalendarRange,
-  Clock,
   FolderKanban,
   LayoutDashboard,
   ListChecks,
@@ -13,6 +12,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useNavigationStore, type View } from '@/app/navigation'
+import { AppLogo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -43,7 +43,7 @@ export function AppSidebar() {
     <aside className="flex w-16 shrink-0 flex-col justify-between border-r border-border bg-sidebar py-4 lg:w-56">
       <div>
         <div className="flex items-center gap-2 px-3 pb-6 lg:px-4">
-          <Clock aria-hidden className="size-6 text-primary" />
+          <AppLogo aria-hidden className="size-6 text-primary" />
           <span className="text-lg font-semibold sr-only lg:not-sr-only">TimeTrack</span>
         </div>
         <nav aria-label="Main" className="flex flex-col gap-1 px-2">
