@@ -204,6 +204,18 @@ describe('Dialog', () => {
     expect(document.body).not.toHaveStyle({ overflow: 'hidden' })
   })
 
+  test('preserves an application root that was already inert', () => {
+    const appRoot = document.createElement('div')
+    appRoot.id = 'root'
+    appRoot.setAttribute('inert', '')
+    document.body.append(appRoot)
+    const { rerender } = render(<Dialog onClose={vi.fn()} open title="Modal" />, { container: appRoot })
+
+    rerender(<Dialog onClose={vi.fn()} open={false} title="Modal" />)
+
+    expect(appRoot).toHaveAttribute('inert')
+  })
+
   test('keeps body scroll locked until every stacked dialog closes', () => {
     const appRoot = document.createElement('div')
     appRoot.id = 'root'
@@ -225,6 +237,30 @@ describe('Dialog', () => {
 
     rerender(content(false, false))
     expect(document.body).not.toHaveStyle({ overflow: 'hidden' })
+  })
+
+  test('hides the underlying dialog until the top dialog closes', () => {
+    const appRoot = document.createElement('div')
+    appRoot.id = 'root'
+    document.body.append(appRoot)
+    const content = (firstOpen: boolean, secondOpen: boolean) => (
+      <>
+        <Dialog onClose={vi.fn()} open={firstOpen} title="First" />
+        <Dialog onClose={vi.fn()} open={secondOpen} title="Second" />
+      </>
+    )
+    const { rerender } = render(content(true, true), { container: appRoot })
+    const [first] = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'))
+
+    if ('inert' in first) {
+      expect(first).toHaveAttribute('inert')
+    } else {
+      expect(first).toHaveAttribute('aria-hidden', 'true')
+    }
+
+    rerender(content(true, false))
+    expect(first).not.toHaveAttribute('inert')
+    expect(first).not.toHaveAttribute('aria-hidden', 'true')
   })
 
   test('non-escape/tab keys are ignored', () => {

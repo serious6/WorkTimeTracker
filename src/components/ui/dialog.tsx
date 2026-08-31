@@ -8,7 +8,34 @@ const dialogPanels: HTMLElement[] = []
 let bodyOverflow = ''
 let appRoot: HTMLElement | null = null
 let inertSupported = false
+let appRootWasInert = false
 let appRootAriaHidden: string | null = null
+const panelStates = new Map<HTMLElement, { inert: boolean; ariaHidden: string | null }>()
+
+function hidePanel(panel: HTMLElement) {
+  panelStates.set(panel, {
+    inert: panel.hasAttribute('inert'),
+    ariaHidden: panel.getAttribute('aria-hidden'),
+  })
+  if (inertSupported) {
+    panel.setAttribute('inert', '')
+  } else {
+    panel.setAttribute('aria-hidden', 'true')
+  }
+}
+
+function restorePanel(panel: HTMLElement) {
+  const state = panelStates.get(panel)
+  if (!state) return
+  if (inertSupported) {
+    if (!state.inert) panel.removeAttribute('inert')
+  } else if (state.ariaHidden === null) {
+    panel.removeAttribute('aria-hidden')
+  } else {
+    panel.setAttribute('aria-hidden', state.ariaHidden)
+  }
+  panelStates.delete(panel)
+}
 
 function lockModalEnvironment() {
   if (openDialogCount++ > 0) return
@@ -20,6 +47,7 @@ function lockModalEnvironment() {
 
   inertSupported = 'inert' in appRoot
   if (inertSupported) {
+    appRootWasInert = appRoot.hasAttribute('inert')
     appRoot.setAttribute('inert', '')
   } else {
     appRootAriaHidden = appRoot.getAttribute('aria-hidden')
@@ -33,7 +61,7 @@ function unlockModalEnvironment() {
   document.body.style.overflow = bodyOverflow
   if (appRoot) {
     if (inertSupported) {
-      appRoot.removeAttribute('inert')
+      if (!appRootWasInert) appRoot.removeAttribute('inert')
     } else if (appRootAriaHidden === null) {
       appRoot.removeAttribute('aria-hidden')
     } else {
@@ -89,6 +117,7 @@ export function Dialog({
     if (!panelEl) return
     previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     lockModalEnvironment()
+    const previousPanel = dialogPanels.at(-1)
     dialogPanels.push(panelEl)
     const isTopDialog = () => dialogPanels.at(-1) === panelEl
     const focusable = () =>
@@ -142,11 +171,21 @@ export function Dialog({
     }
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('focusin', onFocusIn)
-    if (isTopDialog()) focusInitial()
+    if (isTopDialog()) {
+      focusInitial()
+      if (previousPanel) hidePanel(previousPanel)
+    }
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('focusin', onFocusIn)
-      dialogPanels.splice(dialogPanels.indexOf(panelEl), 1)
+      const index = dialogPanels.indexOf(panelEl)
+      const wasTopDialog = index === dialogPanels.length - 1
+      if (index !== -1) dialogPanels.splice(index, 1)
+      if (wasTopDialog) {
+        const nextPanel = dialogPanels.at(-1)
+        if (nextPanel) restorePanel(nextPanel)
+      }
+      panelStates.delete(panelEl)
       unlockModalEnvironment()
       previousFocus.current?.focus()
     }
