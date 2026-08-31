@@ -57,7 +57,12 @@ describe('SettingsPage', () => {
       if (checkbox.checked) fireEvent.click(checkbox)
     }
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
-    expect(await screen.findByText(/at least one working day/i)).toBeInTheDocument()
+    const error = await screen.findByRole('alert')
+    expect(error).toHaveTextContent(/at least one working day/i)
+    expect(screen.getByRole('group', { name: 'Working days' })).toHaveAttribute(
+      'aria-describedby',
+      error.id,
+    )
   })
 
   test('shows error for invalid weekly target (0 hours)', async () => {
@@ -67,7 +72,10 @@ describe('SettingsPage', () => {
     const input = screen.getByLabelText(/weekly working time/i)
     fireEvent.change(input, { target: { value: '0' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
-    expect(await screen.findByText(/1 minute and 168 hours/i)).toBeInTheDocument()
+    const error = await screen.findByRole('alert')
+    expect(error).toHaveTextContent(/1 minute and 168 hours/i)
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAttribute('aria-describedby', error.id)
   })
 
   test('shows local data section', async () => {
@@ -112,6 +120,20 @@ describe('SettingsPage', () => {
     fireEvent.change(screen.getByLabelText(/required longer break/i), { target: { value: '15' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
 
-    expect(await screen.findByText(BREAK_ORDER_MESSAGE)).toBeInTheDocument()
+    const error = await screen.findByRole('alert')
+    expect(error).toHaveTextContent(BREAK_ORDER_MESSAGE)
+    expect(error.parentElement).toHaveAttribute('aria-describedby', error.id)
+  })
+
+  test('links an invalid working time limit to its field', async () => {
+    renderWithProviders(<SettingsPage />)
+    await screen.findByText('Working time limits')
+    const input = screen.getByLabelText(/minimum rest between working days/i)
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+
+    const error = await screen.findByRole('alert')
+    expect(input).toHaveAttribute('aria-invalid', 'true')
+    expect(input).toHaveAttribute('aria-describedby', error.id)
   })
 })
