@@ -156,7 +156,7 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 
 - Accessibility: the sidebar defaults to its labelled, expanded state and has a persisted, labelled
   40 px expand/collapse control. Collapsed labels remain `sr-only`, including the "Local data"
-  notice, and group headings become accessible separator labels.
+  notice, and group labels remain accessible headings.
 - Navigation: all 11 destinations are list items in one labelled navigation list, so their set size
   and position are exposed. Track, Review and Manage headings chunk related views; the settings item
   remains last and ungrouped.

@@ -69,7 +69,10 @@ export function AppSidebar() {
     >
       <div>
         <div className="flex items-center gap-2 px-3 pb-6">
-          <Clock aria-hidden className="size-6 text-primary" />
+          <Clock
+            aria-hidden
+            className={cn('size-6 text-primary', !sidebarExpanded && 'hidden')}
+          />
           <span className={cn('text-lg font-semibold', !sidebarExpanded && 'sr-only')}>TimeTrack</span>
           <Button
             aria-label={sidebarExpanded ? 'Collapse sidebar' : 'Expand sidebar'}

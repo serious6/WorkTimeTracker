@@ -85,7 +85,7 @@ function App() {
   return (
     <>
       <a
-        className="sr-only fixed left-4 top-4 z-50 inline-flex h-10 items-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground focus:not-sr-only focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className="fixed left-4 top-4 z-50 inline-flex h-10 -translate-y-[calc(100%+1rem)] items-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground focus:translate-y-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         href="#main-content"
         onClick={() => document.getElementById('main-content')?.focus()}
       >
