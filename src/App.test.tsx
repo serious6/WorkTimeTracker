@@ -50,6 +50,14 @@ describe('App shell', () => {
     expect(screen.getByText('app-test@example.com')).toBeInTheDocument()
   })
 
+  test('skips to the main content', async () => {
+    await signIn('skip-link-test@example.com')
+    renderApp()
+    const main = await screen.findByRole('main')
+    fireEvent.click(screen.getByRole('link', { name: 'Skip to main content' }))
+    expect(main).toHaveFocus()
+  })
+
   test('navigating to Settings shows the settings page', async () => {
     await signIn('nav-test@example.com')
     renderApp()

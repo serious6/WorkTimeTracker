@@ -9,12 +9,44 @@ beforeEach(async () => {
 })
 
 describe('AppSidebar', () => {
-  test('renders all navigation items', () => {
+  test.each([
+    'Dashboard',
+    'Time Entries',
+    'Time Management',
+    'Week',
+    'Calendar',
+    'Reports',
+    'Working Time',
+    'Projects',
+    'Budgets',
+    'Absences',
+    'Settings',
+  ])('renders %s by accessible name when expanded', (label) => {
     renderWithProviders(<AppSidebar />)
-    expect(screen.getByRole('button', { name: 'Dashboard' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Week' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Projects' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+  })
+
+  test.each([
+    'Dashboard',
+    'Time Entries',
+    'Time Management',
+    'Week',
+    'Calendar',
+    'Reports',
+    'Working Time',
+    'Projects',
+    'Budgets',
+    'Absences',
+    'Settings',
+  ])('renders %s by accessible name when collapsed', (label) => {
+    useNavigationStore.setState({ sidebarExpanded: false })
+    renderWithProviders(<AppSidebar />)
+    expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+  })
+
+  test('groups the navigation destinations in a list', () => {
+    renderWithProviders(<AppSidebar />)
+    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(11)
   })
 
   test('marks the active view with aria-current=page', () => {
@@ -31,20 +63,20 @@ describe('AppSidebar', () => {
   })
 
   test('keeps navigation labels available to assistive technology when collapsed', () => {
+    useNavigationStore.setState({ sidebarExpanded: false })
     renderWithProviders(<AppSidebar />)
     const label = screen.getByText('Dashboard')
     expect(label.className).toContain('sr-only')
     expect(label.className).not.toContain('hidden')
   })
 
-  test('lists the most used views first and Settings last', () => {
+  test('persists a user-selected collapsed rail', () => {
     renderWithProviders(<AppSidebar />)
-    const labels = screen
-      .getAllByRole('button')
-      .map((item) => item.textContent?.trim())
-    expect(labels[0]).toBe('Dashboard')
-    expect(labels[1]).toBe('Time Entries')
-    expect(labels.at(-1)).toBe('Settings')
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(useNavigationStore.getState().sidebarExpanded).toBe(false)
+    expect(globalThis.localStorage.getItem('work-time-tracker.navigation')).toContain(
+      '"sidebarExpanded":false',
+    )
   })
 
   test('shows local data notice', () => {

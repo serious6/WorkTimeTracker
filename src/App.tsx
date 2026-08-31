@@ -83,19 +83,28 @@ function App() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <AppSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <AppHeader user={user} />
-        <main className="min-w-0 flex-1 p-5 lg:p-6">
-          <Suspense fallback={null}>
-            <Page />
-          </Suspense>
-        </main>
-        <AppFooter />
+    <>
+      <a
+        className="fixed left-4 top-4 z-50 inline-flex h-10 -translate-y-[calc(100%+1rem)] items-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground focus:translate-y-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        href="#main-content"
+        onClick={() => document.getElementById('main-content')?.focus()}
+      >
+        Skip to main content
+      </a>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <AppSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <AppHeader user={user} />
+          <main className="min-w-0 flex-1 p-5 lg:p-6" id="main-content" tabIndex={-1}>
+            <Suspense fallback={null}>
+              <Page />
+            </Suspense>
+          </main>
+          <AppFooter />
+        </div>
+        <Toaster />
       </div>
-      <Toaster />
-    </div>
+    </>
   )
 }
 

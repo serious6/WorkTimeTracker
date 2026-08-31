@@ -194,22 +194,24 @@ login and registration forms, and the Settings work-schedule fields.
 
 ### Sidebar, header, footer (`components/layout/`)
 
-- Accessibility: below `lg` the sidebar collapses to icons and the labels were `hidden`, so
-  icon-only items had no accessible name — **fixed** with `sr-only lg:not-sr-only` for the nav
-  labels, the wordmark and the "Local data" notice.
-- Fitts's Law: nav items keep a 40 px minimum height — **fixed**.
-- Serial Position Effect: order is now Dashboard, Time Entries, Week, Projects, Time Management,
-  Budgets, Reports, Working Time, Calendar, Settings. The two views opened most often take the first
-  positions, Settings keeps the last position where users look for it (Jakob's Law), and the rarely
-  used views sit in the middle.
+- Accessibility: the sidebar defaults to its labelled, expanded state and has a persisted, labelled
+  40 px expand/collapse control. Collapsed labels remain `sr-only`, including the "Local data"
+  notice, and group labels remain accessible headings.
+- Navigation: all 11 destinations are list items in one labelled navigation list, so their set size
+  and position are exposed. Track, Review and Manage headings chunk related views; the settings item
+  remains last and ungrouped.
+- Keyboard: a visible-on-focus "Skip to main content" link is the first app control and moves focus
+  to the focusable main landmark.
+- Fitts's Law: nav items and the rail control keep a 40 px minimum height.
+- Serial Position Effect: Dashboard and Time Entries open the Track group, while Settings keeps the
+  final position where users expect it (Jakob's Law).
 - Header: the account menu trigger is icon-only but labelled `Account menu`; logout is marked
   destructive inside the menu instead of being a bare header button.
 
 ## Responsive behaviour
 
-Verified in Chromium at 1440 px, 1024 px and 768 px (sidebar collapsed): every top-level view
-renders without horizontal overflow (`scrollWidth === clientWidth`) and keeps exactly one level-1
-heading. In the collapsed sidebar all ten navigation items still expose their name to the
-accessibility tree and stay at least 40 px high; the only control whose painted box is smaller than
-40 px is the inline "View all" link, whose transparent hit area was verified by clicking 6 px above
-its visible box.
+Verified in Chromium at 1440 px, 1024 px and 768 px: every top-level view renders without horizontal
+overflow (`scrollWidth === clientWidth`) and keeps exactly one level-1 heading. The collapsed sidebar
+keeps all 11 navigation names in the accessibility tree and all controls remain at least 40 px high;
+the only control whose painted box is smaller than 40 px is the inline "View all" link, whose
+transparent hit area was verified by clicking 6 px above its visible box.

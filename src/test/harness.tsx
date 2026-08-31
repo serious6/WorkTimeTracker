@@ -36,6 +36,7 @@ export async function resetAppState(): Promise<void> {
   globalThis.localStorage?.clear()
   globalThis.sessionStorage?.clear()
   useTimerStore.setState({ session: null, recovered: false })
+  useNavigationStore.setState({ sidebarExpanded: true })
   useNavigationStore.getState().navigate('dashboard')
   useDashboardStore.setState({ selectedDate: toDateKey(new Date()) })
   useToastStore.setState({ toasts: [] })
