@@ -306,6 +306,98 @@
         }
       ]
     },
+    "overtimeEntry": {
+      "rust": "OvertimeEntry",
+      "zod": "overtimeEntrySchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "effectiveDate",
+          "type": "string",
+          "nullable": false,
+          "sample": "2026-09-01"
+        },
+        {
+          "name": "minutes",
+          "type": "integer",
+          "nullable": false,
+          "sample": -90
+        },
+        {
+          "name": "kind",
+          "type": "string",
+          "nullable": false,
+          "sample": "opening"
+        },
+        {
+          "name": "origin",
+          "type": "string",
+          "nullable": false,
+          "sample": "manual"
+        },
+        {
+          "name": "note",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
+    "overtimeAudit": {
+      "rust": "OvertimeAudit",
+      "zod": "overtimeAuditSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "overtimeEntryId",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "nullable": false,
+          "sample": "created"
+        },
+        {
+          "name": "actor",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "oldValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "newValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "recordedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
     "workSettings": {
       "rust": "WorkSettings",
       "zod": "workSettingsSchema",

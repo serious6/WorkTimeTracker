@@ -136,6 +136,49 @@ export const absenceAudits = pgTable('absence_audits', {
 })
 
 /**
+ * Explicit overtime records. The overtime derived from time entries, the target
+ * and the absences is not stored; only an opening balance, an absolute
+ * correction or a delta is persisted, one record per effective date.
+ */
+export const overtimeEntries = pgTable(
+  'overtime_entries',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    effectiveDate: text('effective_date').notNull(),
+    minutes: bigint({ mode: 'number' }).notNull(),
+    kind: text({ enum: ['opening', 'balance', 'adjustment'] }).notNull(),
+    origin: text({ enum: ['automatic', 'manual'] })
+      .notNull()
+      .default('manual'),
+    note: text(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    unique('overtime_entries_day_unique').on(table.userId, table.effectiveDate),
+    // `enum` only narrows the TypeScript type, so the value constraint is modelled explicitly.
+    check('overtime_entries_kind_check', sql`${table.kind} IN ('opening', 'balance', 'adjustment')`),
+    check('overtime_entries_origin_check', sql`${table.origin} IN ('automatic', 'manual')`),
+  ],
+)
+
+export const overtimeAudits = pgTable('overtime_audits', {
+  id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  userId: bigint('user_id', { mode: 'number' })
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  overtimeEntryId: bigint('overtime_entry_id', { mode: 'number' }).notNull(),
+  action: text({ enum: ['created', 'updated', 'deleted'] }).notNull(),
+  actor: text().notNull(),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  recordedAt: text('recorded_at').notNull(),
+})
+
+/**
  * Failed logins per email. Persisted so a restart does not clear a lockout;
  * rows are evicted once their lockout has been served.
  */

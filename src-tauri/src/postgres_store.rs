@@ -12,13 +12,15 @@ use r2d2_postgres::PostgresConnectionManager;
 
 use crate::{
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, Project, ProjectBudget,
-        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
-        User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK,
-        GERMAN_COMPLIANCE_LIMITS,
+        Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, OvertimeAudit,
+        OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject,
+        SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
+        OVERTIME_ORIGIN_MANUAL,
     },
     store::{
-        LoginAttempt, LoginAttemptStore, Store, StoreError, SwitchEntryError, TimeEntryWriteError,
+        LoginAttempt, LoginAttemptStore, OvertimeWriteError, Store, StoreError, SwitchEntryError,
+        TimeEntryWriteError,
     },
 };
 
@@ -42,6 +44,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0002_login_attempts",
         include_str!("../../drizzle/0002_login_attempts.sql"),
+    ),
+    (
+        "0003_overtime",
+        include_str!("../../drizzle/0003_overtime.sql"),
     ),
 ];
 
@@ -311,6 +317,100 @@ fn read_absence(
         )?
         .ok_or(StoreError::NotFound)?;
     Ok(absence_from_row(&row))
+}
+
+const OVERTIME_COLUMNS: &str =
+    "id, effective_date, minutes, kind, origin, note, created_at, updated_at";
+const OVERTIME_AUDIT_COLUMNS: &str =
+    "id, overtime_entry_id, action, actor, old_value, new_value, recorded_at";
+
+fn overtime_from_row(row: &postgres::Row) -> OvertimeEntry {
+    OvertimeEntry {
+        id: row.get(0),
+        effective_date: row.get(1),
+        minutes: row.get(2),
+        kind: row.get(3),
+        origin: row.get(4),
+        note: row.get(5),
+        created_at: row.get(6),
+        updated_at: row.get(7),
+    }
+}
+
+fn overtime_audit_from_row(row: &postgres::Row) -> OvertimeAudit {
+    OvertimeAudit {
+        id: row.get(0),
+        overtime_entry_id: row.get(1),
+        action: row.get(2),
+        actor: row.get(3),
+        old_value: row.get(4),
+        new_value: row.get(5),
+        recorded_at: row.get(6),
+    }
+}
+
+/// The snapshot carries the origin, so a switch from `automatic` to `manual`
+/// stays traceable in the trail.
+fn overtime_snapshot(entry: &OvertimeEntry) -> Option<String> {
+    serde_json::to_string(entry).ok()
+}
+
+fn record_overtime_audit(
+    transaction: &mut postgres::Transaction,
+    user_id: i64,
+    overtime_entry_id: i64,
+    action: &str,
+    old_value: Option<&OvertimeEntry>,
+    new_value: Option<&OvertimeEntry>,
+) -> Result<(), StoreError> {
+    let actor = actor(transaction, user_id)?;
+    transaction.execute(
+        "INSERT INTO overtime_audits (user_id, overtime_entry_id, action, actor, old_value, new_value, recorded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        &[
+            &user_id,
+            &overtime_entry_id,
+            &action,
+            &actor,
+            &old_value.and_then(overtime_snapshot),
+            &new_value.and_then(overtime_snapshot),
+            &now_iso(),
+        ],
+    )?;
+    Ok(())
+}
+
+fn read_overtime_entry(
+    client: &mut impl postgres::GenericClient,
+    id: i64,
+    user_id: i64,
+) -> Result<OvertimeEntry, StoreError> {
+    let row = client
+        .query_opt(
+            &format!(
+                "SELECT {OVERTIME_COLUMNS} FROM overtime_entries WHERE id = $1 AND user_id = $2"
+            ),
+            &[&id, &user_id],
+        )?
+        .ok_or(StoreError::NotFound)?;
+    Ok(overtime_from_row(&row))
+}
+
+/// Only one opening balance can exist per user; the check runs inside the
+/// writing transaction, so a second one cannot slip in beside it.
+fn has_other_opening(
+    client: &mut impl postgres::GenericClient,
+    user_id: i64,
+    exclude_id: Option<i64>,
+) -> Result<bool, StoreError> {
+    let row = client.query_one(
+        "SELECT EXISTS (
+             SELECT 1 FROM overtime_entries
+             WHERE user_id = $1 AND kind = 'opening' AND ($2::BIGINT IS NULL OR id <> $2)
+         )",
+        &[&user_id, &exclude_id],
+    )?;
+    Ok(row.get(0))
 }
 
 fn entry_snapshot(entry: &TimeEntry) -> Option<String> {
@@ -1180,6 +1280,143 @@ impl Store for PostgresStore {
             &[&user_id],
         )?;
         Ok(rows.iter().map(absence_audit_from_row).collect())
+    }
+
+    fn list_overtime_entries(&self, user_id: i64) -> Result<Vec<OvertimeEntry>, StoreError> {
+        let mut client = self.conn()?;
+        let rows = client.query(
+            &format!(
+                "SELECT {OVERTIME_COLUMNS} FROM overtime_entries WHERE user_id = $1
+                 ORDER BY effective_date DESC, id DESC"
+            ),
+            &[&user_id],
+        )?;
+        Ok(rows.iter().map(overtime_from_row).collect())
+    }
+
+    fn insert_overtime_entry(
+        &self,
+        user_id: i64,
+        input: &SaveOvertimeEntry,
+    ) -> Result<OvertimeEntry, OvertimeWriteError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction().map_err(StoreError::from)?;
+        if input.kind == "opening" && has_other_opening(&mut transaction, user_id, None)? {
+            return Err(OvertimeWriteError::SecondOpening);
+        }
+        let now = now_iso();
+        let row = transaction
+            .query_one(
+                &format!(
+                    "INSERT INTO overtime_entries (user_id, effective_date, minutes, kind, origin, note, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING {OVERTIME_COLUMNS}"
+                ),
+                &[
+                    &user_id,
+                    &input.effective_date,
+                    &input.minutes,
+                    &input.kind,
+                    &input.origin(),
+                    &input.note,
+                    &now,
+                ],
+            )
+            .map_err(StoreError::from)?;
+        let entry = overtime_from_row(&row);
+        record_overtime_audit(
+            &mut transaction,
+            user_id,
+            entry.id,
+            "created",
+            None,
+            Some(&entry),
+        )?;
+        transaction.commit().map_err(StoreError::from)?;
+        Ok(entry)
+    }
+
+    /// An edited record becomes `manual`, so the automatic calculation never
+    /// overwrites the correction again.
+    fn update_overtime_entry(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveOvertimeEntry,
+    ) -> Result<OvertimeEntry, OvertimeWriteError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction().map_err(StoreError::from)?;
+        let current = read_overtime_entry(&mut transaction, id, user_id)?;
+        if input.kind == "opening" && has_other_opening(&mut transaction, user_id, Some(id))? {
+            return Err(OvertimeWriteError::SecondOpening);
+        }
+        let row = transaction
+            .query_one(
+                &format!(
+                    "UPDATE overtime_entries
+                     SET effective_date = $3, minutes = $4, kind = $5, origin = $6, note = $7, updated_at = $8
+                     WHERE id = $1 AND user_id = $2 RETURNING {OVERTIME_COLUMNS}"
+                ),
+                &[
+                    &id,
+                    &user_id,
+                    &input.effective_date,
+                    &input.minutes,
+                    &input.kind,
+                    &OVERTIME_ORIGIN_MANUAL,
+                    &input.note,
+                    &now_iso(),
+                ],
+            )
+            .map_err(StoreError::from)?;
+        let entry = overtime_from_row(&row);
+        record_overtime_audit(
+            &mut transaction,
+            user_id,
+            id,
+            "updated",
+            Some(&current),
+            Some(&entry),
+        )?;
+        transaction.commit().map_err(StoreError::from)?;
+        Ok(entry)
+    }
+
+    fn delete_overtime_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        let current = match read_overtime_entry(&mut transaction, id, user_id) {
+            Ok(entry) => Some(entry),
+            Err(StoreError::NotFound) => None,
+            Err(error) => return Err(error),
+        };
+        transaction.execute(
+            "DELETE FROM overtime_entries WHERE id = $1 AND user_id = $2",
+            &[&id, &user_id],
+        )?;
+        if let Some(current) = current {
+            record_overtime_audit(
+                &mut transaction,
+                user_id,
+                id,
+                "deleted",
+                Some(&current),
+                None,
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    fn list_overtime_audits(&self, user_id: i64) -> Result<Vec<OvertimeAudit>, StoreError> {
+        let mut client = self.conn()?;
+        let rows = client.query(
+            &format!(
+                "SELECT {OVERTIME_AUDIT_COLUMNS} FROM overtime_audits WHERE user_id = $1
+                 ORDER BY recorded_at DESC, id DESC"
+            ),
+            &[&user_id],
+        )?;
+        Ok(rows.iter().map(overtime_audit_from_row).collect())
     }
 
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError> {

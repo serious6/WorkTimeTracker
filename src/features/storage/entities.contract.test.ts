@@ -5,6 +5,7 @@ import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-s
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
+import { overtimeAuditSchema, overtimeEntrySchema } from '@/features/overtime/overtime-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import {
   complianceLimitsSchema,
@@ -40,6 +41,8 @@ const schemas: Record<string, z.ZodObject> = {
   projectBudget: projectBudgetSchema,
   absence: absenceSchema,
   absenceAudit: absenceAuditSchema,
+  overtimeEntry: overtimeEntrySchema,
+  overtimeAudit: overtimeAuditSchema,
   workSettings: workSettingsSchema,
   complianceLimits: complianceLimitsSchema,
 }

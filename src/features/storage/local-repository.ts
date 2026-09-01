@@ -32,6 +32,15 @@ import {
   type ProjectBudget,
 } from '@/features/budgets/budget-schema'
 import {
+  DUPLICATE_OVERTIME_MESSAGE,
+  SINGLE_OPENING_MESSAGE,
+  overtimeAuditSchema,
+  overtimeEntrySchema,
+  saveOvertimeEntrySchema,
+  type OvertimeAudit,
+  type OvertimeEntry,
+} from '@/features/overtime/overtime-schema'
+import {
   projectSchema,
   saveProjectSchema,
   type Project,
@@ -78,6 +87,7 @@ const SCOPED_KEYS = [
   'time-entry-state',
   'audit-log',
   'absence-state',
+  'overtime-state',
 ] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
@@ -98,6 +108,12 @@ const absenceStateSchema = z.object({
   audits: absenceAuditSchema.array(),
 })
 type AbsenceState = z.infer<typeof absenceStateSchema>
+
+const overtimeStateSchema = z.object({
+  entries: overtimeEntrySchema.array(),
+  audits: overtimeAuditSchema.array(),
+})
+type OvertimeState = z.infer<typeof overtimeStateSchema>
 
 const SESSION_KEY = 'work-time-tracker.session'
 const SESSIONS_KEY = 'work-time-tracker.sessions'
@@ -299,6 +315,42 @@ function appendAbsenceAudit(
     absenceAuditSchema.parse({
       id: nextId(audits),
       absenceId,
+      action,
+      actor: currentActor(),
+      oldValue: oldValue ? JSON.stringify(oldValue) : null,
+      newValue: newValue ? JSON.stringify(newValue) : null,
+      recordedAt: new Date().toISOString(),
+    }),
+  ]
+}
+
+function overtimeStateKey(): string {
+  return scopedKey('overtime-state')
+}
+
+function readOvertimeState(): OvertimeState {
+  return read(overtimeStateKey(), { entries: [], audits: [] }, (value) =>
+    overtimeStateSchema.parse(value),
+  )
+}
+
+function writeOvertimeState(entries: OvertimeEntry[], audits: OvertimeAudit[]): void {
+  write(overtimeStateKey(), { entries, audits })
+}
+
+/** Appends to the trail; the origin is part of the snapshot, so a switch is traceable. */
+function appendOvertimeAudit(
+  audits: OvertimeAudit[],
+  overtimeEntryId: number,
+  action: AuditAction,
+  oldValue: OvertimeEntry | null,
+  newValue: OvertimeEntry | null,
+): OvertimeAudit[] {
+  return [
+    ...audits,
+    overtimeAuditSchema.parse({
+      id: nextId(audits),
+      overtimeEntryId,
       action,
       actor: currentActor(),
       oldValue: oldValue ? JSON.stringify(oldValue) : null,
@@ -738,6 +790,70 @@ const fallbackRepository: Repository = {
   },
   listAbsenceAudits: async () =>
     readAbsenceState().audits.sort((left, right) => right.id - left.id),
+  listOvertimeEntries: async () =>
+    readOvertimeState().entries.sort((left, right) =>
+      right.effectiveDate.localeCompare(left.effectiveDate),
+    ),
+  createOvertimeEntry: async (input) => {
+    const parsed = validate(saveOvertimeEntrySchema, input)
+    const { entries, audits } = readOvertimeState()
+    if (entries.some((entry) => entry.effectiveDate === parsed.effectiveDate)) {
+      throw new AppError('conflict', DUPLICATE_OVERTIME_MESSAGE)
+    }
+    if (parsed.kind === 'opening' && entries.some((entry) => entry.kind === 'opening')) {
+      throw new AppError('conflict', SINGLE_OPENING_MESSAGE)
+    }
+    const now = new Date().toISOString()
+    const entry = overtimeEntrySchema.parse({
+      ...parsed,
+      id: nextId(entries),
+      createdAt: now,
+      updatedAt: now,
+    })
+    writeOvertimeState(
+      [...entries, entry],
+      appendOvertimeAudit(audits, entry.id, 'created', null, entry),
+    )
+    return entry
+  },
+  updateOvertimeEntry: async (id, input) => {
+    const parsed = validate(saveOvertimeEntrySchema, input)
+    const { entries, audits } = readOvertimeState()
+    const current = entries.find((entry) => entry.id === id)
+    if (!current) throw new AppError('notFound', 'Overtime record not found')
+    if (entries.some((entry) => entry.effectiveDate === parsed.effectiveDate && entry.id !== id)) {
+      throw new AppError('conflict', DUPLICATE_OVERTIME_MESSAGE)
+    }
+    if (
+      parsed.kind === 'opening' &&
+      entries.some((entry) => entry.kind === 'opening' && entry.id !== id)
+    ) {
+      throw new AppError('conflict', SINGLE_OPENING_MESSAGE)
+    }
+    // An edited record is manual from now on, so the automatic calculation
+    // never overwrites the correction again.
+    const updated = overtimeEntrySchema.parse({
+      ...current,
+      ...parsed,
+      origin: 'manual',
+      updatedAt: new Date().toISOString(),
+    })
+    writeOvertimeState(
+      entries.map((entry) => (entry.id === id ? updated : entry)),
+      appendOvertimeAudit(audits, id, 'updated', current, updated),
+    )
+    return updated
+  },
+  deleteOvertimeEntry: async (id) => {
+    const { entries, audits } = readOvertimeState()
+    const current = entries.find((entry) => entry.id === id) ?? null
+    writeOvertimeState(
+      entries.filter((entry) => entry.id !== id),
+      current ? appendOvertimeAudit(audits, id, 'deleted', current, null) : audits,
+    )
+  },
+  listOvertimeAudits: async () =>
+    readOvertimeState().audits.sort((left, right) => right.id - left.id),
   getWorkSettings: async () =>
     read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
       workSettingsSchema.parse(value),

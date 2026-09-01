@@ -3,9 +3,9 @@
 use crate::{
     config::DbConfig,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, ListRange, Project, ProjectBudget, SaveAbsence,
-        SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User,
-        WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, ListRange, OvertimeAudit, OvertimeEntry, Project,
+        ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
+        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -40,6 +40,20 @@ pub enum TimeEntryWriteError {
 }
 
 impl From<StoreError> for TimeEntryWriteError {
+    fn from(error: StoreError) -> Self {
+        Self::Store(error)
+    }
+}
+
+/// An overtime write failed because a second opening balance was set; only one
+/// opening balance can exist per user.
+#[derive(Debug)]
+pub enum OvertimeWriteError {
+    SecondOpening,
+    Store(StoreError),
+}
+
+impl From<StoreError> for OvertimeWriteError {
     fn from(error: StoreError) -> Self {
         Self::Store(error)
     }
@@ -190,6 +204,21 @@ pub trait Store: LoginAttemptStore {
     ) -> Result<Vec<Absence>, StoreError>;
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
     fn list_absence_audits(&self, user_id: i64) -> Result<Vec<AbsenceAudit>, StoreError>;
+
+    fn list_overtime_entries(&self, user_id: i64) -> Result<Vec<OvertimeEntry>, StoreError>;
+    fn insert_overtime_entry(
+        &self,
+        user_id: i64,
+        input: &SaveOvertimeEntry,
+    ) -> Result<OvertimeEntry, OvertimeWriteError>;
+    fn update_overtime_entry(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveOvertimeEntry,
+    ) -> Result<OvertimeEntry, OvertimeWriteError>;
+    fn delete_overtime_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
+    fn list_overtime_audits(&self, user_id: i64) -> Result<Vec<OvertimeAudit>, StoreError>;
 
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError>;
     fn write_settings(
