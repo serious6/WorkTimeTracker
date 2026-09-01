@@ -1431,13 +1431,14 @@ mod tests {
 
     /// The counters behind the login lockout survive a restart of the process,
     /// so they must be readable through a second connection and disappear once
-    /// their lockout has been served. The timestamps lie before every other
-    /// test of this file, so the eviction cannot reach their rows.
+    /// their lockout has been served. An isolated database prevents concurrent
+    /// tests from evicting this counter.
     #[test]
     fn counts_and_evicts_login_attempts_in_postgres() {
-        let Some(store) = test_store() else {
+        let Some(database) = fresh_database() else {
             return;
         };
+        let store = PostgresStore::connect(database.url()).unwrap();
         let email = unique_email();
         let kept = "1971-01-01T09:00:00.000Z";
 
