@@ -54,10 +54,12 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })
 
+// #1 in docs/e2e-test-cases.md
 test('registers a new account and signs it in directly', async ({ page }) => {
   await expect(page.getByText('first@example.com')).toBeVisible()
 })
 
+// #2 in docs/e2e-test-cases.md
 test('shows the login page when no user is signed in', async ({ page }) => {
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Logout' }).click()
@@ -74,6 +76,7 @@ test('shows the login page when no user is signed in', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })
 
+// #3 in docs/e2e-test-cases.md
 test('validates the password policy while typing and blocks weak passwords', async ({ page }) => {
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Logout' }).click()
@@ -94,6 +97,7 @@ test('validates the password policy while typing and blocks weak passwords', asy
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })
 
+// #4 in docs/e2e-test-cases.md
 test('discards the input when the registration is cancelled', async ({ page }) => {
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Logout' }).click()
@@ -105,6 +109,7 @@ test('discards the input when the registration is cancelled', async ({ page }) =
   await expect(page.getByLabel('Email')).toHaveValue('')
 })
 
+// #5 in docs/e2e-test-cases.md
 test('rejects an email that is already registered', async ({ page }) => {
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Switch User' }).click()
@@ -113,6 +118,7 @@ test('rejects an email that is already registered', async ({ page }) => {
   await expect(page.getByRole('alert')).toContainText('An account with this email already exists')
 })
 
+// #6 in docs/e2e-test-cases.md
 test('keeps the data of every user separate', async ({ page }) => {
   await createProject(page, 'Website Redesign')
 
@@ -132,6 +138,7 @@ test('keeps the data of every user separate', async ({ page }) => {
   await expect(page.getByText('Website Redesign')).toBeVisible()
 })
 
+// #7 in docs/e2e-test-cases.md
 test('shows the dashboard with empty states', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
@@ -141,6 +148,7 @@ test('shows the dashboard with empty states', async ({ page }) => {
   await expect(page.getByText('Create your first project to start tracking.')).toBeVisible()
 })
 
+// #8 in docs/e2e-test-cases.md
 test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await createProject(page, 'Website Redesign')
 
@@ -157,6 +165,7 @@ test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
 })
 
+// #9 in docs/e2e-test-cases.md
 test('adds, edits and deletes a manual time entry', async ({ page }) => {
   await createProject(page, 'Mobile App')
 
@@ -183,6 +192,7 @@ test('adds, edits and deletes a manual time entry', async ({ page }) => {
   await expect(page.getByText('No time tracked today')).toBeVisible()
 })
 
+// #10 in docs/e2e-test-cases.md
 test('records every change of a time entry in the change history', async ({ page }) => {
   await createProject(page, 'Mobile App')
   await addEntry(page, 'Mobile App', '09:00', '11:30')
@@ -202,6 +212,7 @@ test('records every change of a time entry in the change history', async ({ page
   await expect(history.getByText('first@example.com').first()).toBeVisible()
 })
 
+// #11 in docs/e2e-test-cases.md
 test('corrects the start of a running timer retroactively', async ({ page }) => {
   await createProject(page, 'Mobile App')
 
@@ -231,6 +242,7 @@ test('corrects the start of a running timer retroactively', async ({ page }) => 
   await expect(history.getByText(/^Start: /)).toBeVisible()
 })
 
+// #12 in docs/e2e-test-cases.md
 test('rejects overlapping entries and invalid times', async ({ page }) => {
   await createProject(page, 'Research')
 
@@ -246,6 +258,7 @@ test('rejects overlapping entries and invalid times', async ({ page }) => {
   await expect(page.getByText('This time overlaps with another time entry')).toBeVisible()
 })
 
+// #13 in docs/e2e-test-cases.md
 test('navigates between days and views', async ({ page }) => {
   await page.getByRole('button', { name: 'Previous day' }).click()
   await expect(page.getByText('No time tracked today')).toBeVisible()
@@ -258,6 +271,7 @@ test('navigates between days and views', async ({ page }) => {
   await expect(page.getByRole('contentinfo')).toContainText('Build with ❤️ in Hamburg')
 })
 
+// #14 in docs/e2e-test-cases.md
 test('configures the weekly working time and the working days', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings' }).click()
   const weeklyHours = page.getByLabel('Weekly working time (hours)')
@@ -289,6 +303,7 @@ test('configures the weekly working time and the working days', async ({ page })
   await expect(page.getByText('of 20h 00m')).toBeVisible()
 })
 
+// #15 in docs/e2e-test-cases.md
 test('quick-adds time on the time management page', async ({ page }) => {
   await createProject(page, 'Support')
 
@@ -329,6 +344,7 @@ test('quick-adds time on the time management page', async ({ page }) => {
   await expect(page.getByText('1h 15m').first()).toBeVisible()
 })
 
+// #16 in docs/e2e-test-cases.md
 test('manages a project budget and reports its consumption and forecast', async ({ page }) => {
   await createProject(page, 'Budgeted Project')
   await addEntry(page, 'Budgeted Project', '09:00', '11:00')
@@ -371,10 +387,12 @@ test('manages a project budget and reports its consumption and forecast', async 
   await expect(page.getByText('No budget is defined for this project.')).toBeVisible()
 })
 
+// #17 in docs/e2e-test-cases.md
 test('does not show budgets on the dashboard', async ({ page }) => {
   await expect(page.getByText('Project budget')).toBeHidden()
 })
 
+// #18 in docs/e2e-test-cases.md
 test('records a break and warns about the working time limits', async ({ page }) => {
   await createProject(page, 'Compliance')
   await addEntry(page, 'Compliance', '07:00', '12:00')
@@ -400,6 +418,7 @@ test('records a break and warns about the working time limits', async ({ page })
   await expect(page.getByText(/the daily maximum is 10h 00m/)).toBeVisible()
 })
 
+// #19 in docs/e2e-test-cases.md
 test('restores the German working time limits in the settings', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings' }).click()
   const dailyMaximum = page.getByLabel('Maximum daily working time')
@@ -421,6 +440,7 @@ async function selectDate(page: Page, inDays: number) {
   await page.getByLabel('Selected date').fill(dateKey(inDays))
 }
 
+// #20 in docs/e2e-test-cases.md
 test('keeps the overtime balance unchanged across a marked vacation range', async ({ page }) => {
   // Every weekday counts, so the assertions do not depend on today's weekday.
   await page.getByRole('button', { name: 'Settings' }).click()
@@ -456,6 +476,7 @@ test('keeps the overtime balance unchanged across a marked vacation range', asyn
   await expect(page.getByText('on this day, so it carries no working time target.')).toBeVisible()
 })
 
+// #21 in docs/e2e-test-cases.md
 test('replaces an absence only after an explicit confirmation', async ({ page }) => {
   await page.getByRole('button', { name: 'Absences' }).click()
   await page.getByRole('button', { name: 'Mark absence' }).click()
