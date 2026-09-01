@@ -3,6 +3,7 @@ import { useNavigationStore } from '@/app/navigation'
 import { useAbsenceIndex } from '@/features/absences/absence-queries'
 import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { ProjectDialog } from '@/features/projects/components/project-dialog'
+import { useOvertimeEntries } from '@/features/overtime/overtime-queries'
 import { useProjects } from '@/features/projects/project-queries'
 import {
   scheduledMinutesInRange,
@@ -34,6 +35,7 @@ export function DashboardPage() {
   const { data: entries = [], isError } = useTimeEntries()
   const { data: projects = [] } = useProjects()
   const absences = useAbsenceIndex()
+  const { data: overtime = [] } = useOvertimeEntries()
   const navigate = useNavigationStore((state) => state.navigate)
 
   const now = useTicker(true)
@@ -51,7 +53,14 @@ export function DashboardPage() {
   const trackedWeekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
   const dailyTargetMinutes = targetMinutesForDay(settings, selectedDate, absences)
   const weeklyTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange, absences)
-  const balance = cumulativeBalance({ entries, settings, throughDate: selectedDate, absences, now })
+  const balance = cumulativeBalance({
+    entries,
+    settings,
+    throughDate: selectedDate,
+    absences,
+    overtime,
+    now,
+  })
   const absenceOfDay = absences.get(toDateKey(selectedDate)) ?? null
 
   function toggleTimer() {

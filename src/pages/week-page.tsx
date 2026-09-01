@@ -10,6 +10,7 @@ import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { cumulativeBalance } from '@/features/dashboard/balance'
 import { dayRange, entriesInRange } from '@/features/dashboard/metrics'
 import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboard-store'
+import { useOvertimeEntries } from '@/features/overtime/overtime-queries'
 import { useProjects } from '@/features/projects/project-queries'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
@@ -43,6 +44,7 @@ export function WeekPage() {
   const { data: entries = [] } = useTimeEntries()
   const { data: projects = [] } = useProjects()
   const absences = useAbsenceIndex()
+  const { data: overtime = [] } = useOvertimeEntries()
   const now = useTicker(true)
   const timer = useTimer(now)
   const quickAdd = useQuickAdd()
@@ -60,8 +62,9 @@ export function WeekPage() {
     [entries, projects, settings, selectedDate, absences, now],
   )
   const balance = useMemo(
-    () => cumulativeBalance({ entries, settings, throughDate: selectedDate, absences, now }),
-    [entries, settings, selectedDate, absences, now],
+    () =>
+      cumulativeBalance({ entries, settings, throughDate: selectedDate, absences, overtime, now }),
+    [entries, settings, selectedDate, absences, overtime, now],
   )
   const [selectedDayKey, setSelectedDayKey] = useState(() => toDateKey(selectedDate))
 

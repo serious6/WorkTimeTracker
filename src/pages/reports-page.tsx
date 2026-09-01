@@ -14,6 +14,8 @@ import {
   weekRange,
 } from '@/features/dashboard/metrics'
 import { useSelectedDate } from '@/features/dashboard/dashboard-store'
+import { cumulativeBalance } from '@/features/dashboard/balance'
+import { useOvertimeEntries } from '@/features/overtime/overtime-queries'
 import { useProjects } from '@/features/projects/project-queries'
 import {
   scheduledMinutesInRange,
@@ -22,7 +24,13 @@ import {
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
 import { useTicker } from '@/features/timer/use-ticker'
-import { addDays, formatDuration, formatWeekRange, startOfWeek } from '@/lib/date'
+import {
+  addDays,
+  formatDuration,
+  formatSignedDuration,
+  formatWeekRange,
+  startOfWeek,
+} from '@/lib/date'
 
 export function ReportsPage() {
   const selectedDate = useSelectedDate()
@@ -32,6 +40,7 @@ export function ReportsPage() {
   const { data: budgets = [] } = useProjectBudgets()
   const projectFilter = useNavigationStore((state) => state.projectFilter)
   const absences = useAbsenceIndex()
+  const { data: overtime = [] } = useOvertimeEntries()
   const now = useTicker(true)
   const [budgetProjectId, setBudgetProjectId] = useState<number | null>(projectFilter)
 
@@ -40,6 +49,14 @@ export function ReportsPage() {
   const weekEntries = entriesInRange(entries, selectedWeekRange, now)
   const weekMinutes = totalMinutes(weekEntries, now, selectedWeekRange)
   const weekTargetMinutes = scheduledMinutesInRange(settings, selectedWeekRange, absences)
+  const balance = cumulativeBalance({
+    entries,
+    settings,
+    throughDate: selectedDate,
+    absences,
+    overtime,
+    now,
+  })
 
   const data = Array.from({ length: 7 }, (_, index) => {
     const day = addDays(weekStart, index)
@@ -65,7 +82,8 @@ export function ReportsPage() {
             <p className="text-sm text-muted-foreground">
               Total: {formatDuration(weekMinutes)} · Target:{' '}
               {formatDuration(weekTargetMinutes)} · Overtime:{' '}
-              {formatDuration(overtimeMinutes(weekMinutes, weekTargetMinutes))}
+              {formatDuration(overtimeMinutes(weekMinutes, weekTargetMinutes))} · Balance:{' '}
+              {formatSignedDuration(balance.balanceMinutes)}
             </p>
           </CardHeader>
           <CardContent className="h-72">

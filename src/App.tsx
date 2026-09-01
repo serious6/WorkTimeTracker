@@ -45,6 +45,9 @@ const pages = {
   absences: lazy(() =>
     import('@/pages/absences-page').then((module) => ({ default: module.AbsencesPage })),
   ),
+  overtime: lazy(() =>
+    import('@/pages/overtime-page').then((module) => ({ default: module.OvertimePage })),
+  ),
   calendar: lazy(() =>
     import('@/pages/calendar-page').then((module) => ({ default: module.CalendarPage })),
   ),

@@ -11,6 +11,7 @@ export type View =
   | 'reports'
   | 'working-time'
   | 'absences'
+  | 'overtime'
   | 'calendar'
   | 'settings'
   | 'licenses'
