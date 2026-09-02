@@ -249,6 +249,20 @@ describe('cumulative balance with explicit overtime', () => {
     expect(balance.explicitMinutes).toBe(120)
   })
 
+  it('carries an explicit record from a previous day without any tracked time', () => {
+    const balance = cumulativeBalance({
+      entries: [],
+      settings,
+      throughDate: at(24, 12),
+      overtime: [overtime('2026-08-23', 120, 'adjustment')],
+      now: at(24, 12).getTime(),
+    })
+
+    expect(balance.startDate).toBeNull()
+    expect(balance.balanceMinutes).toBe(120)
+    expect(balance.carriedOverMinutes).toBe(120)
+  })
+
   it('leaves the derived part untouched when there is no explicit record', () => {
     const balance = cumulativeBalance({
       entries,

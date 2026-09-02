@@ -95,7 +95,12 @@ export function cumulativeBalance({
   // it counts even before the first entry is tracked.
   const startDate = anchor ?? firstTrackedDay(entries)
   if (!startDate || startDate > endDate) {
-    return { ...EMPTY_BALANCE, balanceMinutes: explicit.minutes, explicitMinutes: explicit.minutes }
+    return {
+      ...EMPTY_BALANCE,
+      balanceMinutes: explicit.minutes,
+      carriedOverMinutes: explicitOvertime(overtime, toDateKey(addDays(endDate, -1))).minutes,
+      explicitMinutes: explicit.minutes,
+    }
   }
 
   const minutesByDay = trackedMinutesByDay(entries, now)
