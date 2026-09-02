@@ -167,7 +167,7 @@ test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await expect(page.getByText('No time tracked today')).toBeVisible()
 
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
-  await expect(page.getByText('Timer started')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
 
   // An hour earlier, clamped to midnight so the correction never lands in the future.
   const earlier = await page.evaluate(() => {
