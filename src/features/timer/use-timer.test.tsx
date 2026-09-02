@@ -9,6 +9,8 @@ import {
   seedTimeEntry,
   signIn,
 } from '@/test/harness'
+import { entryMinutes } from '@/features/dashboard/metrics'
+import { DISCARDED_ENTRY_TITLE } from './round-duration'
 import { useTimerStore } from './timer-store'
 import { useTimer } from './use-timer'
 
@@ -63,6 +65,75 @@ describe('useTimer', () => {
 
     await waitFor(() => expect(result.current.status.running).toBeUndefined())
     expect(useTimerStore.getState().session).toBeNull()
+  })
+
+  it('stop rounds the captured duration to whole minutes', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 100_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(result.current.status.running).toBeUndefined())
+    const [stored] = await createLocalRepository().listTimeEntries()
+    expect(entryMinutes(stored)).toBe(2)
+  })
+
+  it('stop discards a session shorter than 30 seconds', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 5_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(result.current.status.running).toBeUndefined())
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useToastStore.getState().toasts.some((t) => t.title === DISCARDED_ENTRY_TITLE)).toBe(true)
+    expect(useTimerStore.getState().session).toBeNull()
+  })
+
+  it('stop rounds the whole session, including already closed segments', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 40_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 60_000, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(result.current.status.running).toBeUndefined())
+    const [stored] = await createLocalRepository().listTimeEntries()
+    expect(entryMinutes(stored)).toBe(1)
   })
 
   it('pause closes the running entry and sets paused state', async () => {

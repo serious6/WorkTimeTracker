@@ -4,6 +4,7 @@ import { entryDurationMs, findRunningEntry } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
 import {
   useCreateTimeEntry,
+  useDeleteTimeEntry,
   useSwitchRunningTimeEntry,
   useTimeEntries,
   useUpdateTimeEntryNote,
@@ -15,9 +16,10 @@ import {
   TIMER_ERROR_MESSAGE,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
-import { formatDuration, formatTimeOfDay } from '@/lib/date'
+import { formatDuration, formatTimeOfDay, MINUTE_MS } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { reconcileSession } from './recover-session'
+import { DISCARDED_ENTRY_MESSAGE, DISCARDED_ENTRY_TITLE, roundToMinutes } from './round-duration'
 import { useTimerStore } from './timer-store'
 
 export type TimerStatus = {
@@ -39,8 +41,13 @@ export function useTimer(now: number) {
   const updateEntry = useUpdateTimeEntry()
   const updateNote = useUpdateTimeEntryNote()
   const switchEntry = useSwitchRunningTimeEntry()
+  const deleteEntry = useDeleteTimeEntry()
   const isPending =
-    createEntry.isPending || updateEntry.isPending || updateNote.isPending || switchEntry.isPending
+    createEntry.isPending ||
+    updateEntry.isPending ||
+    updateNote.isPending ||
+    switchEntry.isPending ||
+    deleteEntry.isPending
 
   const running = findRunningEntry(entries)
 
@@ -99,21 +106,39 @@ export function useTimer(now: number) {
     [createEntry, projectName, setSession],
   )
 
+  /**
+   * Rounds the tracked session to whole minutes once, when it is stopped. The
+   * stored entry already carries the rounded value, so no report rounds again.
+   * A session that rounds to zero minutes is discarded instead of stored.
+   */
   const stop = useCallback(async () => {
     try {
-      const total = running
-        ? carriedMs + (await closeRunning(running, new Date().toISOString()))
-        : carriedMs
-      const projectId = running?.projectId ?? session?.projectId ?? null
-      setSession(null)
-      toast(
-        'Timer stopped',
-        `${formatDuration(total / 60_000)} added to ${projectName(projectId)}`,
+      const stoppedAt = Date.now()
+      const minutes = roundToMinutes(
+        carriedMs + (running ? entryDurationMs(running, stoppedAt) : 0),
       )
+      const projectId = running?.projectId ?? session?.projectId ?? null
+      if (running) {
+        const remainingMs = minutes * MINUTE_MS - carriedMs
+        if (remainingMs > 0) {
+          await closeRunning(
+            running,
+            new Date(Date.parse(running.startTime) + remainingMs).toISOString(),
+          )
+        } else {
+          await deleteEntry.mutateAsync(running.id)
+        }
+      }
+      setSession(null)
+      if (minutes === 0) {
+        toast(DISCARDED_ENTRY_TITLE, DISCARDED_ENTRY_MESSAGE)
+        return
+      }
+      toast('Timer stopped', `${formatDuration(minutes)} added to ${projectName(projectId)}`)
     } catch (error) {
       errorToast('The timer could not be stopped', errorMessage(error, 'Please try again'))
     }
-  }, [carriedMs, closeRunning, projectName, running, session, setSession])
+  }, [carriedMs, closeRunning, deleteEntry, projectName, running, session, setSession])
 
   const pause = useCallback(async () => {
     if (!running) return
