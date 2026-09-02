@@ -48,6 +48,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 `npm run test:coverage` fails below 80 percent statement, branch, function, or line coverage.
 
+`npm run test:e2e` builds the app in the `test-e2e` mode and serves the build with `vite preview`,
+which is faster and more stable than running the tests against the dev server.
+
 ## Guidelines
 
 - Only add dependencies with an OSI-approved open-source license.
