@@ -29,12 +29,13 @@ describe('CalendarPage', () => {
     expect(dayButtons.length).toBeGreaterThanOrEqual(28)
   })
 
-  test('clicking a day navigates to dashboard', async () => {
+  test('clicking a day navigates to time entries with a date filter', async () => {
     renderWithProviders(<CalendarPage />)
     await screen.findByRole('heading', { name: /calendar/i })
     const buttons = screen.getAllByRole('button')
     fireEvent.click(buttons[0])
-    expect(useNavigationStore.getState().view).toBe('dashboard')
+    expect(useNavigationStore.getState().view).toBe('time-entries')
+    expect(useNavigationStore.getState().dateFilter).not.toBeNull()
   })
 
   test('shows Tracked time per day card', async () => {
