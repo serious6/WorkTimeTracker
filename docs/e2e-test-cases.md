@@ -62,7 +62,7 @@ timer on it.
 | E10 | `E10: sums the segments of a paused session before rounding` | A timer runs for 40 seconds and is paused | The user resumes it, tracks another 40 seconds and stops it | Both segments are summed to 1m 20s before the rounding, so "0h 01m" is added once |
 | E11 | `E11: rounds the session that is stopped after a project switch` | A timer runs for two minutes on the first project | The user switches to a second project, tracks 1m 30s and stops the timer | The switch closes the first segment with its two minutes and the stopped session of the second project is rounded to "0h 02m" |
 | E12 | `E12: keeps a discarded session out of every total` | A timer ran for 29 seconds and was stopped | The user opens the dashboard, "Time Entries" and "Reports" | The session is nowhere: "No time tracked today", "No time entries yet." and "No time tracked this week." |
-| E13 | `E13: shows the rounded duration in every view` | A session of 2h 30m 30s was stopped | The user opens "Time Entries", "Reports" and "Working Time" | Every view shows the same rounded 2h 31m, including the monthly record behind the CSV and PDF export |
+| E13 | `E13: shows the rounded duration in every view` | A session of 2h 30m 30s was stopped | The user opens "Time Entries", "Reports" and "Working Time" and exports the month | Every view shows the same rounded 2h 31m and both the downloaded CSV and PDF contain 02:31 |
 | E14 | `E14: keeps the rounded duration after a reload` | A session of 1m 30s was stopped | The user reloads the application | The stored entry still shows 00:02:00, so the rounding is persisted and not only formatted |
 
 ## Conventions

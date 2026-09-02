@@ -42,6 +42,20 @@ async function stopTimer(page: Page) {
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
 }
 
+/** Clicks an export button and returns the generated file as text. */
+async function downloadText(page: Page, button: string) {
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: button }).click(),
+  ])
+  const stream = await download.createReadStream()
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(chunk as Buffer)
+  }
+  return Buffer.concat(chunks).toString('latin1')
+}
+
 /**
  * The clock ticks while the application starts, so no timer of the page stays
  * pending, and is frozen afterwards. From then on only `clock.fastForward`
@@ -102,7 +116,8 @@ test('E10: sums the segments of a paused session before rounding', async ({ page
   await page.clock.fastForward('00:00:40')
   await expect(page.getByLabel('Elapsed time')).toHaveText('00:01:20')
 
-  // Neither segment reaches half a minute, only their sum of 1m 20s does.
+  // Rounding each 40s segment on its own would give two minutes, the summed
+  // 1m 20s of the session round to one.
   await page.getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText(`0h 01m added to ${PROJECT}`)).toBeVisible()
   await expect(page.getByText('Total: 0h 01m')).toBeVisible()
@@ -165,6 +180,9 @@ test('E13: shows the rounded duration in every view', async ({ page }) => {
   // The monthly record carries the same value into the CSV and PDF export.
   await page.getByRole('button', { name: 'Working Time' }).click()
   await expect(page.getByRole('cell', { name: '2h 31m' })).toBeVisible()
+
+  expect(await downloadText(page, 'Export CSV')).toContain('02:31')
+  expect(await downloadText(page, 'Export PDF')).toContain('02:31')
 })
 
 // E14 in docs/e2e-test-cases.md
