@@ -160,6 +160,30 @@ test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
   await expect(page.getByLabel('Elapsed time')).toBeVisible()
 
+  // Stopped right away the session rounds to zero minutes, so nothing is stored.
+  await page.getByRole('button', { name: 'Stop timer' }).click()
+  await expect(page.getByText('Timer discarded')).toBeVisible()
+  await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
+  await expect(page.getByText('No time tracked today')).toBeVisible()
+
+  await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
+  await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
+
+  // An hour earlier, date and time, so the correction holds across midnight.
+  const earlier = await page.evaluate(() => {
+    const target = new Date(Date.now() - 60 * 60_000)
+    const pad = (value: number) => `${value}`.padStart(2, '0')
+    return {
+      date: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`,
+      time: `${pad(target.getHours())}:${pad(target.getMinutes())}`,
+    }
+  })
+  await page.getByRole('button', { name: 'Correct start time' }).click()
+  await dialog(page).getByLabel('Start date').fill(earlier.date)
+  await dialog(page).getByLabel('Start time').fill(earlier.time)
+  await dialog(page).getByRole('button', { name: 'Save start time' }).click()
+  await expect(page.getByText('Start time updated')).toBeVisible()
+
   await page.getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText('Timer stopped')).toBeVisible()
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()

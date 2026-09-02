@@ -5,7 +5,19 @@ export type TimerSession = {
   projectId: number | null
   /** Tracked time of the already closed segments of the session, in milliseconds. */
   carriedMs: number
+  /**
+   * Ids of the entries that belong to the session, so stopping can round the
+   * whole session and not just the running segment. Sessions that were stored
+   * before the ids were tracked carry none.
+   */
+  segmentIds?: number[]
   paused: boolean
+}
+
+/** Adds an entry to the session segments, keeping the order and each id once. */
+export function withSegment(segmentIds: number[] | undefined, id: number): number[] {
+  const ids = segmentIds ?? []
+  return ids.includes(id) ? ids : [...ids, id]
 }
 
 type TimerState = {

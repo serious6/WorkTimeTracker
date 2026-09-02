@@ -96,6 +96,11 @@ cannot lose tracked time; the persisted session only carries the closed segments
 A running timer can be moved to the time work actually started (`correctStart`); the entry itself is
 rewritten, so every derived figure and the audit trail follow.
 
+Stopping the timer rounds the tracked session to whole minutes, half up on the seconds part
+(`roundToMinutes`). The rounding happens once, and the stored end time already carries the rounded
+value, so no report or export rounds a second time. A session that rounds to zero minutes, that is
+one shorter than 30 seconds, is discarded instead of stored and the user is told so.
+
 ## 7. The repository is resolved on use, not at module load
 
 `src/features/storage/index.ts` exposes `getRepository()` instead of a `repository` constant. The

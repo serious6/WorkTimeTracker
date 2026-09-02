@@ -4,6 +4,7 @@ import { entryDurationMs, findRunningEntry } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
 import {
   useCreateTimeEntry,
+  useDeleteTimeEntry,
   useSwitchRunningTimeEntry,
   useTimeEntries,
   useUpdateTimeEntryNote,
@@ -15,10 +16,11 @@ import {
   TIMER_ERROR_MESSAGE,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
-import { formatDuration, formatTimeOfDay } from '@/lib/date'
+import { formatDuration, formatTimeOfDay, MINUTE_MS } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { reconcileSession } from './recover-session'
-import { useTimerStore } from './timer-store'
+import { DISCARDED_ENTRY_MESSAGE, DISCARDED_ENTRY_TITLE, roundToMinutes } from './round-duration'
+import { useTimerStore, withSegment } from './timer-store'
 
 export type TimerStatus = {
   running: TimeEntry | undefined
@@ -26,6 +28,22 @@ export type TimerStatus = {
   projectId: number | null
   /** Elapsed time of the current session in milliseconds. */
   elapsedMs: number
+}
+
+/**
+ * The stored entries of the session, oldest first, so stopping can round the
+ * whole session. A running entry always belongs to it, even when the session
+ * was recovered without its segment ids.
+ */
+function sessionSegments(
+  entries: TimeEntry[],
+  segmentIds: number[],
+  running: TimeEntry | undefined,
+): TimeEntry[] {
+  const ids = running ? withSegment(segmentIds, running.id) : segmentIds
+  return entries
+    .filter((entry) => ids.includes(entry.id))
+    .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime))
 }
 
 export function useTimer(now: number) {
@@ -39,8 +57,13 @@ export function useTimer(now: number) {
   const updateEntry = useUpdateTimeEntry()
   const updateNote = useUpdateTimeEntryNote()
   const switchEntry = useSwitchRunningTimeEntry()
+  const deleteEntry = useDeleteTimeEntry()
   const isPending =
-    createEntry.isPending || updateEntry.isPending || updateNote.isPending || switchEntry.isPending
+    createEntry.isPending ||
+    updateEntry.isPending ||
+    updateNote.isPending ||
+    switchEntry.isPending ||
+    deleteEntry.isPending
 
   const running = findRunningEntry(entries)
 
@@ -65,7 +88,7 @@ export function useTimer(now: number) {
     [projects],
   )
 
-  const closeRunning = useCallback(
+  const closeSegment = useCallback(
     async (entry: TimeEntry, endTime: string) => {
       await updateEntry.mutateAsync({
         id: entry.id,
@@ -84,13 +107,13 @@ export function useTimer(now: number) {
   const start = useCallback(
     async (projectId: number, note: string | null = null) => {
       try {
-        await createEntry.mutateAsync({
+        const entry = await createEntry.mutateAsync({
           projectId,
           startTime: new Date().toISOString(),
           endTime: null,
           note,
         })
-        setSession({ projectId, carriedMs: 0, paused: false })
+        setSession({ projectId, carriedMs: 0, segmentIds: [entry.id], paused: false })
         toast('Timer started', `Tracking ${projectName(projectId)}`)
       } catch (error) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
@@ -99,36 +122,61 @@ export function useTimer(now: number) {
     [createEntry, projectName, setSession],
   )
 
+  /**
+   * Rounds the tracked session to whole minutes once, when it is stopped. Every
+   * segment of the session is trimmed to the rounded total, so the stored
+   * entries already carry the rounded value and no report rounds again. A
+   * session that rounds to zero minutes is discarded instead of stored.
+   */
   const stop = useCallback(async () => {
     try {
-      const total = running
-        ? carriedMs + (await closeRunning(running, new Date().toISOString()))
-        : carriedMs
-      const projectId = running?.projectId ?? session?.projectId ?? null
-      setSession(null)
-      toast(
-        'Timer stopped',
-        `${formatDuration(total / 60_000)} added to ${projectName(projectId)}`,
+      const stoppedAt = Date.now()
+      const minutes = roundToMinutes(
+        carriedMs + (running ? entryDurationMs(running, stoppedAt) : 0),
       )
+      const projectId = running?.projectId ?? session?.projectId ?? null
+      const segments = sessionSegments(entries, session?.segmentIds ?? [], running)
+      let remainingMs = minutes * MINUTE_MS
+      for (const [index, segment] of segments.entries()) {
+        const durationMs = entryDurationMs(segment, stoppedAt)
+        /** The last segment absorbs the rounding, the earlier ones keep their time. */
+        const keptMs = index === segments.length - 1 ? remainingMs : Math.min(durationMs, remainingMs)
+        remainingMs -= keptMs
+        if (keptMs <= 0) {
+          await deleteEntry.mutateAsync(segment.id)
+        } else if (keptMs !== durationMs || segment.endTime === null) {
+          await closeSegment(
+            segment,
+            new Date(Date.parse(segment.startTime) + keptMs).toISOString(),
+          )
+        }
+      }
+      setSession(null)
+      if (minutes === 0) {
+        toast(DISCARDED_ENTRY_TITLE, DISCARDED_ENTRY_MESSAGE)
+        return
+      }
+      toast('Timer stopped', `${formatDuration(minutes)} added to ${projectName(projectId)}`)
     } catch (error) {
       errorToast('The timer could not be stopped', errorMessage(error, 'Please try again'))
     }
-  }, [carriedMs, closeRunning, projectName, running, session, setSession])
+  }, [carriedMs, closeSegment, deleteEntry, entries, projectName, running, session, setSession])
 
   const pause = useCallback(async () => {
     if (!running) return
     try {
-      const segment = await closeRunning(running, new Date().toISOString())
+      const segment = await closeSegment(running, new Date().toISOString())
       setSession({
         projectId: running.projectId,
         carriedMs: carriedMs + segment,
+        segmentIds: withSegment(session?.segmentIds, running.id),
         paused: true,
       })
       toast('Timer paused', projectName(running.projectId))
     } catch (error) {
       errorToast('The timer could not be paused', errorMessage(error, 'Please try again'))
     }
-  }, [carriedMs, closeRunning, projectName, running, setSession])
+  }, [carriedMs, closeSegment, projectName, running, session, setSession])
 
   const resume = useCallback(async () => {
     if (!session) return
@@ -137,13 +185,17 @@ export function useTimer(now: number) {
       return
     }
     try {
-      await createEntry.mutateAsync({
+      const entry = await createEntry.mutateAsync({
         projectId: session.projectId,
         startTime: new Date().toISOString(),
         endTime: null,
         note: null,
       })
-      setSession({ ...session, paused: false })
+      setSession({
+        ...session,
+        segmentIds: withSegment(session.segmentIds, entry.id),
+        paused: false,
+      })
       toast('Timer resumed', `Tracking ${projectName(session.projectId)}`)
     } catch (error) {
       errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
@@ -155,15 +207,13 @@ export function useTimer(now: number) {
     async (projectId: number) => {
       const timestamp = new Date().toISOString()
       try {
-        if (running) {
-          await switchEntry.mutateAsync({
-            id: running.id,
-            input: { projectId, startTime: timestamp, endTime: null, note: null },
-          })
-        } else {
-          await createEntry.mutateAsync({ projectId, startTime: timestamp, endTime: null, note: null })
-        }
-        setSession({ projectId, carriedMs: 0, paused: false })
+        const entry = running
+          ? await switchEntry.mutateAsync({
+              id: running.id,
+              input: { projectId, startTime: timestamp, endTime: null, note: null },
+            })
+          : await createEntry.mutateAsync({ projectId, startTime: timestamp, endTime: null, note: null })
+        setSession({ projectId, carriedMs: 0, segmentIds: [entry.id], paused: false })
         toast(`Switched to ${projectName(projectId)}`)
       } catch (error) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
