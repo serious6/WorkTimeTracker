@@ -23,6 +23,13 @@ CREATE TABLE IF NOT EXISTS overtime_entries (
 
 CREATE INDEX IF NOT EXISTS overtime_entries_user_id ON overtime_entries (user_id, effective_date);
 
+-- Only one opening balance per user. The database enforces it, so two
+-- concurrent writers cannot both pass an application side check and commit a
+-- second opening balance.
+CREATE UNIQUE INDEX IF NOT EXISTS overtime_entries_opening_unique
+  ON overtime_entries (user_id)
+  WHERE kind = 'opening';
+
 -- Append-only trail of every change to an overtime record, kept after the
 -- record is deleted so the balance stays defensible.
 CREATE TABLE IF NOT EXISTS overtime_audits (

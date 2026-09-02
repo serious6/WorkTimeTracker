@@ -44,7 +44,7 @@ describe('OvertimePage', () => {
     renderWithProviders(<OvertimePage />)
 
     await waitFor(() =>
-      expect(screen.getByTestId('overtime-manual')).toHaveTextContent('+2h 00m'),
+      expect(screen.getByTestId('overtime-explicit')).toHaveTextContent('+2h 00m'),
     )
     expect(screen.getByTestId('overtime-automatic')).toBeInTheDocument()
     expect(screen.getByTestId('overtime-balance')).toBeInTheDocument()
@@ -59,7 +59,7 @@ describe('OvertimePage', () => {
     fireEvent.click(overtimeForm().getByRole('button', { name: /^set overtime$/i }))
 
     await waitFor(() =>
-      expect(screen.getByTestId('overtime-manual')).toHaveTextContent('+1h 30m'),
+      expect(screen.getByTestId('overtime-explicit')).toHaveTextContent('+1h 30m'),
     )
     expect(within(screen.getByTestId('overtime-records')).getByText('+1h 30m')).toBeInTheDocument()
   })
@@ -114,6 +114,6 @@ describe('OvertimePage', () => {
     )
     fireEvent.click(await screen.findByRole('button', { name: /^delete record$/i }))
 
-    await waitFor(() => expect(screen.getByTestId('overtime-manual')).toHaveTextContent('+0h 00m'))
+    await waitFor(() => expect(screen.getByTestId('overtime-explicit')).toHaveTextContent('+0h 00m'))
   })
 })

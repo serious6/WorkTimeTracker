@@ -536,7 +536,7 @@ test('adds an explicit overtime record on top of the tracked time', async ({ pag
   await dialog(page).getByRole('button', { name: 'Set overtime' }).click()
   await expect(dialog(page)).toBeHidden()
 
-  await expect(page.getByTestId('overtime-manual')).toHaveText('+2h 30m')
+  await expect(page.getByTestId('overtime-explicit')).toHaveText('+2h 30m')
   await expect(page.getByTestId('overtime-automatic')).toHaveText('+0h 00m')
   await expect(page.getByTestId('overtime-balance')).toHaveText('+2h 30m')
   await expect(page.getByTestId('overtime-records').getByText('Manual')).toBeVisible()

@@ -20,8 +20,8 @@ export type CumulativeBalance = {
   carriedOverMinutes: number
   /** Part derived from the time entries, the target and the absences. */
   automaticMinutes: number
-  /** Part contributed by the explicit overtime records. */
-  manualMinutes: number
+  /** Part contributed by the explicit overtime records, whatever their origin. */
+  explicitMinutes: number
 }
 
 const EMPTY_BALANCE: CumulativeBalance = {
@@ -32,7 +32,7 @@ const EMPTY_BALANCE: CumulativeBalance = {
   balanceMinutes: 0,
   carriedOverMinutes: 0,
   automaticMinutes: 0,
-  manualMinutes: 0,
+  explicitMinutes: 0,
 }
 
 /** Tracked minutes per local calendar day; entries spanning midnight are split. */
@@ -60,9 +60,10 @@ function firstTrackedDay(entries: TimeEntry[]): Date | null {
 }
 
 /**
- * Running overtime balance since the first tracked day, carried across weeks and
- * months. Days after today never count, so a future selection cannot create
- * undertime that has not happened yet.
+ * Running overtime balance since the first tracked day, or since the effective
+ * date of the newest absolute record, carried across weeks and months. Days
+ * after today never count, so a future selection cannot create undertime that
+ * has not happened yet.
  *
  * The derived part is recomputed from the time entries on every call and is
  * never persisted; the explicit records are added on top. An `opening` or
@@ -89,11 +90,12 @@ export function cumulativeBalance({
   const selected = startOfDay(throughDate)
   const endDate = selected.getTime() > today.getTime() ? today : selected
   const explicit = explicitOvertime(overtime, toDateKey(endDate))
-  const tracked = firstTrackedDay(entries)
   const anchor = explicit.startKey ? startOfDay(fromDateKey(explicit.startKey)) : null
-  const startDate = tracked && anchor && anchor > tracked ? anchor : tracked
+  // An absolute record fixes the accrual start, so the target of the days after
+  // it counts even before the first entry is tracked.
+  const startDate = anchor ?? firstTrackedDay(entries)
   if (!startDate || startDate > endDate) {
-    return { ...EMPTY_BALANCE, balanceMinutes: explicit.minutes, manualMinutes: explicit.minutes }
+    return { ...EMPTY_BALANCE, balanceMinutes: explicit.minutes, explicitMinutes: explicit.minutes }
   }
 
   const minutesByDay = trackedMinutesByDay(entries, now)
@@ -120,6 +122,6 @@ export function cumulativeBalance({
     balanceMinutes: automaticMinutes + explicit.minutes,
     carriedOverMinutes,
     automaticMinutes,
-    manualMinutes: explicit.minutes,
+    explicitMinutes: explicit.minutes,
   }
 }

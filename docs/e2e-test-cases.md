@@ -32,7 +32,7 @@ each other and of their execution order.
 | 19 | `restores the German working time limits in the settings` | The settings contain a changed daily maximum | The user clicks "Restore German defaults" | The value returns to 600 and the button is disabled afterwards |
 | 20 | `keeps the overtime balance unchanged across a marked vacation range` | Working time and working days are configured and a project exists | The user tracks time and then marks a vacation across several days | The balance stays at "+0h 00m" and the hint about the neutralised target appears |
 | 21 | `replaces an absence only after an explicit confirmation` | An absence (vacation) exists on a day | The user tries to record another absence (sick leave) on the same day | The conflict message appears, only "Replace existing absences" replaces it and it can be deleted afterwards |
-| 22 | `adds an explicit overtime record on top of the tracked time` | Working time is configured and the tracked time matches the target, so the automatic overtime is zero | The user opens "Overtime" from the menu, is rejected with an invalid value and then saves an opening balance of 2h 30m | The balance is split into "+0h 00m" automatic and "+2h 30m" manual, the record is listed as "Manual" and the dashboard shows "+2h 30m" |
+| 22 | `adds an explicit overtime record on top of the tracked time` | Working time is configured and the tracked time matches the target, so the automatic overtime is zero | The user opens "Overtime" from the menu, is rejected with an invalid value and then saves an opening balance of 2h 30m | The balance is split into "+0h 00m" automatic and "+2h 30m" explicit, the record is listed as "Manual" and the dashboard shows "+2h 30m" |
 
 ## Conventions
 

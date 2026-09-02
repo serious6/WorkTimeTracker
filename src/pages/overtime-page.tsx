@@ -22,6 +22,7 @@ import {
 } from '@/features/overtime/overtime-schema'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
+import { useTicker } from '@/features/timer/use-ticker'
 import { formatDay, formatSignedDuration, fromDateKey, toDateKey } from '@/lib/date'
 
 type OriginFilter = OvertimeOrigin | 'all'
@@ -58,14 +59,16 @@ export function OvertimePage() {
   const [editing, setEditing] = useState<OvertimeEntry>()
   const [deleting, setDeleting] = useState<OvertimeEntry>()
   const [originFilter, setOriginFilter] = useState<OriginFilter>('all')
+  const now = useTicker(true)
 
-  const today = new Date()
+  const today = new Date(now)
   const balance = cumulativeBalance({
     entries,
     settings,
     throughDate: today,
     absences,
     overtime,
+    now,
   })
   const newestFirst = [...overtime].sort((left, right) =>
     right.effectiveDate.localeCompare(left.effectiveDate),
@@ -123,9 +126,9 @@ export function OvertimePage() {
             </p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Manual</p>
-            <p className="text-2xl font-semibold tabular-nums" data-testid="overtime-manual">
-              {formatSignedDuration(balance.manualMinutes)}
+            <p className="text-sm text-muted-foreground">Explicit</p>
+            <p className="text-2xl font-semibold tabular-nums" data-testid="overtime-explicit">
+              {formatSignedDuration(balance.explicitMinutes)}
             </p>
           </div>
         </CardContent>

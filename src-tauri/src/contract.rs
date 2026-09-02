@@ -74,6 +74,10 @@ struct Case {
     normalized_working_days: Option<Vec<String>>,
     #[serde(default)]
     normalized_date: Option<String>,
+    #[serde(default)]
+    normalized_origin: Option<String>,
+    #[serde(default)]
+    normalized_note: Option<String>,
 }
 
 /// A daily target before and after an absence neutralises it.
@@ -424,6 +428,24 @@ fn validates_absences_like_the_contract() {
         let absence = check::<SaveAbsence>(&case, SaveAbsence::validate);
         if let (Some(absence), Some(date)) = (absence, case.normalized_date.as_ref()) {
             assert_eq!(&absence.date, date, "{}", case.name);
+        }
+    }
+}
+
+#[test]
+fn validates_overtime_like_the_contract() {
+    for case in cases("overtime") {
+        let Some(entry) = check::<SaveOvertimeEntry>(&case, SaveOvertimeEntry::validate) else {
+            continue;
+        };
+        if let Some(date) = case.normalized_date.as_ref() {
+            assert_eq!(&entry.effective_date, date, "{}", case.name);
+        }
+        if let Some(origin) = case.normalized_origin.as_ref() {
+            assert_eq!(entry.origin(), origin, "{}", case.name);
+        }
+        if let Some(note) = case.normalized_note.as_ref() {
+            assert_eq!(entry.note.as_ref(), Some(note), "{}", case.name);
         }
     }
 }

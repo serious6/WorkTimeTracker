@@ -397,7 +397,9 @@ fn read_overtime_entry(
 }
 
 /// Only one opening balance can exist per user; the check runs inside the
-/// writing transaction, so a second one cannot slip in beside it.
+/// writing transaction and the partial unique index
+/// `overtime_entries_opening_unique` backs it, so a second one cannot slip in
+/// beside a concurrent writer either.
 fn has_other_opening(
     client: &mut impl postgres::GenericClient,
     user_id: i64,
@@ -411,6 +413,22 @@ fn has_other_opening(
         &[&user_id, &exclude_id],
     )?;
     Ok(row.get(0))
+}
+
+/// Name of the partial unique index that keeps a user's opening balance unique.
+const OPENING_UNIQUE_INDEX: &str = "overtime_entries_opening_unique";
+
+/// Maps a failed overtime write, so the index that guards the single opening
+/// balance reports the same conflict as the check inside the transaction.
+fn overtime_write_error(error: postgres::Error) -> OvertimeWriteError {
+    if error
+        .as_db_error()
+        .and_then(|db_error| db_error.constraint())
+        .is_some_and(|constraint| constraint == OPENING_UNIQUE_INDEX)
+    {
+        return OvertimeWriteError::SecondOpening;
+    }
+    OvertimeWriteError::Store(StoreError::from(error))
 }
 
 fn entry_snapshot(entry: &TimeEntry) -> Option<String> {
@@ -1321,7 +1339,7 @@ impl Store for PostgresStore {
                     &now,
                 ],
             )
-            .map_err(StoreError::from)?;
+            .map_err(overtime_write_error)?;
         let entry = overtime_from_row(&row);
         record_overtime_audit(
             &mut transaction,
@@ -1367,7 +1385,7 @@ impl Store for PostgresStore {
                     &now_iso(),
                 ],
             )
-            .map_err(StoreError::from)?;
+            .map_err(overtime_write_error)?;
         let entry = overtime_from_row(&row);
         record_overtime_audit(
             &mut transaction,
@@ -1582,7 +1600,7 @@ impl Store for PostgresStore {
 mod tests {
     use super::*;
     use crate::{
-        models::{SaveProject, SaveTimeEntry},
+        models::{SaveOvertimeEntry, SaveProject, SaveTimeEntry},
         test_support::{fresh_database, test_store, unique_email},
     };
 
@@ -1746,6 +1764,50 @@ mod tests {
         counted.sort_unstable();
 
         assert_eq!(counted, (1..=8).collect::<Vec<i64>>());
+    }
+
+    /// The check inside the transaction cannot see an opening balance that a
+    /// concurrent transaction has not committed yet, so the partial unique
+    /// index has to reject the second one - as the same conflict.
+    #[test]
+    fn keeps_one_opening_balance_under_concurrent_writes() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let store = &store;
+
+        let results: Vec<_> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|day| {
+                    scope.spawn(move || {
+                        store.insert_overtime_entry(
+                            user.id,
+                            &SaveOvertimeEntry {
+                                effective_date: format!("2026-09-0{}", day + 1),
+                                minutes: 60,
+                                kind: "opening".into(),
+                                origin: None,
+                                note: None,
+                            },
+                        )
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| handle.join().unwrap())
+                .collect()
+        });
+
+        assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+        for error in results.into_iter().filter_map(Result::err) {
+            assert!(
+                matches!(error, OvertimeWriteError::SecondOpening),
+                "{error:?}"
+            );
+        }
+        assert_eq!(store.list_overtime_entries(user.id).unwrap().len(), 1);
     }
 
     /// A list command must not answer with the whole table: the window is

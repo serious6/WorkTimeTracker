@@ -41,10 +41,10 @@ export function CumulativeBalanceCard({
           <p className="pt-1 text-xs text-muted-foreground">
             Carried into this day: {formatSignedDuration(balance.carriedOverMinutes)}
           </p>
-          {balance.manualMinutes !== 0 && (
+          {balance.explicitMinutes !== 0 && (
             <p className="pt-1 text-xs text-muted-foreground">
-              Automatic {formatSignedDuration(balance.automaticMinutes)} · Manual{' '}
-              {formatSignedDuration(balance.manualMinutes)}
+              Automatic {formatSignedDuration(balance.automaticMinutes)} · Explicit{' '}
+              {formatSignedDuration(balance.explicitMinutes)}
             </p>
           )}
         </Button>

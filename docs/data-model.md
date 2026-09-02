@@ -308,7 +308,7 @@ Rows are only inserted, never updated or deleted.
 | `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `overtime_entries_user_id` |
 | `effective_date` | TEXT | yes | Calendar date `YYYY-MM-DD` the record takes effect on | UNIQUE with `user_id` (`overtime_entries_day_unique`) |
 | `minutes` | BIGINT | yes | Overtime in minutes, negative records undertime, at most a year of minutes | — |
-| `kind` | TEXT | yes | `opening`, `balance` or `adjustment` (`CHECK`) | — |
+| `kind` | TEXT | yes | `opening`, `balance` or `adjustment` (`CHECK`) | Partial UNIQUE on `user_id` WHERE `kind = 'opening'` (`overtime_entries_opening_unique`) |
 | `origin` | TEXT | yes | `automatic` or `manual` (`CHECK`), default `manual` | — |
 | `note` | TEXT | no | Trimmed, at most 500 characters | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
@@ -317,7 +317,9 @@ Only the explicit records are stored. The overtime derived from the time entries
 target and the absences is recomputed on every read and never written to this table
 (`src/features/dashboard/balance.ts`). An `opening` record replaces the derived overtime of the days
 before its effective date, a `balance` record corrects the balance of its day, and an `adjustment`
-record is added on top of it.
+record is added on top of it. The effective date of the newest `opening` or `balance` record is also
+where the derived part starts to accrue, so the target of the days after it counts even before the
+first entry is tracked.
 
 ### overtime_audits
 

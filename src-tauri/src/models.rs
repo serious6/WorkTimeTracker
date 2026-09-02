@@ -476,7 +476,8 @@ impl SaveOvertimeEntry {
         if !OVERTIME_ORIGINS.contains(&self.origin()) {
             return Err("invalid overtime origin");
         }
-        if self.minutes.abs() > MAX_OVERTIME_MINUTES {
+        // The unsigned magnitude also covers `i64::MIN`, whose `abs` overflows.
+        if self.minutes.unsigned_abs() > MAX_OVERTIME_MINUTES.unsigned_abs() {
             return Err("invalid overtime minutes");
         }
         if self
