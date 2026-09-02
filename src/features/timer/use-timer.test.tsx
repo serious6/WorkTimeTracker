@@ -117,12 +117,25 @@ describe('useTimer', () => {
   it('stop rounds the whole session, including already closed segments', async () => {
     const { createLocalRepository } = await import('@/features/storage/local-repository')
     const project = await seedProject('Website')
-    await seedTimeEntry({
+    const now = Date.now()
+    const closed = await seedTimeEntry({
       projectId: project.id,
-      startTime: new Date(Date.now() - 40_000),
+      startTime: new Date(now - 100_000),
+      endTime: new Date(now - 40_000),
+    })
+    const open = await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 40_000),
       endTime: null,
     })
-    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 60_000, paused: false } })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 60_000,
+        segmentIds: [closed.id, open.id],
+        paused: false,
+      },
+    })
 
     const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
     await waitFor(() => expect(result.current.status.running).toBeDefined())
@@ -132,8 +145,71 @@ describe('useTimer', () => {
     })
 
     await waitFor(() => expect(result.current.status.running).toBeUndefined())
-    const [stored] = await createLocalRepository().listTimeEntries()
-    expect(entryMinutes(stored)).toBe(1)
+    const stored = await createLocalRepository().listTimeEntries()
+    expect(stored.reduce((total, entry) => total + entryMinutes(entry), 0)).toBe(2)
+  })
+
+  it('stop rounds a paused session down and removes its stored segment', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    const now = Date.now()
+    const closed = await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 80_000),
+      endTime: new Date(now - 60_000),
+    })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 20_000,
+        segmentIds: [closed.id],
+        paused: true,
+      },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.paused).toBe(true))
+    // The stored entries decide what the session trims, so wait for them.
+    await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+  })
+
+  it('stop rounds a paused session up to whole minutes', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    const now = Date.now()
+    const closed = await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 100_000),
+      endTime: new Date(now - 60_000),
+    })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 40_000,
+        segmentIds: [closed.id],
+        paused: true,
+      },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.paused).toBe(true))
+    // The stored entries decide what the session trims, so wait for them.
+    await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    const stored = await createLocalRepository().listTimeEntries()
+    expect(stored.reduce((total, entry) => total + entryMinutes(entry), 0)).toBe(1)
   })
 
   it('pause closes the running entry and sets paused state', async () => {

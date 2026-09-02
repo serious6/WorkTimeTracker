@@ -20,6 +20,7 @@ describe('reconcileSession', () => {
     expect(reconcileSession(null, running(7))).toEqual({
       projectId: 7,
       carriedMs: 0,
+      segmentIds: [1],
       paused: false,
     })
   })
@@ -33,13 +34,14 @@ describe('reconcileSession', () => {
     expect(reconcileSession({ projectId: 7, carriedMs: 60_000, paused: true }, running(7))).toEqual({
       projectId: 7,
       carriedMs: 60_000,
+      segmentIds: [1],
       paused: false,
     })
   })
 
   it('drops carried time that belongs to another project', () => {
     expect(reconcileSession({ projectId: 3, carriedMs: 60_000, paused: false }, running(7))).toEqual(
-      { projectId: 7, carriedMs: 0, paused: false },
+      { projectId: 7, carriedMs: 0, segmentIds: [1], paused: false },
     )
   })
 

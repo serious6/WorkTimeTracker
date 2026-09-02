@@ -1,5 +1,5 @@
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
-import type { TimerSession } from './timer-store'
+import { withSegment, type TimerSession } from './timer-store'
 
 /**
  * Aligns the persisted session with the stored entries after a restart, a crash
@@ -17,6 +17,7 @@ export function reconcileSession(
   return {
     projectId: running.projectId,
     carriedMs: sameProject ? (session?.carriedMs ?? 0) : 0,
+    segmentIds: sameProject ? withSegment(session?.segmentIds, running.id) : [running.id],
     paused: false,
   }
 }

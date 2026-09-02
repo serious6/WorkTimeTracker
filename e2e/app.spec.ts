@@ -169,14 +169,18 @@ test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
   await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
 
-  // An hour earlier, clamped to midnight so the correction never lands in the future.
+  // An hour earlier, date and time, so the correction holds across midnight.
   const earlier = await page.evaluate(() => {
-    const now = new Date()
-    const target = now.getHours() > 0 ? new Date(now.getTime() - 60 * 60_000) : now
-    return `${`${target.getHours()}`.padStart(2, '0')}:00`
+    const target = new Date(Date.now() - 60 * 60_000)
+    const pad = (value: number) => `${value}`.padStart(2, '0')
+    return {
+      date: `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`,
+      time: `${pad(target.getHours())}:${pad(target.getMinutes())}`,
+    }
   })
   await page.getByRole('button', { name: 'Correct start time' }).click()
-  await dialog(page).getByLabel('Start time').fill(earlier)
+  await dialog(page).getByLabel('Start date').fill(earlier.date)
+  await dialog(page).getByLabel('Start time').fill(earlier.time)
   await dialog(page).getByRole('button', { name: 'Save start time' }).click()
   await expect(page.getByText('Start time updated')).toBeVisible()
 
