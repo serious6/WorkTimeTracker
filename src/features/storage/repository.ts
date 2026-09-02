@@ -2,6 +2,11 @@ import type { Absence, AbsenceAudit, SaveAbsence } from '@/features/absences/abs
 import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
 import type { AuditLogEntry, TimeEntryAudit } from '@/features/audit/audit-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
+import type {
+  OvertimeAudit,
+  OvertimeEntry,
+  SaveOvertimeEntry,
+} from '@/features/overtime/overtime-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { SaveWorkSettings, WorkSettings } from '@/features/settings/work-settings-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -38,6 +43,11 @@ export type Repository = {
   ) => Promise<Absence[]>
   deleteAbsence: (id: number) => Promise<void>
   listAbsenceAudits: () => Promise<AbsenceAudit[]>
+  listOvertimeEntries: () => Promise<OvertimeEntry[]>
+  createOvertimeEntry: (input: SaveOvertimeEntry) => Promise<OvertimeEntry>
+  updateOvertimeEntry: (id: number, input: SaveOvertimeEntry) => Promise<OvertimeEntry>
+  deleteOvertimeEntry: (id: number) => Promise<void>
+  listOvertimeAudits: () => Promise<OvertimeAudit[]>
   getWorkSettings: () => Promise<WorkSettings>
   updateWorkSettings: (settings: SaveWorkSettings) => Promise<WorkSettings>
   getAppVersion: () => Promise<string | null>

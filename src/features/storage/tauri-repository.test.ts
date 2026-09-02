@@ -17,6 +17,8 @@ const AUDIT_RECORD = { id: 1, entity: 'timeEntry', entityId: 1, action: 'update'
 const BUDGET = { id: 1, projectId: 1, budgetMinutes: 6000, dueDate: '2024-12-31', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
 const ABSENCE = { id: 1, type: 'vacation', date: '2026-09-01', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' }
 const ABSENCE_AUDIT = { id: 1, absenceId: 1, action: 'created', actor: 'user@example.com', oldValue: null, newValue: '{}', recordedAt: '2026-08-01T00:00:00Z' }
+const OVERTIME = { id: 1, effectiveDate: '2026-09-01', minutes: 150, kind: 'opening', origin: 'manual', note: null, createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z' }
+const OVERTIME_AUDIT = { id: 1, overtimeEntryId: 1, action: 'created', actor: 'user@example.com', oldValue: null, newValue: '{}', recordedAt: '2026-09-01T00:00:00Z' }
 const SETTINGS = { weeklyTargetMinutes: 2400, workingDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'], weekStartsOn: 'monday' }
 
 const SESSION_ID = 'a'.repeat(64)
@@ -258,6 +260,62 @@ describe('tauriRepository – absences', () => {
     const result = await tauriRepository.listAbsenceAudits()
     invokedWith('list_absence_audits', {})
     expect(result[0].action).toBe('created')
+  })
+})
+
+describe('tauriRepository – overtime', () => {
+  test('listOvertimeEntries invokes list_overtime_entries', async () => {
+    mockInvoke.mockResolvedValue([OVERTIME])
+    const result = await tauriRepository.listOvertimeEntries()
+    invokedWith('list_overtime_entries', {})
+    expect(result[0].kind).toBe('opening')
+    expect(result[0].minutes).toBe(150)
+  })
+
+  test('listOvertimeEntries rejects a malformed response', async () => {
+    mockInvoke.mockResolvedValue([{ ...OVERTIME, kind: 'unknown' }])
+    await expect(tauriRepository.listOvertimeEntries()).rejects.toThrow()
+  })
+
+  test('createOvertimeEntry invokes create_overtime_entry', async () => {
+    mockInvoke.mockResolvedValue(OVERTIME)
+    const input = {
+      effectiveDate: '2026-09-01',
+      minutes: 150,
+      kind: 'opening',
+      origin: 'manual',
+      note: null,
+    } as const
+    const result = await tauriRepository.createOvertimeEntry(input)
+    invokedWith('create_overtime_entry', { input })
+    expect(result.origin).toBe('manual')
+  })
+
+  test('updateOvertimeEntry invokes update_overtime_entry', async () => {
+    mockInvoke.mockResolvedValue({ ...OVERTIME, minutes: -60, kind: 'adjustment' })
+    const input = {
+      effectiveDate: '2026-09-02',
+      minutes: -60,
+      kind: 'adjustment',
+      origin: 'manual',
+      note: 'corrected',
+    } as const
+    const result = await tauriRepository.updateOvertimeEntry(1, input)
+    invokedWith('update_overtime_entry', { id: 1, input })
+    expect(result.minutes).toBe(-60)
+  })
+
+  test('deleteOvertimeEntry invokes delete_overtime_entry', async () => {
+    mockInvoke.mockResolvedValue(undefined)
+    await tauriRepository.deleteOvertimeEntry(1)
+    invokedWith('delete_overtime_entry', { id: 1 })
+  })
+
+  test('listOvertimeAudits invokes list_overtime_audits', async () => {
+    mockInvoke.mockResolvedValue([OVERTIME_AUDIT])
+    const result = await tauriRepository.listOvertimeAudits()
+    invokedWith('list_overtime_audits', {})
+    expect(result[0].overtimeEntryId).toBe(1)
   })
 })
 

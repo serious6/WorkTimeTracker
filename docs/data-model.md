@@ -6,7 +6,8 @@ application and the browser storage fallback used only for UI development and en
 There is no remote application server and no external integration; the bundled compose database runs
 locally through the bundled compose database.
 
-Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `drizzle/0002_login_attempts.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
+Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `drizzle/0002_login_attempts.sql`,
+`drizzle/0003_overtime.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
 `src-tauri/src/models.rs`, `src/features/storage/local-repository.ts`, and the Zod schemas under
 `src/features/*/*-schema.ts`.
 
@@ -41,13 +42,15 @@ flowchart TB
     audits_t["time_entry_audits"]
     absences_t["absences"]
     absence_audits_t["absence_audits"]
+    overtime_t["overtime_entries"]
+    overtime_audits_t["overtime_audits"]
     settings_t["work_settings"]
     meta_t["app_metadata"]
   end
 
   subgraph browser["Browser storage (fallback)"]
     ls_users["localStorage: work-time-tracker.users"]
-    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings,<br/>.absence-state"]
+    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings,<br/>.absence-state, .overtime-state"]
     ls_sessions["localStorage: work-time-tracker.sessions"]
     ss_session["sessionStorage: work-time-tracker.session"]
   end
@@ -68,11 +71,13 @@ flowchart TB
 | `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `absences` | One row per absent calendar day, scoped by user | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
 | `absence_audits` | Append-only trail of every change to an absence | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
+| `overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0003_overtime.sql`, `src-tauri/src/postgres_store.rs` |
+| `overtime_audits` | Append-only trail of every change to an overtime record | `drizzle/0003_overtime.sql`, `src-tauri/src/postgres_store.rs` |
 | `login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0002_login_attempts.sql`, `src-tauri/src/postgres_store.rs` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
-| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, absences | `src/features/storage/local-repository.ts` (`scopedKey`) |
+| `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, absences, overtime | `src/features/storage/local-repository.ts` (`scopedKey`) |
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.timer` | Timer session bookkeeping: project, carried milliseconds, paused | `src/features/timer/timer-store.ts` |
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
@@ -92,7 +97,10 @@ erDiagram
   USERS o|--o{ TIME_ENTRY_AUDITS : owns
   USERS o|--o{ ABSENCES : owns
   USERS o|--o{ ABSENCE_AUDITS : owns
+  USERS o|--o{ OVERTIME_ENTRIES : owns
+  USERS o|--o{ OVERTIME_AUDITS : owns
   ABSENCES ||..o{ ABSENCE_AUDITS : "changes recorded in"
+  OVERTIME_ENTRIES ||..o{ OVERTIME_AUDITS : "changes recorded in"
   TIME_ENTRIES ||..o{ TIME_ENTRY_AUDITS : "changes recorded in"
   PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
@@ -146,6 +154,27 @@ erDiagram
     bigint id PK
     bigint user_id FK
     bigint absence_id "no FK, survives the absence"
+    text action "created, updated, deleted"
+    text actor
+    text old_value "JSON, nullable"
+    text new_value "JSON, nullable"
+    text recorded_at
+  }
+  OVERTIME_ENTRIES {
+    bigint id PK
+    bigint user_id FK
+    text effective_date "UK with user_id"
+    bigint minutes "negative means undertime"
+    text kind "opening, balance, adjustment"
+    text origin "automatic or manual"
+    text note "nullable"
+    text created_at
+    text updated_at
+  }
+  OVERTIME_AUDITS {
+    bigint id PK
+    bigint user_id FK
+    bigint overtime_entry_id "no FK, survives the record"
     text action "created, updated, deleted"
     text actor
     text old_value "JSON, nullable"
@@ -269,6 +298,45 @@ two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 
 Rows are only inserted, never updated or deleted.
 
+### overtime_entries
+
+`drizzle/0003_overtime.sql`, `src/features/overtime/overtime-schema.ts`
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT | yes | Surrogate key | PK, generated identity |
+| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `overtime_entries_user_id` |
+| `effective_date` | TEXT | yes | Calendar date `YYYY-MM-DD` the record takes effect on | UNIQUE with `user_id` (`overtime_entries_day_unique`) |
+| `minutes` | BIGINT | yes | Overtime in minutes, negative records undertime, at most a year of minutes | — |
+| `kind` | TEXT | yes | `opening`, `balance` or `adjustment` (`CHECK`) | Partial UNIQUE on `user_id` WHERE `kind = 'opening'` (`overtime_entries_opening_unique`) |
+| `origin` | TEXT | yes | `automatic` or `manual` (`CHECK`), default `manual` | — |
+| `note` | TEXT | no | Trimmed, at most 500 characters | — |
+| `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
+
+Only the explicit records are stored. The overtime derived from the time entries, the work settings
+target and the absences is recomputed on every read and never written to this table
+(`src/features/dashboard/balance.ts`). An `opening` record replaces the derived overtime of the days
+before its effective date, a `balance` record corrects the balance of its day, and an `adjustment`
+record is added on top of it. The effective date of the newest `opening` or `balance` record is also
+where the derived part starts to accrue, so the target of the days after it counts even before the
+first entry is tracked.
+
+### overtime_audits
+
+`drizzle/0003_overtime.sql`, `src/features/overtime/overtime-schema.ts`
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT | yes | Surrogate key | PK, generated identity |
+| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `overtime_audits_user_id` |
+| `overtime_entry_id` | BIGINT | yes | Changed record; no foreign key, so the trail outlives a deleted record | — |
+| `action` | TEXT | yes | `created`, `updated` or `deleted` | — |
+| `actor` | TEXT | yes | E-mail of the signed-in user | — |
+| `old_value`, `new_value` | TEXT | no | JSON of the record before and after the change, including `origin` | — |
+| `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
+
+Rows are only inserted, never updated or deleted.
+
 ### project_budgets
 
 `drizzle/0000_init.sql`, `src/features/budgets/budget-schema.ts`
@@ -327,6 +395,9 @@ Validation, overlap detection, and the security limits are defined once in
 - An absence neutralises the target of a configured working day only: a full-day absence sets it to
   `0`, a half day to half of the daily target rounded to whole minutes, and a non-working day is
   unaffected. Time recorded on an absence day is kept and counted, only a warning is shown.
+- At most one overtime record per user and calendar day, and at most one `opening` record per user.
+  Editing a record with `origin = automatic` stores it as `manual`, so the automatic calculation
+  never overwrites a manual correction.
 - At least one working day must be selected, working days are stored deduplicated in weekday order.
 - A break entry carries no project, and `entry_type` is `work` or `break`.
 - Working time limits are between 1 and 1440 minutes; the long break threshold and duration must not
@@ -336,13 +407,15 @@ Validation, overlap detection, and the security limits are defined once in
 - Security limits: session idle timeout 480 minutes, 5 failed logins, 15 minutes lockout.
 
 Enums: `week_starts_on` is `monday` or `sunday`; `working_days` is a subset of `WEEKDAYS`
-(`monday` to `sunday`); `absence_type` is `vacation`, `sick`, `unpaid` or `halfDay`; `color` is a
+(`monday` to `sunday`); `absence_type` is `vacation`, `sick`, `unpaid` or `halfDay`; `overtime kind`
+is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `color` is a
 `#rrggbb` value, offered from `PROJECT_COLORS`.
 
 ## Migration
 
 Because WorkTimeTracker has not been released yet, the native database starts from the single
-baseline migration `drizzle/0000_init.sql`, followed by `drizzle/0001_absences.sql`. `PostgresStore::connect` applies every migration listed
+baseline migration `drizzle/0000_init.sql`, followed by `drizzle/0001_absences.sql`,
+`drizzle/0002_login_attempts.sql` and `drizzle/0003_overtime.sql`. `PostgresStore::connect` applies every migration listed
 in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
 an existing database is upgraded exactly once instead of re-running the baseline and concurrent
@@ -361,3 +434,5 @@ directory. Existing pre-release local database files are not migrated by this ve
 - Working days, break and rest compliance warnings: `src/features/compliance/compliance-rules.ts`
 - Monthly CSV and PDF record per employee, including absence rows and totals:
   `src/features/compliance/monthly-export.ts`
+- Automatic overtime per day and the running balance, combined with the explicit overtime records:
+  `src/features/dashboard/balance.ts`, `src/features/overtime/overtime-balance.ts`

@@ -5,16 +5,18 @@ use crate::{
     error::{AppError, AppResult},
     logging,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, Project, ProjectBudget,
-        SaveAbsence, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit,
-        User, WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, OvertimeAudit, OvertimeEntry,
+        Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
+        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
     },
-    store::{Database, StoreError, SwitchEntryError, TimeEntryWriteError},
+    store::{Database, OvertimeWriteError, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OVERLAP: &str = "This time overlaps with another time entry";
 const DUPLICATE_BUDGET: &str = "This project already has a budget";
 const DUPLICATE_ABSENCE: &str = "This day already has an absence";
+const DUPLICATE_OVERTIME: &str = "This date already has an overtime record";
+const SINGLE_OPENING: &str = "Only one opening balance can be set";
 const INVALID_CREDENTIALS: &str = "Email or password is incorrect";
 const DUPLICATE_EMAIL: &str = "An account with this email already exists";
 
@@ -143,6 +145,16 @@ pub fn current_session(
         };
         Ok(database.0.read_user(user_id)?)
     })
+}
+
+fn map_overtime_write_error(error: OvertimeWriteError) -> AppError {
+    match error {
+        OvertimeWriteError::SecondOpening => AppError::conflict(SINGLE_OPENING),
+        OvertimeWriteError::Store(StoreError::UniqueViolation) => {
+            AppError::conflict(DUPLICATE_OVERTIME)
+        }
+        OvertimeWriteError::Store(error) => AppError::from(error),
+    }
 }
 
 fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
@@ -363,6 +375,39 @@ authed_command!(
 authed_command!(
     fn list_absence_audits() -> Vec<AbsenceAudit>,
     |db, user| Ok(db.0.list_absence_audits(user)?)
+);
+
+authed_command!(
+    fn list_overtime_entries() -> Vec<OvertimeEntry>,
+    |db, user| Ok(db.0.list_overtime_entries(user)?)
+);
+
+authed_command!(
+    fn create_overtime_entry(mut input: SaveOvertimeEntry) -> OvertimeEntry,
+    |db, user| {
+        input.validate()?;
+        db.0.insert_overtime_entry(user, &input)
+            .map_err(map_overtime_write_error)
+    }
+);
+
+authed_command!(
+    fn update_overtime_entry(id: i64, mut input: SaveOvertimeEntry) -> OvertimeEntry,
+    |db, user| {
+        input.validate()?;
+        db.0.update_overtime_entry(id, user, &input)
+            .map_err(map_overtime_write_error)
+    }
+);
+
+authed_command!(
+    fn delete_overtime_entry(id: i64) -> (),
+    |db, user| Ok(db.0.delete_overtime_entry(id, user)?)
+);
+
+authed_command!(
+    fn list_overtime_audits() -> Vec<OvertimeAudit>,
+    |db, user| Ok(db.0.list_overtime_audits(user)?)
 );
 
 authed_command!(

@@ -6,6 +6,7 @@ import { useToastStore } from '@/components/ui/toast-store'
 import type { AuthUser } from '@/features/auth/auth-schema'
 import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
+import type { OvertimeEntry, SaveOvertimeEntry } from '@/features/overtime/overtime-schema'
 import type { Project } from '@/features/projects/project-schema'
 import { createLocalRepository } from '@/features/storage/local-repository'
 import type { EntryType, TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -85,6 +86,16 @@ export async function seedBreak(input: {
 
 export async function seedBudget(input: SaveProjectBudget) {
   return createLocalRepository().createProjectBudget(input)
+}
+
+export async function seedOvertimeEntry(
+  input: Omit<SaveOvertimeEntry, 'origin' | 'note'> & Partial<SaveOvertimeEntry>,
+): Promise<OvertimeEntry> {
+  return createLocalRepository().createOvertimeEntry({
+    origin: 'manual',
+    note: null,
+    ...input,
+  })
 }
 
 function toIsoString(value: Date | string): string {

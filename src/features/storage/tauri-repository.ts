@@ -4,6 +4,10 @@ import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-s
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
+import {
+  overtimeAuditSchema,
+  overtimeEntrySchema,
+} from '@/features/overtime/overtime-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
@@ -101,6 +105,14 @@ export const tauriRepository: Repository = {
     await run('delete_absence', { id })
   },
   listAbsenceAudits: () => call('list_absence_audits', {}, absenceAuditSchema.array()),
+  listOvertimeEntries: () => call('list_overtime_entries', {}, overtimeEntrySchema.array()),
+  createOvertimeEntry: (input) => call('create_overtime_entry', { input }, overtimeEntrySchema),
+  updateOvertimeEntry: (id, input) =>
+    call('update_overtime_entry', { id, input }, overtimeEntrySchema),
+  deleteOvertimeEntry: async (id) => {
+    await run('delete_overtime_entry', { id })
+  },
+  listOvertimeAudits: () => call('list_overtime_audits', {}, overtimeAuditSchema.array()),
   getWorkSettings: () => call('get_work_settings', {}, workSettingsSchema),
   updateWorkSettings: (settings) => call('update_work_settings', { settings }, workSettingsSchema),
   getAppVersion: () => call('get_app_version', {}, appVersionSchema),

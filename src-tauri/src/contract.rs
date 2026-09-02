@@ -14,11 +14,12 @@ use crate::{
     },
     models::{
         adjusted_daily_target, Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Credentials,
-        ListRange, Project, ProjectBudget, SaveAbsence, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT,
-        DEFAULT_LIST_LIMIT, GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
+        ListRange, OvertimeAudit, OvertimeEntry, Project, ProjectBudget, SaveAbsence,
+        SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry,
+        TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_LIST_LIMIT,
+        GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
     },
-    store::{Store, StoreError},
+    store::{OvertimeWriteError, Store, StoreError},
     test_support::{test_store, unique_email, unique_tag},
 };
 
@@ -73,6 +74,10 @@ struct Case {
     normalized_working_days: Option<Vec<String>>,
     #[serde(default)]
     normalized_date: Option<String>,
+    #[serde(default)]
+    normalized_origin: Option<String>,
+    #[serde(default)]
+    normalized_note: Option<String>,
 }
 
 /// A daily target before and after an absence neutralises it.
@@ -321,6 +326,31 @@ fn serializes_the_models_of_the_entity_contract() {
             actor: "user@example.com".into(),
             old_value: None,
             new_value: None,
+            recorded_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "overtimeEntry",
+        json(&OvertimeEntry {
+            id: 1,
+            effective_date: "2026-09-01".into(),
+            minutes: -90,
+            kind: "opening".into(),
+            origin: "manual".into(),
+            note: None,
+            created_at: moment.clone(),
+            updated_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "overtimeAudit",
+        json(&OvertimeAudit {
+            id: 1,
+            overtime_entry_id: 2,
+            action: "created".into(),
+            actor: "user@example.com".into(),
+            old_value: None,
+            new_value: None,
             recorded_at: moment,
         }),
     );
@@ -398,6 +428,24 @@ fn validates_absences_like_the_contract() {
         let absence = check::<SaveAbsence>(&case, SaveAbsence::validate);
         if let (Some(absence), Some(date)) = (absence, case.normalized_date.as_ref()) {
             assert_eq!(&absence.date, date, "{}", case.name);
+        }
+    }
+}
+
+#[test]
+fn validates_overtime_like_the_contract() {
+    for case in cases("overtime") {
+        let Some(entry) = check::<SaveOvertimeEntry>(&case, SaveOvertimeEntry::validate) else {
+            continue;
+        };
+        if let Some(date) = case.normalized_date.as_ref() {
+            assert_eq!(&entry.effective_date, date, "{}", case.name);
+        }
+        if let Some(origin) = case.normalized_origin.as_ref() {
+            assert_eq!(entry.origin(), origin, "{}", case.name);
+        }
+        if let Some(note) = case.normalized_note.as_ref() {
+            assert_eq!(entry.note.as_ref(), Some(note), "{}", case.name);
         }
     }
 }
@@ -545,6 +593,106 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .is_empty());
     assert!(store
         .list_absence_audits(second_user.id)
+        .unwrap()
+        .is_empty());
+}
+
+/// The explicit overtime records are per user, keep their audit trail and turn
+/// manual as soon as they are edited.
+#[test]
+fn round_trips_overtime_changes_and_audits_in_postgres() {
+    let Some(store) = test_store() else {
+        return;
+    };
+    let first_user = store.register_user(&unique_email(), "hash").unwrap();
+    let second_user = store.register_user(&unique_email(), "hash").unwrap();
+    let created = store
+        .insert_overtime_entry(
+            first_user.id,
+            &SaveOvertimeEntry {
+                effective_date: "2026-09-01".into(),
+                minutes: 600,
+                kind: "opening".into(),
+                origin: Some("automatic".into()),
+                note: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(created.origin, "automatic");
+
+    let duplicate = store.insert_overtime_entry(
+        first_user.id,
+        &SaveOvertimeEntry {
+            effective_date: "2026-09-01".into(),
+            minutes: 30,
+            kind: "adjustment".into(),
+            origin: None,
+            note: None,
+        },
+    );
+    assert!(matches!(
+        duplicate,
+        Err(OvertimeWriteError::Store(StoreError::UniqueViolation))
+    ));
+
+    let second_opening = store.insert_overtime_entry(
+        first_user.id,
+        &SaveOvertimeEntry {
+            effective_date: "2026-09-02".into(),
+            minutes: 30,
+            kind: "opening".into(),
+            origin: None,
+            note: None,
+        },
+    );
+    assert!(matches!(
+        second_opening,
+        Err(OvertimeWriteError::SecondOpening)
+    ));
+
+    // Editing an automatic record makes it manual, so the automatic
+    // calculation never overwrites the correction again.
+    let updated = store
+        .update_overtime_entry(
+            created.id,
+            first_user.id,
+            &SaveOvertimeEntry {
+                effective_date: "2026-09-03".into(),
+                minutes: -120,
+                kind: "balance".into(),
+                origin: Some("automatic".into()),
+                note: Some("corrected".into()),
+            },
+        )
+        .unwrap();
+    assert_eq!(updated.origin, "manual");
+    assert_eq!(updated.minutes, -120);
+    store
+        .delete_overtime_entry(updated.id, first_user.id)
+        .unwrap();
+
+    let audits = store.list_overtime_audits(first_user.id).unwrap();
+    assert_eq!(
+        audits
+            .iter()
+            .map(|audit| audit.action.as_str())
+            .collect::<Vec<_>>(),
+        ["deleted", "updated", "created"]
+    );
+    assert!(audits[1]
+        .old_value
+        .as_deref()
+        .is_some_and(|value| value.contains("\"origin\":\"automatic\"")));
+    assert!(audits[1]
+        .new_value
+        .as_deref()
+        .is_some_and(|value| value.contains("\"origin\":\"manual\"")));
+    assert!(store
+        .list_overtime_entries(second_user.id)
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .list_overtime_audits(second_user.id)
         .unwrap()
         .is_empty());
 }

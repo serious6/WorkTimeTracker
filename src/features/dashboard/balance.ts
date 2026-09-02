@@ -1,8 +1,10 @@
 import { NO_ABSENCES, type AbsenceIndex } from '@/features/absences/absence-index'
+import { explicitOvertime } from '@/features/overtime/overtime-balance'
+import type { OvertimeEntry } from '@/features/overtime/overtime-schema'
 import { targetMinutesForDay } from '@/features/settings/work-schedule'
 import type { WorkSettings } from '@/features/settings/work-settings-schema'
 import { isBreak, type TimeEntry } from '@/features/time-entries/time-entry-schema'
-import { addDays, startOfDay, toDateKey } from '@/lib/date'
+import { addDays, fromDateKey, startOfDay, toDateKey } from '@/lib/date'
 import { entryMinutesInRange } from './metrics'
 
 export type CumulativeBalance = {
@@ -12,10 +14,14 @@ export type CumulativeBalance = {
   endDate: Date | null
   trackedMinutes: number
   targetMinutes: number
-  /** Tracked minus target across every counted day; negative means undertime. */
+  /** Automatic plus explicit overtime; negative means undertime. */
   balanceMinutes: number
   /** Balance of all days before `endDate`, the balance carried into that day. */
   carriedOverMinutes: number
+  /** Part derived from the time entries, the target and the absences. */
+  automaticMinutes: number
+  /** Part contributed by the explicit overtime records, whatever their origin. */
+  explicitMinutes: number
 }
 
 const EMPTY_BALANCE: CumulativeBalance = {
@@ -25,6 +31,8 @@ const EMPTY_BALANCE: CumulativeBalance = {
   targetMinutes: 0,
   balanceMinutes: 0,
   carriedOverMinutes: 0,
+  automaticMinutes: 0,
+  explicitMinutes: 0,
 }
 
 /** Tracked minutes per local calendar day; entries spanning midnight are split. */
@@ -52,45 +60,73 @@ function firstTrackedDay(entries: TimeEntry[]): Date | null {
 }
 
 /**
- * Running overtime balance since the first tracked day, carried across weeks and
- * months. Days after today never count, so a future selection cannot create
- * undertime that has not happened yet.
+ * Running overtime balance since the first tracked day, or since the effective
+ * date of the newest absolute record, carried across weeks and months. Days
+ * after today never count, so a future selection cannot create undertime that
+ * has not happened yet.
+ *
+ * The derived part is recomputed from the time entries on every call and is
+ * never persisted; the explicit records are added on top. An `opening` or
+ * `balance` record replaces the derived overtime of the days before its
+ * effective date, so a balance carried over from outside the application is not
+ * counted twice.
  */
 export function cumulativeBalance({
   entries,
   settings,
   throughDate,
   absences = NO_ABSENCES,
+  overtime = [],
   now = Date.now(),
 }: {
   entries: TimeEntry[]
   settings: WorkSettings
   throughDate: Date
   absences?: AbsenceIndex
+  overtime?: OvertimeEntry[]
   now?: number
 }): CumulativeBalance {
   const today = startOfDay(new Date(now))
   const selected = startOfDay(throughDate)
   const endDate = selected.getTime() > today.getTime() ? today : selected
-  const startDate = firstTrackedDay(entries)
-  if (!startDate || startDate > endDate) return EMPTY_BALANCE
+  const explicit = explicitOvertime(overtime, toDateKey(endDate))
+  const anchor = explicit.startKey ? startOfDay(fromDateKey(explicit.startKey)) : null
+  // An absolute record fixes the accrual start, so the target of the days after
+  // it counts even before the first entry is tracked.
+  const startDate = anchor ?? firstTrackedDay(entries)
+  if (!startDate || startDate > endDate) {
+    return {
+      ...EMPTY_BALANCE,
+      balanceMinutes: explicit.minutes,
+      carriedOverMinutes: explicitOvertime(overtime, toDateKey(addDays(endDate, -1))).minutes,
+      explicitMinutes: explicit.minutes,
+    }
+  }
 
   const minutesByDay = trackedMinutesByDay(entries, now)
   let trackedMinutes = 0
   let targetMinutes = 0
   let carriedOverMinutes = 0
   for (let day = startDate; day.getTime() <= endDate.getTime(); day = addDays(day, 1)) {
-    if (day.getTime() === endDate.getTime()) carriedOverMinutes = trackedMinutes - targetMinutes
+    if (day.getTime() === endDate.getTime()) {
+      carriedOverMinutes =
+        trackedMinutes -
+        targetMinutes +
+        explicitOvertime(overtime, toDateKey(addDays(endDate, -1))).minutes
+    }
     trackedMinutes += minutesByDay.get(toDateKey(day)) ?? 0
     targetMinutes += targetMinutesForDay(settings, day, absences)
   }
+  const automaticMinutes = trackedMinutes - targetMinutes
 
   return {
     startDate,
     endDate,
     trackedMinutes,
     targetMinutes,
-    balanceMinutes: trackedMinutes - targetMinutes,
+    balanceMinutes: automaticMinutes + explicit.minutes,
     carriedOverMinutes,
+    automaticMinutes,
+    explicitMinutes: explicit.minutes,
   }
 }

@@ -12,6 +12,7 @@ import {
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { saveProjectBudgetSchema } from '@/features/budgets/budget-schema'
+import { saveOvertimeEntrySchema } from '@/features/overtime/overtime-schema'
 import { saveProjectSchema } from '@/features/projects/project-schema'
 import { adjustedDailyTarget } from '@/features/settings/work-schedule'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
@@ -34,6 +35,8 @@ type Case = {
   normalizedName?: string
   normalizedWorkingDays?: string[]
   normalizedDate?: string
+  normalizedOrigin?: string
+  normalizedNote?: string
 }
 
 /** A daily target before and after an absence neutralises it. */
@@ -81,6 +84,7 @@ const rules = domainRules as unknown as {
   workSettings: Case[]
   absences: Case[]
   absenceTargets: AbsenceTargetCase[]
+  overtime: Case[]
   uniqueness: UniquenessCase[]
   overlaps: OverlapCase[]
 }
@@ -179,6 +183,16 @@ describe('domain rule contract', () => {
         testCase.absenceType,
       ),
     ).toBe(testCase.targetMinutes)
+  })
+
+  it.each(rules.overtime)('overtime: $name', (testCase) => {
+    const parsed = saveOvertimeEntrySchema.safeParse(testCase.input)
+
+    expect(parsed.success).toBe(testCase.accepted)
+    if (!parsed.success) return
+    if (testCase.normalizedDate) expect(parsed.data.effectiveDate).toBe(testCase.normalizedDate)
+    if (testCase.normalizedOrigin) expect(parsed.data.origin).toBe(testCase.normalizedOrigin)
+    if (testCase.normalizedNote) expect(parsed.data.note).toBe(testCase.normalizedNote)
   })
 
   it.each(rules.uniqueness)('uniqueness: $name', async (testCase) => {

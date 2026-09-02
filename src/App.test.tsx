@@ -90,6 +90,16 @@ describe('App shell', () => {
     expect(await screen.findByRole('heading', { name: /calendar/i })).toBeInTheDocument()
   })
 
+  test('navigating to Overtime shows the overtime management page', async () => {
+    await signIn('nav-overtime@example.com')
+    renderApp()
+    await screen.findByRole('navigation', { name: 'Main' })
+    useNavigationStore.getState().navigate('overtime')
+    expect(
+      await screen.findByRole('heading', { name: /^Overtime$/ }),
+    ).toBeInTheDocument()
+  })
+
   test('navigating to Third-Party Licenses shows the license notices page', async () => {
     await signIn('nav-licenses@example.com')
     renderApp()

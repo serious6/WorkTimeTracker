@@ -20,6 +20,7 @@ describe('AppSidebar', () => {
     'Projects',
     'Budgets',
     'Absences',
+    'Overtime',
     'Settings',
   ])('renders %s by accessible name when expanded', (label) => {
     renderWithProviders(<AppSidebar />)
@@ -37,6 +38,7 @@ describe('AppSidebar', () => {
     'Projects',
     'Budgets',
     'Absences',
+    'Overtime',
     'Settings',
   ])('renders %s by accessible name when collapsed', (label) => {
     useNavigationStore.setState({ sidebarExpanded: false })
@@ -46,7 +48,7 @@ describe('AppSidebar', () => {
 
   test('groups the navigation destinations in a list', () => {
     renderWithProviders(<AppSidebar />)
-    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(11)
+    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(12)
   })
 
   test('marks the active view with aria-current=page', () => {

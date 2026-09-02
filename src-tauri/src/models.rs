@@ -437,6 +437,88 @@ pub struct AbsenceAudit {
     pub recorded_at: String,
 }
 
+pub const OVERTIME_KINDS: [&str; 3] = ["opening", "balance", "adjustment"];
+pub const OVERTIME_ORIGINS: [&str; 2] = ["automatic", "manual"];
+pub const OVERTIME_ORIGIN_MANUAL: &str = "manual";
+/// A record covers at most a year of overtime, so a typo cannot distort the balance.
+pub const MAX_OVERTIME_MINUTES: i64 = 525_600;
+
+/// Payload of an explicit overtime record. `origin` records how the row came to
+/// be; a row written by the application from the time entries is `automatic`, a
+/// row entered by the user is `manual` and stays that way.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveOvertimeEntry {
+    pub effective_date: String,
+    pub minutes: i64,
+    pub kind: String,
+    pub origin: Option<String>,
+    pub note: Option<String>,
+}
+
+impl SaveOvertimeEntry {
+    /// A payload without an origin is a manual record, like the column default.
+    pub fn origin(&self) -> &str {
+        self.origin.as_deref().unwrap_or(OVERTIME_ORIGIN_MANUAL)
+    }
+
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize(&mut self.effective_date);
+        normalize(&mut self.kind);
+        normalize_optional(&mut self.origin);
+        normalize_optional(&mut self.note);
+        if !is_date(&self.effective_date) {
+            return Err("invalid effective date");
+        }
+        if !OVERTIME_KINDS.contains(&self.kind.as_str()) {
+            return Err("invalid overtime kind");
+        }
+        if !OVERTIME_ORIGINS.contains(&self.origin()) {
+            return Err("invalid overtime origin");
+        }
+        // The unsigned magnitude also covers `i64::MIN`, whose `abs` overflows.
+        if self.minutes.unsigned_abs() > MAX_OVERTIME_MINUTES.unsigned_abs() {
+            return Err("invalid overtime minutes");
+        }
+        if self
+            .note
+            .as_ref()
+            .is_some_and(|note| note.chars().count() > MAX_NOTE)
+        {
+            return Err("invalid note");
+        }
+        Ok(())
+    }
+}
+
+/// One explicit overtime record. The overtime derived from the time entries is
+/// not stored, only the records that were set explicitly.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OvertimeEntry {
+    pub id: i64,
+    pub effective_date: String,
+    pub minutes: i64,
+    pub kind: String,
+    pub origin: String,
+    pub note: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Audit record of one change to an overtime record, kept after it is gone.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OvertimeAudit {
+    pub id: i64,
+    pub overtime_entry_id: i64,
+    pub action: String,
+    pub actor: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub recorded_at: String,
+}
+
 pub const WEEKDAYS: [&str; 7] = [
     "monday",
     "tuesday",
@@ -689,6 +771,54 @@ mod tests {
             Err("budget must be greater than zero")
         );
         assert_eq!(budget(1, 60, "2026-13-31"), Err("invalid due date"));
+    }
+
+    #[test]
+    fn validates_and_normalizes_overtime_input() {
+        let mut input = SaveOvertimeEntry {
+            effective_date: " 2026-09-01 ".into(),
+            minutes: -90,
+            kind: " opening ".into(),
+            origin: None,
+            note: Some("  carried over  ".into()),
+        };
+        input.validate().unwrap();
+        assert_eq!(input.effective_date, "2026-09-01");
+        assert_eq!(input.kind, "opening");
+        assert_eq!(input.origin(), "manual");
+        assert_eq!(input.note.as_deref(), Some("carried over"));
+    }
+
+    #[test]
+    fn rejects_invalid_overtime_input() {
+        let overtime = |kind: &str, origin: Option<&str>, date: &str, minutes: i64| {
+            SaveOvertimeEntry {
+                effective_date: date.into(),
+                minutes,
+                kind: kind.into(),
+                origin: origin.map(str::to_owned),
+                note: None,
+            }
+            .validate()
+        };
+
+        assert_eq!(
+            overtime("carryover", None, "2026-09-01", 60),
+            Err("invalid overtime kind")
+        );
+        assert_eq!(
+            overtime("balance", Some("imported"), "2026-09-01", 60),
+            Err("invalid overtime origin")
+        );
+        assert_eq!(
+            overtime("balance", None, "2026-02-30", 60),
+            Err("invalid effective date")
+        );
+        assert_eq!(
+            overtime("balance", None, "2026-09-01", MAX_OVERTIME_MINUTES + 1),
+            Err("invalid overtime minutes")
+        );
+        assert!(overtime("adjustment", Some("automatic"), "2026-09-01", -60).is_ok());
     }
 
     #[test]

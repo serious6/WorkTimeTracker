@@ -711,6 +711,154 @@
       "targetMinutes": 0
     }
   ],
+  "overtime": [
+    {
+      "name": "accepts an opening balance",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 150,
+        "kind": "opening",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": true
+    },
+    {
+      "name": "trims the effective date and the note",
+      "input": {
+        "effectiveDate": " 2026-09-01 ",
+        "minutes": -90,
+        "kind": "balance",
+        "origin": "manual",
+        "note": "  carried over  "
+      },
+      "accepted": true,
+      "normalizedDate": "2026-09-01",
+      "normalizedNote": "carried over"
+    },
+    {
+      "name": "treats a record without an origin as manual",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 60,
+        "kind": "adjustment",
+        "note": null
+      },
+      "accepted": true,
+      "normalizedOrigin": "manual"
+    },
+    {
+      "name": "accepts an automatic origin",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 60,
+        "kind": "adjustment",
+        "origin": "automatic",
+        "note": null
+      },
+      "accepted": true,
+      "normalizedOrigin": "automatic"
+    },
+    {
+      "name": "accepts a year of overtime",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": -525600,
+        "kind": "balance",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects an unknown kind",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 60,
+        "kind": "guess",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an unknown origin",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 60,
+        "kind": "adjustment",
+        "origin": "imported",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a date that is no calendar day",
+      "input": {
+        "effectiveDate": "2026-02-30",
+        "minutes": 60,
+        "kind": "adjustment",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a date without a day",
+      "input": {
+        "effectiveDate": "2026-09",
+        "minutes": 60,
+        "kind": "adjustment",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects more than a year of overtime",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 525601,
+        "kind": "balance",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects more than a year of undertime",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": -525601,
+        "kind": "balance",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects fractional minutes",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 1.5,
+        "kind": "adjustment",
+        "origin": "manual",
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a note longer than 500 characters",
+      "input": {
+        "effectiveDate": "2026-09-01",
+        "minutes": 60,
+        "kind": "adjustment",
+        "origin": "manual",
+        "note": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      },
+      "accepted": false
+    }
+  ],
   "uniqueness": [
     {
       "name": "rejects a duplicate email",

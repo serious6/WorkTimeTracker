@@ -10,6 +10,8 @@ const balance: CumulativeBalance = {
   targetMinutes: 2_400,
   balanceMinutes: 240,
   carriedOverMinutes: 120,
+  automaticMinutes: 240,
+  explicitMinutes: 0,
 }
 
 describe('CumulativeBalanceCard', () => {
@@ -32,6 +34,17 @@ describe('CumulativeBalanceCard', () => {
     expect(screen.getByText('-1h 30m')).toBeInTheDocument()
   })
 
+  it('splits the balance into the automatic and the manual part', () => {
+    render(
+      <CumulativeBalanceCard
+        balance={{ ...balance, balanceMinutes: 300, explicitMinutes: 60 }}
+        onOpenWeek={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('Automatic +4h 00m · Explicit +1h 00m')).toBeInTheDocument()
+  })
+
   it('explains that nothing is tracked yet', () => {
     render(
       <CumulativeBalanceCard
@@ -42,6 +55,8 @@ describe('CumulativeBalanceCard', () => {
           targetMinutes: 0,
           balanceMinutes: 0,
           carriedOverMinutes: 0,
+          automaticMinutes: 0,
+          explicitMinutes: 0,
         }}
         onOpenWeek={() => {}}
       />,

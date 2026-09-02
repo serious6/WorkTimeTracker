@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { absenceIndex } from '@/features/absences/absence-index'
 import type { Absence, AbsenceType } from '@/features/absences/absence-schema'
 import { DEFAULT_WORK_SETTINGS } from '@/features/settings/work-settings-schema'
+import type { OvertimeEntry, OvertimeKind } from '@/features/overtime/overtime-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { cumulativeBalance, trackedMinutesByDay } from './balance'
 
@@ -155,6 +156,124 @@ describe('cumulative balance with absences', () => {
     })
 
     expect(balance.targetMinutes).toBe(2_400)
+  })
+})
+
+function overtime(effectiveDate: string, minutes: number, kind: OvertimeKind): OvertimeEntry {
+  return {
+    id: 1,
+    effectiveDate,
+    minutes,
+    kind,
+    origin: 'manual',
+    note: null,
+    createdAt: `${effectiveDate}T08:00:00.000Z`,
+    updatedAt: `${effectiveDate}T08:00:00.000Z`,
+  }
+}
+
+describe('cumulative balance with explicit overtime', () => {
+  const entries = [entry(1, at(17, 8), at(17, 18))] // Monday, 10h -> +2h automatic.
+
+  it('adds an adjustment on top of the derived overtime', () => {
+    const balance = cumulativeBalance({
+      entries,
+      settings,
+      throughDate: at(17, 18),
+      overtime: [overtime('2026-08-17', 60, 'adjustment')],
+      now: at(17, 18).getTime(),
+    })
+
+    expect(balance.automaticMinutes).toBe(120)
+    expect(balance.explicitMinutes).toBe(60)
+    expect(balance.balanceMinutes).toBe(180)
+  })
+
+  it('starts the accrual at the opening balance, even before the first entry', () => {
+    const balance = cumulativeBalance({
+      entries: [entry(1, at(21, 8), at(21, 16))], // Friday, 8h -> the target.
+      settings,
+      throughDate: at(21, 18),
+      overtime: [overtime('2026-08-17', 60, 'opening')],
+      now: at(21, 18).getTime(),
+    })
+
+    // Monday to Thursday count with their target although nothing is tracked.
+    expect(balance.startDate?.getDate()).toBe(17)
+    expect(balance.automaticMinutes).toBe(-1920)
+    expect(balance.balanceMinutes).toBe(-1860)
+  })
+
+  it('ignores the overtime derived before an opening balance', () => {
+    const balance = cumulativeBalance({
+      entries,
+      settings,
+      throughDate: at(18, 18),
+      overtime: [overtime('2026-08-18', 300, 'opening')],
+      now: at(18, 18).getTime(),
+    })
+
+    // Only Tuesday counts automatically: no time tracked against an 8h target.
+    expect(balance.startDate?.getDate()).toBe(18)
+    expect(balance.automaticMinutes).toBe(-480)
+    expect(balance.balanceMinutes).toBe(-180)
+  })
+
+  it('accrues the target from an opening balance while nothing is tracked', () => {
+    const balance = cumulativeBalance({
+      entries: [],
+      settings,
+      throughDate: at(24, 12),
+      overtime: [overtime('2026-08-17', 120, 'opening')],
+      now: at(24, 12).getTime(),
+    })
+
+    // Six working days from Monday the 17th through Monday the 24th.
+    expect(balance.startDate?.getDate()).toBe(17)
+    expect(balance.automaticMinutes).toBe(-2880)
+    expect(balance.balanceMinutes).toBe(-2760)
+    expect(balance.explicitMinutes).toBe(120)
+  })
+
+  it('counts an explicit record that is not effective yet without a start date', () => {
+    const balance = cumulativeBalance({
+      entries: [],
+      settings,
+      throughDate: at(24, 12),
+      overtime: [overtime('2026-08-24', 120, 'adjustment')],
+      now: at(24, 12).getTime(),
+    })
+
+    expect(balance.startDate).toBeNull()
+    expect(balance.balanceMinutes).toBe(120)
+    expect(balance.explicitMinutes).toBe(120)
+  })
+
+  it('carries an explicit record from a previous day without any tracked time', () => {
+    const balance = cumulativeBalance({
+      entries: [],
+      settings,
+      throughDate: at(24, 12),
+      overtime: [overtime('2026-08-23', 120, 'adjustment')],
+      now: at(24, 12).getTime(),
+    })
+
+    expect(balance.startDate).toBeNull()
+    expect(balance.balanceMinutes).toBe(120)
+    expect(balance.carriedOverMinutes).toBe(120)
+  })
+
+  it('leaves the derived part untouched when there is no explicit record', () => {
+    const balance = cumulativeBalance({
+      entries,
+      settings,
+      throughDate: at(17, 18),
+      overtime: [],
+      now: at(17, 18).getTime(),
+    })
+
+    expect(balance.explicitMinutes).toBe(0)
+    expect(balance.balanceMinutes).toBe(balance.automaticMinutes)
   })
 })
 

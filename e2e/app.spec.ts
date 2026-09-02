@@ -504,3 +504,43 @@ test('replaces an absence only after an explicit confirmation', async ({ page })
   await expect(page.getByText('Absence deleted')).toBeVisible()
   await expect(page.getByText('No absences yet.', { exact: false })).toBeVisible()
 })
+
+// #22 in docs/e2e-test-cases.md
+test('adds an explicit overtime record on top of the tracked time', async ({ page }) => {
+  // Every weekday counts, so the assertions do not depend on today's weekday.
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByLabel('Weekly working time (hours)').fill('42')
+  for (const day of ['Saturday', 'Sunday']) {
+    await page.getByLabel(day, { exact: true }).check()
+  }
+  await page.getByRole('button', { name: 'Save settings' }).click()
+  await expect(page.getByText('Work schedule updated')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await createProject(page, 'Balance Check')
+  await addEntry(page, 'Balance Check', '08:00', '14:00')
+  await expect(dialog(page)).toBeHidden()
+  await expect(cumulativeBalance(page)).toHaveText('+0h 00m')
+
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Overtime' }).click()
+  await expect(page.getByRole('heading', { name: 'Overtime', exact: true })).toBeVisible()
+  await expect(page.getByTestId('overtime-balance')).toHaveText('+0h 00m')
+
+  await page.getByRole('button', { name: 'Set overtime', exact: true }).click()
+  await dialog(page).getByLabel('Overtime type').selectOption('opening')
+  await dialog(page).getByLabel('Overtime', { exact: true }).fill('nonsense')
+  await dialog(page).getByRole('button', { name: 'Set overtime' }).click()
+  await expect(dialog(page).getByRole('alert')).toContainText('Enter a duration')
+
+  await dialog(page).getByLabel('Overtime', { exact: true }).fill('2h 30m')
+  await dialog(page).getByRole('button', { name: 'Set overtime' }).click()
+  await expect(dialog(page)).toBeHidden()
+
+  await expect(page.getByTestId('overtime-explicit')).toHaveText('+2h 30m')
+  await expect(page.getByTestId('overtime-automatic')).toHaveText('+0h 00m')
+  await expect(page.getByTestId('overtime-balance')).toHaveText('+2h 30m')
+  await expect(page.getByTestId('overtime-records').getByText('Manual')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Dashboard' }).click()
+  await expect(cumulativeBalance(page)).toHaveText('+2h 30m')
+})
