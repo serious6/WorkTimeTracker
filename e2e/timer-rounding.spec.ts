@@ -123,7 +123,8 @@ test('E11: rounds the session that is stopped after a project switch', async ({ 
   await page.getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText(`0h 02m added to ${OTHER_PROJECT}`)).toBeVisible()
   await expect(page.getByText('Total: 0h 04m')).toBeVisible()
-  await expect(page.getByText('00:02:00').first()).toBeVisible()
+  // The closed segment keeps its two minutes, the stopped one is rounded up to two.
+  await expect(page.getByText('00:02:00')).toHaveCount(2)
 })
 
 // E12 in docs/e2e-test-cases.md
@@ -158,7 +159,7 @@ test('E13: shows the rounded duration in every view', async ({ page }) => {
   await expect(page.getByText('02:31:00')).toBeVisible()
 
   await page.getByRole('button', { name: 'Reports' }).click()
-  await expect(page.getByText('Total: 2h 31m', { exact: false })).toBeVisible()
+  await expect(page.getByText('Total: 2h 31m')).toBeVisible()
   await expect(page.getByText('2h 31m (100%)')).toBeVisible()
 
   // The monthly record carries the same value into the CSV and PDF export.
