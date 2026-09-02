@@ -1,9 +1,11 @@
 # End-to-end test cases
 
-Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts) covers one use case as a complete
+Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts) and
+[`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) covers one use case as a complete
 click path. The table below describes each case in Given/When/Then form. The number in the first
-column is repeated as a `#<number>` marker in the comment above the matching test, so a test and its
-specification can always be matched in both directions.
+column is repeated as a marker in the comment above the matching test (`#<number>` for the general
+cases, `E<number>` for the rounding cases), so a test and its specification can always be matched in
+both directions.
 
 Run the suite with `npm run test:e2e`. Every test starts from the shared `test.beforeEach` setup,
 which registers `first@example.com` and waits for the dashboard, so the tests are independent of
@@ -34,10 +36,40 @@ each other and of their execution order.
 | 21 | `replaces an absence only after an explicit confirmation` | An absence (vacation) exists on a day | The user tries to record another absence (sick leave) on the same day | The conflict message appears, only "Replace existing absences" replaces it and it can be deleted afterwards |
 | 22 | `adds an explicit overtime record on top of the tracked time` | Working time is configured and the tracked time matches the target, so the automatic overtime is zero | The user opens "Overtime" from the menu, is rejected with an invalid value and then saves an opening balance of 2h 30m | The balance is split into "+0h 00m" automatic and "+2h 30m" explicit, the record is listed as "Manual" and the dashboard shows "+2h 30m" |
 
+## Rounding of a stopped timer
+
+The tests in [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) cover the rounding of a
+tracked session to whole minutes. They never wait for real time: the clock is installed with
+`page.clock.install`, frozen with `page.clock.pauseAt` once the application has loaded and then moved
+with `page.clock.fastForward`, so every elapsed session is exact to the second and the suite stays
+fast. Every test registers `first@example.com`, creates the project `Website Redesign` and starts the
+timer on it.
+
+| #  | Elapsed time | When | Then |
+|----|--------------|------|------|
+| E1 | 00:00:10 | The timer is stopped | "Timer discarded" appears, no entry is listed and the day total stays "0h 00m" |
+| E2 | 00:00:29 | The timer is stopped | "Timer discarded" appears, no entry is listed and the day total stays "0h 00m" |
+| E3 | 00:00:30 | The timer is stopped | "0h 01m added to Website Redesign" appears and the entry is stored with 00:01:00 |
+| E4 | 00:00:59 | The timer is stopped | The entry is stored with 0h 01m |
+| E5 | 00:01:10 | The timer is stopped | The entry is stored with 0h 01m |
+| E6 | 00:01:30 | The timer is stopped | The entry is stored with 0h 02m |
+| E7 | 00:01:59 | The timer is stopped | The entry is stored with 0h 02m |
+| E8 | 00:59:45 | The timer is stopped | The entry is stored with 1h 00m |
+| E9 | 02:30:30 | The timer is stopped | The entry is stored with 2h 31m |
+
+| #   | Test (`e2e/timer-rounding.spec.ts`) | Given | When | Then |
+|-----|-------------------------------------|-------|------|------|
+| E10 | `E10: sums the segments of a paused session before rounding` | A timer runs for 40 seconds and is paused | The user resumes it, tracks another 40 seconds and stops it | Both segments are summed to 1m 20s before the rounding, so "0h 01m" is added once |
+| E11 | `E11: rounds the session that is stopped after a project switch` | A timer runs for two minutes on the first project | The user switches to a second project, tracks 1m 30s and stops the timer | The switch closes the first segment with its two minutes and the stopped session of the second project is rounded to "0h 02m" |
+| E12 | `E12: keeps a discarded session out of every total` | A timer ran for 29 seconds and was stopped | The user opens the dashboard, "Time Entries" and "Reports" | The session is nowhere: "No time tracked today", "No time entries yet." and "No time tracked this week." |
+| E13 | `E13: shows the rounded duration in every view` | A session of 2h 30m 30s was stopped | The user opens "Time Entries", "Reports" and "Working Time" | Every view shows the same rounded 2h 31m, including the monthly record behind the CSV and PDF export |
+| E14 | `E14: keeps the rounded duration after a reload` | A session of 1m 30s was stopped | The user reloads the application | The stored entry still shows 00:02:00, so the rounding is persisted and not only formatted |
+
 ## Conventions
 
 - Helpers such as `createProject`, `addEntry`, `dialog`, `register`, `login`, `openAccountMenu`,
-  `selectDate` and `dateKey` are reused instead of duplicating steps; new helpers follow the same
-  naming and structure.
+  `trackingCard` and `dateKey` live in [`e2e/helpers.ts`](../e2e/helpers.ts) and are reused by every
+  spec instead of duplicating steps; new helpers follow the same naming and structure.
 - Locators are role based and accessible (`getByRole`, `getByLabel`, `getByText`).
-- Tests wait for observable state (`expect(...)`) instead of fixed timeouts.
+- Tests wait for observable state (`expect(...)`) instead of fixed timeouts. Elapsed time is
+  simulated with `page.clock`, never by waiting for real seconds.
