@@ -246,8 +246,6 @@ pub trait Store: LoginAttemptStore {
     /// because a rejected login has none, and never stores credentials.
     fn record_auth_event(&self, email: &str, action: &str) -> Result<(), StoreError>;
 
-    fn read_app_version(&self) -> Result<Option<String>, StoreError>;
-
     fn read_user(&self, id: i64) -> Result<Option<User>, StoreError>;
     fn read_password_hash(&self, email: &str) -> Result<Option<(i64, String)>, StoreError>;
     fn register_user(&self, email: &str, password_hash: &str) -> Result<User, StoreError>;

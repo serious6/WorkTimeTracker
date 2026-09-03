@@ -35,7 +35,7 @@ fn log_panics() {
 /// database is shared, so it is migrated by this deliberate step instead of by
 /// every client that starts; see `examples/migrate.rs` and decision 12.
 pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
-    let db_config = DbConfig::from_env()?;
+    let db_config = DbConfig::for_migration()?;
     if !db_config.run_migrations {
         return Err(format!(
             "the {} database may only be migrated with {}=true",

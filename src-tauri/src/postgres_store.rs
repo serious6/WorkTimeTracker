@@ -98,10 +98,13 @@ impl PostgresStore {
             let mut client = store.conn()?;
             if config.run_migrations {
                 migrate(&mut client)?;
+                // Only the process that applies the migrations records a
+                // version: the row says which release established the schema,
+                // and a client of a shared database must not overwrite it.
+                write_app_version(&mut *client, APP_VERSION)?;
             } else {
                 verify_migrations(&mut client)?;
             }
-            write_app_version(&mut *client, APP_VERSION)?;
         }
         Ok(store)
     }
@@ -1898,16 +1901,6 @@ impl Store for PostgresStore {
         )?;
         transaction.commit()?;
         Ok(updated)
-    }
-
-    fn read_app_version(&self) -> Result<Option<String>, StoreError> {
-        let mut client = self.conn()?;
-        Ok(client
-            .query_opt(
-                "SELECT value FROM app_metadata WHERE key = $1",
-                &[&APP_VERSION_KEY],
-            )?
-            .map(|row| row.get(0)))
     }
 
     fn read_user(&self, id: i64) -> Result<Option<User>, StoreError> {

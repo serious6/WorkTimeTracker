@@ -50,7 +50,8 @@ src-tauri/src/      Rust backend (auth, commands, config, contract, error, loggi
 Test conventions:
 
 - Frontend unit tests sit next to their subject as `<name>.test.ts` / `<name>.test.tsx` under
-  `src/` and are the only files Vitest collects.
+  `src/`; a repository script is tested next to itself as `scripts/<name>.test.mjs`. Vitest
+  collects those two and nothing else.
 - Rust tests are `#[cfg(test)]` modules in the file they cover; helpers live in `test_support.rs`.
 - End-to-end tests are `e2e/<topic>.spec.ts` and reuse the helpers in `e2e/helpers.ts`
   (`register`, `login`, `createProject`, `addEntry`, `dialog`, `trackingCard`, `dateKey`).
@@ -185,9 +186,10 @@ connection carries no TLS. Development, `npm test`, `cargo test`, the Playwright
 job stay in that mode — a workflow must never receive a remote connection string, and
 `test_support.rs` refuses to create or drop a database outside it. Only `production` may name a
 remote host, only with `sslmode=verify-full` and the certificate authority pinned through
-`SUPABASE_DB_ROOT_CERT`, and it verifies the migrations instead of applying them (applying is the
-opt-in `WORK_TIME_TRACKER_DB_MIGRATE=true` step of the release workflow). There is no switch that
-weakens the verification, no host or credential belongs in the repository, and every message naming
+`SUPABASE_DB_ROOT_CERT`, and a production process that is pointed at a local server is refused. It
+verifies the migrations instead of applying them: `WORK_TIME_TRACKER_DB_MIGRATE=true` authorizes
+the separate migration step of the release workflow (`DbConfig::for_migration`) alone, never an
+application process. There is no switch that weakens the verification, no host or credential belongs in the repository, and every message naming
 a connection string goes through `config::redact_database_url` first. See decision 12 in
 [`architecture/decisions.md`](architecture/decisions.md).
 

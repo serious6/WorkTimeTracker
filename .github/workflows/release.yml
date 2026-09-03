@@ -160,12 +160,13 @@ jobs:
   # The only job that reaches the production database. Its secrets live in the
   # protected `production` environment, so no other job of this workflow or of
   # any other can read them, and it is opt-in: a shared database is migrated
-  # deliberately, never by an installation that starts. The values are never
-  # printed, and the bundles built above contain none of them - a deployment
-  # provides them to the application at run time.
+  # deliberately, never by an installation that starts. It waits for the
+  # bundles, so the shared schema is only changed once every installer of the
+  # release exists. The values are never printed, and the bundles contain none
+  # of them - a deployment provides them to the application at run time.
   migrate-production-database:
     if: ${{ inputs.migrate_production_database }}
-    needs: [version, web, rust, end-to-end]
+    needs: [version, bundle]
     runs-on: ubuntu-latest
     environment: production
     steps:

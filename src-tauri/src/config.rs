@@ -90,7 +90,8 @@ pub struct DbConfig {
     pub root_cert: Option<String>,
     /// Whether this process may apply the schema migrations. A production
     /// database is migrated by a deliberate, separately approved step instead
-    /// of by every client that starts.
+    /// of by every client that starts, so only `for_migration` ever sets this
+    /// for a production database.
     pub run_migrations: bool,
 }
 
@@ -136,13 +137,19 @@ impl std::fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl DbConfig {
-    /// Resolves the configuration from the real process environment.
+    /// Resolves the configuration of an application process from the real
+    /// process environment. Such a process never migrates a production
+    /// database, whatever the environment asks for.
     pub fn from_env() -> Result<Self, ConfigError> {
-        let vars: HashMap<String, String> = ENV_KEYS
-            .into_iter()
-            .filter_map(|key| std::env::var(key).ok().map(|value| (key.to_owned(), value)))
-            .collect();
-        Self::resolve(&vars)
+        Self::resolve(&env_vars())
+    }
+
+    /// The configuration of the separate migration step, the only place that
+    /// may authorize applying the migrations to a production database
+    /// (`WORK_TIME_TRACKER_DB_MIGRATE=true`, see `examples/migrate.rs`).
+    pub fn for_migration() -> Result<Self, ConfigError> {
+        let vars = env_vars();
+        Self::resolve_for_migration(&vars)
     }
 
     /// Pure resolution from a map of env vars, so it can be unit tested
@@ -161,9 +168,25 @@ impl DbConfig {
             mode,
             database_url,
             root_cert: setting(vars, DB_ROOT_CERT_ENV).map(str::to_owned),
-            run_migrations: !mode.is_production() || flag(vars, MIGRATE_ENV),
+            run_migrations: !mode.is_production(),
         })
     }
+
+    /// The same resolution for the migration step, which reads the opt-in flag
+    /// that a production database may be migrated.
+    pub fn resolve_for_migration(vars: &HashMap<String, String>) -> Result<Self, ConfigError> {
+        let mut config = Self::resolve(vars)?;
+        config.run_migrations = config.run_migrations || flag(vars, MIGRATE_ENV);
+        Ok(config)
+    }
+}
+
+/// The variables of the resolution, copied out of the process environment.
+fn env_vars() -> HashMap<String, String> {
+    ENV_KEYS
+        .into_iter()
+        .filter_map(|key| std::env::var(key).ok().map(|value| (key.to_owned(), value)))
+        .collect()
 }
 
 /// A variable with a meaningful value. A blank one counts as unset, so a
@@ -543,7 +566,7 @@ mod tests {
             (DATABASE_URL_ENV, &remote_url()),
         ]))
         .unwrap();
-        let migration_step = DbConfig::resolve(&vars(&[
+        let migration_step = DbConfig::resolve_for_migration(&vars(&[
             (DEPLOYMENT_MODE_ENV, "production"),
             (DATABASE_URL_ENV, &remote_url()),
             (MIGRATE_ENV, "true"),
@@ -553,6 +576,35 @@ mod tests {
         assert!(development.run_migrations);
         assert!(!production.run_migrations);
         assert!(migration_step.run_migrations);
+    }
+
+    /// The flag authorizes the separate migration step alone. An application
+    /// process that carries it still only verifies the migrations.
+    #[test]
+    fn an_application_process_never_migrates_a_production_database() {
+        let vars = vars(&[
+            (DEPLOYMENT_MODE_ENV, "production"),
+            (DATABASE_URL_ENV, &remote_url()),
+            (MIGRATE_ENV, "true"),
+        ]);
+
+        assert!(!DbConfig::resolve(&vars).unwrap().run_migrations);
+        assert!(
+            DbConfig::resolve_for_migration(&vars)
+                .unwrap()
+                .run_migrations
+        );
+    }
+
+    #[test]
+    fn the_migration_step_needs_the_flag_for_a_production_database() {
+        let config = DbConfig::resolve_for_migration(&vars(&[
+            (DEPLOYMENT_MODE_ENV, "production"),
+            (DATABASE_URL_ENV, &remote_url()),
+        ]))
+        .unwrap();
+
+        assert!(!config.run_migrations);
     }
 
     #[test]

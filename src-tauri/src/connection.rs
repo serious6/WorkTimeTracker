@@ -6,7 +6,8 @@
 //! production build, and only over a connection whose certificate chain *and*
 //! host name are verified against a pinned certificate authority
 //! (`sslmode=verify-full`). There is deliberately no switch that relaxes this:
-//! a remote host without verified TLS fails to connect.
+//! a remote host without verified TLS fails to connect, and a production build
+//! that is pointed at a local server is refused as well.
 
 use std::{net::IpAddr, sync::Arc};
 
@@ -46,6 +47,9 @@ pub enum ConnectionError {
     Parse(String),
     /// A host that is not local, outside of a production deployment.
     RemoteHost(String),
+    /// A local host inside a production deployment, which must reach the
+    /// remote database of that deployment.
+    LocalHost(String),
     /// A remote host without a fully verified TLS connection.
     UnverifiedTls { host: String, ssl_mode: String },
     /// A TLS connection without the certificate authority to verify against.
@@ -63,6 +67,10 @@ impl std::fmt::Display for ConnectionError {
             Self::RemoteHost(host) => write!(
                 formatter,
                 "database host {host:?} is not local; allowed TCP hosts are localhost and loopback addresses"
+            ),
+            Self::LocalHost(host) => write!(
+                formatter,
+                "database host {host:?} is local; a production deployment must reach its remote database"
             ),
             Self::UnverifiedTls { host, ssl_mode } => write!(
                 formatter,
@@ -116,6 +124,10 @@ pub fn plan(
                 ssl_mode: requested.unwrap_or_else(|| DISABLE.to_owned()),
             });
         }
+    } else if mode.is_production() {
+        // A production build talks to the remote database of its deployment.
+        // Without this it would fall through to the plaintext local plan.
+        return Err(ConnectionError::LocalHost(local_host_name(&config)));
     }
 
     if verify_full {
@@ -449,6 +461,29 @@ mod tests {
         .expect("must reject");
 
         assert!(error.to_string().contains(VERIFY_FULL), "{error}");
+    }
+
+    #[test]
+    fn rejects_a_local_host_in_production() {
+        for url in LOCAL_URLS {
+            let error = production(url).err().expect("must reject");
+
+            assert!(
+                matches!(error, ConnectionError::LocalHost(_)),
+                "{url}: {error}, a production build must not fall back to a local database"
+            );
+        }
+    }
+
+    /// Even a `verify-full` local connection stays refused: production is the
+    /// deployment, not a TLS terminated development server.
+    #[test]
+    fn rejects_a_local_host_in_production_with_a_verified_connection() {
+        let error = production("postgresql://user@localhost/database?sslmode=verify-full")
+            .err()
+            .expect("must reject");
+
+        assert_eq!(error, ConnectionError::LocalHost("localhost".to_owned()));
     }
 
     #[test]

@@ -4,7 +4,10 @@
 // production mode, a remote `DATABASE_URL` or the secrets of a deployment is
 // misconfigured. Prints host names only, never a connection string.
 
+import { pathToFileURL } from 'node:url'
+
 const localHosts = new Set(['localhost', 'db'])
+const hostKeys = ['host', 'hostaddr']
 const productionKeys = [
   'SUPABASE_DATABASE_URL',
   'SUPABASE_DB_HOST',
@@ -27,29 +30,62 @@ function isLocal(host) {
   return localHosts.has(name) || isLoopback(name)
 }
 
+function isHostKey(key) {
+  return hostKeys.includes(key.trim().toLowerCase())
+}
+
+function decode(value) {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+// The driver reads `host` and `hostaddr` from the query of a URL as well and
+// connects to them in addition to the authority, so they are checked too.
+function queryHosts(query) {
+  return query
+    .split('&')
+    .flatMap((parameter) => {
+      const [key, ...rest] = parameter.split('=')
+      if (!isHostKey(key)) return []
+      return decode(rest.join('=')).split(',')
+    })
+    .filter(Boolean)
+}
+
 // The hosts of both accepted spellings: a URL and a libpq `key=value` string.
-function hosts(databaseUrl) {
+export function hosts(databaseUrl) {
   const value = databaseUrl.trim()
   if (!value) return []
   if (value.includes('://')) {
-    const authority = value.slice(value.indexOf('://') + 3).split(/[/?]/)[0]
-    const hostPart = authority.includes('@') ? authority.slice(authority.lastIndexOf('@') + 1) : authority
-    const withoutPort = hostPart.startsWith('[')
-      ? hostPart.slice(1, hostPart.indexOf(']'))
-      : hostPart.split(':')[0]
-    return withoutPort.split(',').filter(Boolean)
+    const body = value.slice(value.indexOf('://') + 3)
+    // The driver reads everything up to the first `@` as the credentials, so a
+    // password containing a `?` does not start the query.
+    const credentials = body.indexOf('@')
+    const rest = credentials === -1 ? body : body.slice(credentials + 1)
+    const query = rest.indexOf('?')
+    const authority = (query === -1 ? rest : rest.slice(0, query)).split('/')[0]
+    const withoutPort = authority.startsWith('[')
+      ? authority.slice(1, authority.indexOf(']'))
+      : authority.split(':')[0]
+    return [
+      ...withoutPort.split(','),
+      ...(query === -1 ? [] : queryHosts(rest.slice(query + 1))),
+    ].filter(Boolean)
   }
   return value
     .split(/\s+/)
     .flatMap((pair) => {
       const [key, ...rest] = pair.split('=')
-      if (!['host', 'hostaddr'].includes(key.trim().toLowerCase())) return []
+      if (!isHostKey(key)) return []
       return rest.join('=').split(',')
     })
     .filter(Boolean)
 }
 
-function problems(env) {
+export function problems(env) {
   const found = []
   const mode = (env.WORK_TIME_TRACKER_ENV ?? '').trim().toLowerCase()
   if (mode && mode !== 'development') {
@@ -64,9 +100,12 @@ function problems(env) {
   return found
 }
 
-const found = problems(process.env)
-if (found.length > 0) {
-  for (const problem of found) console.error(`::error::${problem}`)
-  process.exit(1)
+// Only the executed script fails the job; the unit tests import the rules.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const found = problems(process.env)
+  if (found.length > 0) {
+    for (const problem of found) console.error(`::error::${problem}`)
+    process.exit(1)
+  }
+  console.log('the configured database is local')
 }
-console.log('the configured database is local')
