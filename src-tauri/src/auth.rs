@@ -352,10 +352,18 @@ mod tests {
         let sessions = Sessions::default();
         let now = Instant::now();
         let id = sessions.start_at(7, "main", now).unwrap();
+        let expiry = now + minutes(SESSION_TIMEOUT_MINUTES);
 
-        assert_eq!(sessions.user_id_at(&id, "second", now).unwrap(), None);
-        // The rejected replay left the session of its own window untouched.
+        // The session of the owning window stays untouched by the replay ...
         assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), Some(7));
+        assert_eq!(
+            sessions
+                .user_id_at(&id, "second", expiry - Duration::from_secs(1))
+                .unwrap(),
+            None
+        );
+        // ... and the replay does not keep it alive past its original timeout.
+        assert_eq!(sessions.user_id_at(&id, "main", expiry).unwrap(), None);
     }
 
     #[test]
