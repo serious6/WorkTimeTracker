@@ -179,17 +179,22 @@ An open web inspector reads the running application: the session id in `sessionS
 arguments and answers of every IPC command, and the data of the signed in account. A shipped build
 therefore carries no devtools, while `tauri dev` keeps them.
 
-Tauri already draws that line. The inspector, its "Inspect Element" context menu entry and
-`WebviewWindow::open_devtools` are compiled under
-`cfg(any(debug_assertions, feature = "devtools"))`, and `devtools` is not one of the default
-features of the `tauri` crate. `tauri dev` compiles the dev profile and keeps them,
-`npm run tauri build` compiles the release profile and drops them — as long as no cargo feature
-switches them back on and the bundle is not built with `--debug`.
+Tauri already draws that line. Everything that opens the inspector is compiled under
+`cfg(any(debug_assertions, feature = "devtools"))`: the `with_devtools` call that turns the
+developer extras of the webview and its "Inspect Element" entry on, the `toggle-devtools.js` that
+tauri injects for the keyboard shortcut, the `internal_toggle_devtools` command behind it and
+`WebviewWindow::open_devtools`. `devtools` is not one of the default features of the `tauri` crate,
+so `tauri dev` compiles the dev profile and keeps them while `npm run tauri build` compiles the
+release profile and drops them — as long as no cargo feature switches them back on and the bundle
+is not built with `--debug`.
 
 Two tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
 manifest next: `devtools_stay_out_of_a_release_build` fails when a feature of `src-tauri/Cargo.toml`
-enables `tauri/devtools`, and `a_devtools_call_carries_a_debug_assertions_guard` fails when a
-backend source reaches the devtools without a `#[cfg(debug_assertions)]` in the same block of lines.
+enables `tauri/devtools` or a profile turns `debug-assertions` back on for the release build, and
+`a_devtools_call_carries_a_debug_assertions_guard` fails when a backend source reaches the devtools
+without a `debug_assertions` condition in the same block of lines. What the tests cannot see is a
+`debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS` or a
+`.cargo/config.toml`; the release workflow sets neither.
 
 The window in `tauri.conf.json` names no `devtools` field on purpose. `false` would remove the
 inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has

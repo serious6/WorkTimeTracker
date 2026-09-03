@@ -99,15 +99,15 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
-    /// The manifest of the backend, read at compile time so the assertion below
-    /// describes the dependency that is actually built.
+    /// The manifest of the backend, read at compile time so the assertions below
+    /// describe the crate that is actually built.
     const MANIFEST: &str = include_str!("../Cargo.toml");
 
     /// The manifest without its comments, so that the comment explaining the
-    /// devtools rule does not read as an enabled feature. No value of this
-    /// manifest contains a `#`.
+    /// devtools rule does not read as a declaration. No value of this manifest
+    /// contains a `#`.
     fn manifest_declarations() -> String {
         MANIFEST
             .lines()
@@ -116,21 +116,12 @@ mod tests {
             .join("\n")
     }
 
-    /// Every Rust source of the backend, read from the directory instead of a
-    /// fixed list so that a file added later is scanned too.
+    /// Every Rust source of the backend, the `src` tree walked instead of a
+    /// fixed list so that a file or a module directory added later is read too.
     fn backend_sources() -> Vec<(String, String)> {
-        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut sources: Vec<(String, String)> = fs::read_dir(&directory)
-            .expect("the backend sources are readable")
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
-            .map(|path| {
-                let name = path.file_name().unwrap_or_default().to_string_lossy();
-                let source = fs::read_to_string(&path).expect("a backend source is readable");
-                (name.into_owned(), source)
-            })
-            .collect();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut sources = Vec::new();
+        collect_sources(&root, &root, &mut sources);
         sources.sort();
 
         let names: Vec<&str> = sources.iter().map(|(name, _)| name.as_str()).collect();
@@ -139,6 +130,26 @@ mod tests {
             "the backend sources were not found: {names:?}"
         );
         sources
+    }
+
+    /// Reads `directory` into `sources` as pairs of the path below `root` and
+    /// the source itself.
+    fn collect_sources(root: &Path, directory: &Path, sources: &mut Vec<(String, String)>) {
+        let entries = fs::read_dir(directory).expect("the backend sources are readable");
+        for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+            if path.is_dir() {
+                collect_sources(root, &path, sources);
+                continue;
+            }
+            if path.extension().is_some_and(|extension| extension == "rs") {
+                let name = path
+                    .strip_prefix(root)
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| path.clone());
+                let source = fs::read_to_string(&path).expect("a backend source is readable");
+                sources.push((name.display().to_string(), source));
+            }
+        }
     }
 
     /// The part of a source in front of its test module, so that the scan below
@@ -150,13 +161,33 @@ mod tests {
             .expect("a source always has a first part")
     }
 
+    /// Whether a line reaches the devtools, that is code rather than a comment
+    /// or the attribute that guards the code.
+    fn reaches_the_devtools(line: &str) -> bool {
+        let code = line.trim();
+        code.contains("devtools") && !code.starts_with("//") && !code.starts_with('#')
+    }
+
+    /// Whether a line holds a condition that is true in a debug build only.
+    /// `not(debug_assertions)` names the opposite and guards nothing.
+    fn debug_build_only(line: &str) -> bool {
+        line.contains("debug_assertions") && !line.contains("not(debug_assertions)")
+    }
+
     #[test]
     fn devtools_stay_out_of_a_release_build() {
+        let declarations = manifest_declarations();
+
         assert!(
-            !manifest_declarations().contains("devtools"),
+            !declarations.contains("devtools"),
             "no cargo feature may enable tauri's devtools: the web inspector of a \
              shipped build would expose the session id and every IPC payload, and \
-             without the feature tauri gates it on cfg(debug_assertions)"
+             without the feature tauri gates it on debug_assertions"
+        );
+        assert!(
+            !declarations.contains("debug-assertions"),
+            "no profile may set debug-assertions: tauri gates the devtools on that \
+             flag, so a release build that turns it on ships the web inspector"
         );
     }
 
@@ -165,22 +196,21 @@ mod tests {
         for (name, source) in backend_sources() {
             let lines: Vec<&str> = production_part(&source).lines().collect();
             for (index, line) in lines.iter().enumerate() {
-                let code = line.trim();
-                if !code.contains("devtools") || code.starts_with("//") {
+                if !reaches_the_devtools(line) {
                     continue;
                 }
 
-                // The attribute has to stand in the same block of lines as the
-                // call, that is without an empty line in between.
+                // The guard has to stand in the same block of lines as the call,
+                // that is without an empty line in between.
                 let guarded = lines[..index]
                     .iter()
                     .rev()
                     .take_while(|previous| !previous.trim().is_empty())
-                    .any(|previous| previous.contains("cfg(debug_assertions)"));
+                    .any(|previous| debug_build_only(previous));
 
                 assert!(
                     guarded,
-                    "{name}:{} reaches the devtools without a #[cfg(debug_assertions)] guard",
+                    "{name}:{} reaches the devtools without a debug_assertions guard",
                     index + 1
                 );
             }

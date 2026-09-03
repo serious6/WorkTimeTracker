@@ -24,9 +24,10 @@ serde_json = "1.0"
 # The feature list stays empty on purpose: `tauri/devtools` would compile the
 # web inspector into the shipped binary, where it would expose the session id
 # and every IPC payload. Without it tauri gates the inspector, its context menu
-# entry and `open_devtools` on `cfg(debug_assertions)`, so `tauri dev` keeps
-# them and `tauri build` does not. `devtools_stay_out_of_a_release_build` in
-# `src/lib.rs` fails when this list gains the feature.
+# entry and `open_devtools` on `debug_assertions`, so `tauri dev` keeps them and
+# `tauri build` does not. `devtools_stay_out_of_a_release_build` in `src/lib.rs`
+# fails when this list gains the feature or a profile turns `debug-assertions`
+# back on.
 tauri = { version = "2.11.5", features = [] }
 argon2 = { version = "0.5", features = ["std"] }
 postgres = "0.19.14"
