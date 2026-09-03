@@ -82,9 +82,11 @@ flowchart TB
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
 | `logs/work-time-tracker.log` | Redacted, rotated error log, no domain data | `src-tauri/src/logging.rs` |
 
-In the desktop application sessions are not persisted: `Session` in `src-tauri/src/auth.rs` keeps
-the signed-in user in memory only, so a restart returns to the login page. A session also ends when
-it was idle for 480 minutes or when it reaches its absolute lifetime of 720 minutes, whichever comes
+In the desktop application sessions are not persisted: `Sessions` in `src-tauri/src/auth.rs` keeps
+the signed-in user in memory only, so a restart returns to the login page. The frontend holds the id
+of its session in a module variable of `src/features/storage/tauri-repository.ts` and in no storage
+container of the webview, so a reload returns to the login page as well. A session also ends when it
+was idle for 480 minutes or when it reaches its absolute lifetime of 720 minutes, whichever comes
 first.
 
 ## Level 3 — Entities

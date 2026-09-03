@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import { fromDateKey, toDateKey } from '@/lib/date'
 
 export const DUPLICATE_BUDGET_MESSAGE = 'This project already has a budget'
