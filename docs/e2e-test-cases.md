@@ -146,3 +146,8 @@ timer on it.
 - Locators are role based and accessible (`getByRole`, `getByLabel`, `getByText`).
 - Tests wait for observable state (`expect(...)`) instead of fixed timeouts. Elapsed time is
   simulated with `page.clock`, never by waiting for real seconds.
+- The suite drives the browser build, which stores its data in `localStorage`. A path that exists
+  only in the desktop build — for example the session of `tauri-repository.ts`, which no Playwright
+  run can reach because there is no native backend — is covered instead by an application level
+  test that renders `App` over the mocked Tauri commands, such as
+  [`src/features/storage/tauri-session-reload.test.tsx`](../src/features/storage/tauri-session-reload.test.tsx).
