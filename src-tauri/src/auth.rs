@@ -23,6 +23,9 @@ use crate::{
 
 /// Idle timeout of a session. Every command resets it, an idle session ends.
 pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
+/// Absolute lifetime of a session. Activity does not extend it, so a running
+/// timer cannot keep an unattended machine signed in forever.
+pub const SESSION_MAX_LIFETIME_MINUTES: u64 = 720;
 /// Failed logins of one email before the account is locked for a while.
 pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
 /// Duration of the lockout that follows the last allowed attempt.
@@ -46,7 +49,17 @@ fn minutes(value: u64) -> Duration {
 
 struct ActiveSession {
     user_id: i64,
+    started_at: Instant,
     last_seen: Instant,
+}
+
+impl ActiveSession {
+    /// A session ends when it was idle for too long or when it reached its
+    /// absolute lifetime, whichever comes first.
+    fn is_alive_at(&self, now: Instant) -> bool {
+        now.duration_since(self.last_seen) < minutes(SESSION_TIMEOUT_MINUTES)
+            && now.duration_since(self.started_at) < minutes(SESSION_MAX_LIFETIME_MINUTES)
+    }
 }
 
 /// Opaque identifier of one signed in session. It is generated from the
@@ -90,10 +103,8 @@ impl Sessions {
 
     fn user_id_at(&self, id: &SessionId, now: Instant) -> AppResult<Option<i64>> {
         let mut sessions = self.0.lock()?;
-        // An idle session ends; expired sessions never pile up in the map.
-        sessions.retain(|_, session| {
-            now.duration_since(session.last_seen) < minutes(SESSION_TIMEOUT_MINUTES)
-        });
+        // An expired session ends; expired sessions never pile up in the map.
+        sessions.retain(|_, session| session.is_alive_at(now));
         let Some(active) = sessions.get_mut(id) else {
             return Ok(None);
         };
@@ -113,6 +124,7 @@ impl Sessions {
             id.clone(),
             ActiveSession {
                 user_id,
+                started_at: now,
                 last_seen: now,
             },
         );
@@ -301,6 +313,32 @@ mod tests {
             None
         );
         assert_eq!(sessions.user_id(&id).unwrap(), None);
+    }
+
+    #[test]
+    fn ends_a_continuously_used_session_at_its_absolute_lifetime() {
+        // The absolute lifetime only bites when it outlasts the idle timeout,
+        // otherwise the idle timeout would already have ended every session.
+        assert!(SESSION_MAX_LIFETIME_MINUTES > SESSION_TIMEOUT_MINUTES);
+
+        let sessions = Sessions::default();
+        let now = Instant::now();
+        let id = sessions.start_at(7, now).unwrap();
+
+        // A running timer polls the backend, so the session is never idle.
+        let step = minutes(SESSION_TIMEOUT_MINUTES / 2);
+        let mut used = now + step;
+        while used.duration_since(now) < minutes(SESSION_MAX_LIFETIME_MINUTES) {
+            assert_eq!(sessions.user_id_at(&id, used).unwrap(), Some(7));
+            used += step;
+        }
+
+        assert_eq!(
+            sessions
+                .user_id_at(&id, now + minutes(SESSION_MAX_LIFETIME_MINUTES))
+                .unwrap(),
+            None
+        );
     }
 
     #[test]

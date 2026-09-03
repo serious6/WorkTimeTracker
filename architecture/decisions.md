@@ -42,7 +42,10 @@ The file is rotated once it passes 512 KiB, and a failing logger never breaks a 
 ## 4. Sessions and credentials
 
 Native sessions live in memory and end after 480 idle minutes; every command extends them, a
-restart always returns to the login page. `login` and `register` start a session and answer with its
+restart always returns to the login page. Next to the idle timeout every session carries the moment
+it started and ends 720 minutes after it, no matter how much it was used: a running timer polls the
+backend all day, so without that absolute lifetime an application left open on an unattended machine
+would stay signed in forever. `login` and `register` start a session and answer with its
 opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
 map keyed by that id, and every command names the session it acts for instead of reading one ambient
 process-global session, so two windows can hold two identities and a session is distinguishable in
@@ -65,7 +68,7 @@ A login with an unknown email verifies a fixed dummy hash instead of returning e
 spend the same Argon2 work and the response time does not reveal whether an account exists.
 
 The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
-session record with an expiry. Client-side storage stays fully readable and writable, therefore the
+session record that carries both its start and its idle expiry, and applies the same two limits. Client-side storage stays fully readable and writable, therefore the
 fallback is a development and test tool only, not a security boundary. It is never shipped as the
 production path, which is also why it hashes passwords with PBKDF2-SHA256 (the strongest KDF
 available in the browser) while the Rust backend uses Argon2id for real credentials.

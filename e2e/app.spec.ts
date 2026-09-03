@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   addEntry,
+  ageSession,
   createProject,
   dateKey,
   dialog,
@@ -530,4 +531,26 @@ test('adds an explicit overtime record on top of the tracked time', async ({ pag
 
   await page.getByRole('button', { name: 'Dashboard' }).click()
   await expect(cumulativeBalance(page)).toHaveText('+2h 30m')
+})
+
+// #23 in docs/e2e-test-cases.md
+test('returns to the login page when the session expires', async ({ page }) => {
+  await createProject(page, 'Session Project')
+
+  await ageSession(page, 'idle')
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Budgets' }).click()
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+
+  await login(page, 'first@example.com')
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+
+  // The session was used a moment ago, so only its absolute lifetime ends it.
+  await ageSession(page, 'lifetime')
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Budgets' }).click()
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+
+  await login(page, 'first@example.com')
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Projects' }).click()
+  await expect(page.getByText('Session Project')).toBeVisible()
 })

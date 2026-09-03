@@ -4,7 +4,11 @@ import {
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
 } from '@/features/auth/auth-schema'
-import { LOCKED_OUT_MESSAGE, MAX_LOGIN_ATTEMPTS } from '@/features/auth/security-policy'
+import {
+  LOCKED_OUT_MESSAGE,
+  MAX_LOGIN_ATTEMPTS,
+  SESSION_MAX_LIFETIME_MINUTES,
+} from '@/features/auth/security-policy'
 import { DUPLICATE_BUDGET_MESSAGE } from '@/features/budgets/budget-schema'
 import {
   DEFAULT_WORK_SETTINGS,
@@ -669,7 +673,7 @@ describe('local repository budgets and settings', () => {
 })
 
 describe('local repository session handling', () => {
-  function sessions(): Record<string, { userId: number; expiresAt: number }> {
+  function sessions(): Record<string, { userId: number; startedAt: number; expiresAt: number }> {
     return JSON.parse(globalThis.localStorage?.getItem('work-time-tracker.sessions') ?? '{}')
   }
 
@@ -709,12 +713,31 @@ describe('local repository session handling', () => {
     const expiresAt = sessions()[token]?.expiresAt ?? 0
     globalThis.localStorage?.setItem(
       'work-time-tracker.sessions',
-      JSON.stringify({ [token]: { userId: 1, expiresAt: Date.now() + 1_000 } }),
+      JSON.stringify({ [token]: { userId: 1, startedAt: Date.now(), expiresAt: Date.now() + 1_000 } }),
     )
 
     await createLocalRepository().currentSession()
 
     expect(sessions()[token]?.expiresAt).toBeGreaterThanOrEqual(expiresAt - 1_000)
+  })
+
+  it('ends a session that reached its absolute lifetime while it was used', async () => {
+    await register('first@example.com')
+    const token = globalThis.sessionStorage?.getItem('work-time-tracker.session') ?? ''
+    const session = sessions()[token]
+    // The session was used a moment ago, so only the absolute lifetime ends it.
+    globalThis.localStorage?.setItem(
+      'work-time-tracker.sessions',
+      JSON.stringify({
+        [token]: {
+          ...session,
+          startedAt: Date.now() - SESSION_MAX_LIFETIME_MINUTES * 60_000,
+        },
+      }),
+    )
+
+    expect(await createLocalRepository().currentSession()).toBeNull()
+    expect(sessions()).toEqual({})
   })
 
   it('forgets the session of the former user on logout', async () => {
