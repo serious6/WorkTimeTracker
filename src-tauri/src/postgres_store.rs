@@ -32,31 +32,11 @@ const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Ordered migrations, applied exactly once each and tracked in
-/// `schema_migrations`. `0000_init` is the immutable baseline: every later
-/// schema change is a new file in `drizzle/` that is appended here, so an
-/// existing database is upgraded instead of silently kept on a stale schema.
+/// `schema_migrations`. `0000_init` is the complete current baseline schema.
 /// `migrate` runs them inside one transaction, so a migration must not use a
 /// statement that Postgres refuses in a transaction block, such as
 /// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
-const MIGRATIONS: &[(&str, &str)] = &[
-    ("0000_init", include_str!("../../drizzle/0000_init.sql")),
-    (
-        "0001_absences",
-        include_str!("../../drizzle/0001_absences.sql"),
-    ),
-    (
-        "0002_login_attempts",
-        include_str!("../../drizzle/0002_login_attempts.sql"),
-    ),
-    (
-        "0003_overtime",
-        include_str!("../../drizzle/0003_overtime.sql"),
-    ),
-    (
-        "0004_security_audits",
-        include_str!("../../drizzle/0004_security_audits.sql"),
-    ),
-];
+const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
 
 /// Arbitrary but stable key for the advisory lock that serializes `migrate`.
 const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
@@ -2370,6 +2350,18 @@ mod tests {
             failures.is_empty(),
             "concurrent migrations failed: {failures:?}"
         );
+
+        let mut client = postgres::Client::connect(url, NoTls).unwrap();
+        let versions: Vec<String> = client
+            .query(
+                "SELECT version FROM schema_migrations ORDER BY version",
+                &[],
+            )
+            .unwrap()
+            .into_iter()
+            .map(|row| row.get(0))
+            .collect();
+        assert_eq!(versions, ["0000_init"]);
     }
 
     #[test]

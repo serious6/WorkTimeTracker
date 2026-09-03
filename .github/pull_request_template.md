@@ -10,4 +10,4 @@
 - [ ] `npm run lint`, `npm run typecheck`, `npm run test:coverage`, `npm run test:e2e`, `npm run architecture:check`, `npm run licenses:check` and `npm run build` pass locally.
 - [ ] `cargo fmt --check` and `cargo test` pass for changes under `src-tauri/`.
 - [ ] Documentation updated where the change invalidates it.
-- [ ] A schema change ships with a new numbered migration in `drizzle/`.
+- [ ] A schema change updates the migration in `drizzle/`.

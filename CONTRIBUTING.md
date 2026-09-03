@@ -97,7 +97,7 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 - [ ] Unit tests added or updated; e2e test added for user-facing behaviour.
 - [ ] The quality checks above pass locally.
 - [ ] Documentation the change invalidates is updated.
-- [ ] A schema change ships with a new numbered migration in `drizzle/`.
+- [ ] A schema change updates the migration in `drizzle/`.
 - [ ] The title follows Conventional Commits.
 
 ## Project layout
@@ -126,9 +126,8 @@ build, and both repeat the paths of the in-app `AppLogo`. After changing the sou
 - Keep documentation concise.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- `drizzle/0000_init.sql` is the baseline migration and stays unchanged. A schema change adds a new
-  numbered file in `drizzle/`, appends it to `MIGRATIONS` in `src-tauri/src/postgres_store.rs`
-  (applied once inside a transaction and recorded in `schema_migrations`), and updates
-  `src/db/schema.ts` and the queries in `src-tauri/src/postgres_store.rs`.
+- `drizzle/0000_init.sql` is the complete current baseline migration. Schema changes keep it,
+  `MIGRATIONS` in `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and the queries in
+  `src-tauri/src/postgres_store.rs` in sync.
 - UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md) and
   update [`docs/ui-audit.md`](docs/ui-audit.md) when a view changes noticeably.
