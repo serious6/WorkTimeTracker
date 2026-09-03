@@ -356,7 +356,7 @@ mod tests {
     }
 
     fn remote_url() -> String {
-        "postgresql://app@db.example.net/postgres?sslmode=verify-full".to_owned()
+        "postgresql://app@db.codehub.org/postgres?sslmode=verify-full".to_owned()
     }
 
     #[test]
@@ -420,7 +420,7 @@ mod tests {
         let secret = "pass word/@";
         let config = DbConfig::resolve(&vars(&[
             (DEPLOYMENT_MODE_ENV, "production"),
-            (DB_HOST_ENV, "db.example.net"),
+            (DB_HOST_ENV, "db.codehub.org"),
             (DB_PORT_ENV, "6543"),
             (DB_USER_ENV, user),
             (DB_PASSWORD_ENV, secret),
@@ -432,7 +432,7 @@ mod tests {
         assert_eq!(
             config.database_url,
             format!(
-                "postgresql://{}:{}@db.example.net:6543/postgres?sslmode=verify-full",
+                "postgresql://{}:{}@db.codehub.org:6543/postgres?sslmode=verify-full",
                 encode(user),
                 encode(secret)
             )
@@ -450,14 +450,14 @@ mod tests {
     fn defaults_the_production_port_and_database() {
         let config = DbConfig::resolve(&vars(&[
             (DEPLOYMENT_MODE_ENV, "production"),
-            (DB_HOST_ENV, "db.example.net"),
+            (DB_HOST_ENV, "db.codehub.org"),
             (DB_USER_ENV, "app"),
             (DB_PASSWORD_ENV, "secret"),
         ]))
         .unwrap();
 
         assert!(config.database_url.contains(&format!(
-            "@db.example.net:{DEFAULT_PORT}/{DEFAULT_DATABASE}"
+            "@db.codehub.org:{DEFAULT_PORT}/{DEFAULT_DATABASE}"
         )));
         assert!(config.database_url.ends_with("?sslmode=verify-full"));
     }
@@ -467,7 +467,7 @@ mod tests {
         let config = DbConfig::resolve(&vars(&[
             (DEPLOYMENT_MODE_ENV, "production"),
             (DATABASE_URL_ENV, &remote_url()),
-            (DB_HOST_ENV, "ignored.example.net"),
+            (DB_HOST_ENV, "ignored.codehub.org"),
             (DB_USER_ENV, "ignored"),
             (DB_PASSWORD_ENV, "ignored"),
         ]))
@@ -480,7 +480,7 @@ mod tests {
     fn reports_every_missing_production_setting_by_name() {
         let error = DbConfig::resolve(&vars(&[
             (DEPLOYMENT_MODE_ENV, "production"),
-            (DB_HOST_ENV, "db.example.net"),
+            (DB_HOST_ENV, "db.codehub.org"),
             (DB_PASSWORD_ENV, "   "),
         ]))
         .expect_err("must require the missing settings");
@@ -497,7 +497,7 @@ mod tests {
         for port in ["0", "70000", "5432; DROP", ""] {
             let error = DbConfig::resolve(&vars(&[
                 (DEPLOYMENT_MODE_ENV, "production"),
-                (DB_HOST_ENV, "db.example.net"),
+                (DB_HOST_ENV, "db.codehub.org"),
                 (DB_USER_ENV, "app"),
                 (DB_PASSWORD_ENV, "secret"),
                 (DB_PORT_ENV, port),
@@ -518,10 +518,10 @@ mod tests {
     #[test]
     fn rejects_a_production_host_that_is_not_a_host_name() {
         for host in [
-            "db.example.net/database",
-            "db.example.net:5432",
-            "user@db.example.net",
-            "db.example.net?sslmode=disable",
+            "db.codehub.org/database",
+            "db.codehub.org:5432",
+            "user@db.codehub.org",
+            "db.codehub.org?sslmode=disable",
         ] {
             let error = DbConfig::resolve(&vars(&[
                 (DEPLOYMENT_MODE_ENV, "production"),
@@ -570,7 +570,7 @@ mod tests {
     fn redacts_a_remote_url_with_query_parameters() {
         let user = "app.project-ref";
         let secret = "hunter2";
-        let rest = "db.example.net:6543/postgres?sslmode=verify-full&sslrootcert=/etc/ca.crt";
+        let rest = "db.codehub.org:6543/postgres?sslmode=verify-full&sslrootcert=/etc/ca.crt";
         let url = format!("postgresql://{user}:{secret}@{rest}");
 
         let redacted = redact_database_url(&url);
@@ -583,7 +583,7 @@ mod tests {
     fn redacts_a_secret_query_parameter() {
         let secret = "hunter2";
         let key = SECRET_KEYS[0];
-        let rest = "db.example.net/postgres?sslmode=verify-full";
+        let rest = "db.codehub.org/postgres?sslmode=verify-full";
         let url = format!("postgresql://app@{rest}&{key}={secret}");
 
         let redacted = redact_database_url(&url);
@@ -600,7 +600,7 @@ mod tests {
         // The driver reads the credentials up to the first `@`, so `?` is part
         // of the password and must not be read as the start of the query.
         let secret = "hun?ter2";
-        let rest = "db.example.net:6543/postgres?sslmode=verify-full";
+        let rest = "db.codehub.org:6543/postgres?sslmode=verify-full";
         let url = format!("postgresql://app:{secret}@{rest}");
 
         let redacted = redact_database_url(&url);

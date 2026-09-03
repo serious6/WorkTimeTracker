@@ -2052,7 +2052,7 @@ mod tests {
     /// the rules; this one keeps the store honest about using it.
     #[test]
     fn refuses_to_open_a_remote_database_outside_production() {
-        let error = PostgresStore::connect("postgresql://user@db.example.net/database")
+        let error = PostgresStore::connect("postgresql://user@db.codehub.org/database")
             .err()
             .expect("a remote host must be rejected before connecting");
 

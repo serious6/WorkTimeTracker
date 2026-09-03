@@ -323,7 +323,7 @@ mod tests {
         "host=localhost hostaddr=127.0.0.1 dbname=database",
     ];
     const REMOTE_URLS: [&str; 5] = [
-        "postgresql://user@example.com/database",
+        "postgresql://user@codehub.org/database",
         "postgresql://user@192.168.1.20/database",
         "postgresql://user@10.0.0.5/database",
         "postgresql://user@[2001:db8::1]/database",
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn rejects_a_remote_database_host_in_a_multi_host_configuration() {
-        assert!(development("host=localhost,example.com dbname=database").is_err());
+        assert!(development("host=localhost,codehub.org dbname=database").is_err());
     }
 
     #[test]
@@ -390,14 +390,14 @@ mod tests {
     #[test]
     fn rejects_a_remote_host_whose_ssl_mode_verifies_nothing() {
         for ssl_mode in ["disable", "allow", "prefer", "require", "verify-ca"] {
-            let url = format!("postgresql://user@db.example.net/database?sslmode={ssl_mode}");
+            let url = format!("postgresql://user@db.codehub.org/database?sslmode={ssl_mode}");
 
             let error = production(&url).err().expect("must reject");
 
             assert_eq!(
                 error,
                 ConnectionError::UnverifiedTls {
-                    host: "db.example.net".to_owned(),
+                    host: "db.codehub.org".to_owned(),
                     ssl_mode: ssl_mode.to_owned(),
                 }
             );
@@ -407,7 +407,7 @@ mod tests {
     #[test]
     fn rejects_a_remote_host_without_an_ssl_mode() {
         let error = plan(
-            "postgresql://user@db.example.net/database",
+            "postgresql://user@db.codehub.org/database",
             DeploymentMode::Production,
             Some(CERT),
         )
@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn rejects_a_verified_connection_without_a_pinned_authority() {
         let error = plan(
-            "postgresql://user@db.example.net/database?sslmode=verify-full",
+            "postgresql://user@db.codehub.org/database?sslmode=verify-full",
             DeploymentMode::Production,
             None,
         )
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn keeps_the_remaining_connection_parameters() {
         let plan = production(
-            "postgresql://user@db.example.net:6543/database?sslmode=verify-full&application_name=wtt&sslrootcert=%2Ftmp%2Fca%20file.crt",
+            "postgresql://user@db.codehub.org:6543/database?sslmode=verify-full&application_name=wtt&sslrootcert=%2Ftmp%2Fca%20file.crt",
         )
         .unwrap();
 
@@ -467,7 +467,7 @@ mod tests {
     #[test]
     fn keeps_the_remaining_keyword_value_parameters() {
         let plan = plan(
-            "host=db.example.net sslmode=verify-full dbname=database sslrootcert=/tmp/ca.crt",
+            "host=db.codehub.org sslmode=verify-full dbname=database sslrootcert=/tmp/ca.crt",
             DeploymentMode::Production,
             None,
         )
@@ -494,7 +494,7 @@ mod tests {
     #[test]
     fn fails_closed_when_the_pinned_authority_is_missing() {
         let error = prepare(
-            "postgresql://user@db.example.net/database?sslmode=verify-full",
+            "postgresql://user@db.codehub.org/database?sslmode=verify-full",
             DeploymentMode::Production,
             Some("/nonexistent/work-time-tracker-ca.crt"),
         )
