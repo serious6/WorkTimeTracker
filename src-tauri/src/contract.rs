@@ -597,6 +597,17 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .list_absence_audits(second_user.id, &ListRange::default())
         .unwrap()
         .is_empty());
+    // The audit view reads a window, so the trail honours `recorded_at` bounds.
+    assert!(store
+        .list_absence_audits(
+            first_user.id,
+            &ListRange {
+                from: Some("9999-01-01T00:00:00.000Z".into()),
+                ..ListRange::default()
+            }
+        )
+        .unwrap()
+        .is_empty());
 }
 
 /// The explicit overtime records are per user, keep their audit trail and turn
@@ -697,6 +708,17 @@ fn round_trips_overtime_changes_and_audits_in_postgres() {
         .is_empty());
     assert!(store
         .list_overtime_audits(second_user.id, &ListRange::default())
+        .unwrap()
+        .is_empty());
+    // The audit view reads a window, so the trail honours `recorded_at` bounds.
+    assert!(store
+        .list_overtime_audits(
+            first_user.id,
+            &ListRange {
+                to: Some("2000-01-01T00:00:00.000Z".into()),
+                ..ListRange::default()
+            }
+        )
         .unwrap()
         .is_empty());
 }
