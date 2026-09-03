@@ -38,12 +38,12 @@ Production uses a remote database only with `sslmode=verify-full` and `SUPABASE_
 [`.env.example`](../.env.example) and
 [`architecture/decisions.md`](../architecture/decisions.md#separate-local-development-databases-from-verified-production-databases).
 
-## Npm scripts
+## Npm scripts and common invocations
 
 | Script | Purpose |
 | --- | --- |
 | `npm run dev` | Start the Vite development server |
-| `npm run icons:generate` | Regenerate application icons and checksums |
+| `npm run icons:generate` | Regenerate the tracked application icons and checksums |
 | `npm run licenses:generate` | Regenerate `src/data/licenses.json` |
 | `npm run licenses:check` | Verify `src/data/licenses.json` is current |
 | `npm run db:assert-local` | Fail if the configured database is not local |
@@ -57,6 +57,7 @@ Production uses a remote database only with `sslmode=verify-full` and `SUPABASE_
 | `npm run typecheck` | Run TypeScript project references |
 | `npm run preview` | Serve the built browser bundle with Vite preview |
 | `npm run tauri` | Run the Tauri CLI |
+| `npm run tauri dev` | Start the desktop app |
 | `npm run architecture:check` | Validate the LikeC4 model |
 
 ## Quality checks

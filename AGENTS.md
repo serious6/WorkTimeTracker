@@ -21,16 +21,7 @@ It has a TypeScript/React frontend and a Rust backend that stores native app dat
 
 ## Repository layout
 
-```text
-architecture/       LikeC4 model and architecture decisions
-contract/           Shared domain and entity contracts
-docs/               Development guide, data model, e2e cases, and UI docs
-drizzle/            Postgres migration baseline
-e2e/                Playwright specs and helpers
-scripts/            Repository tooling
-src/                React app: app, components, db, features, lib, pages, test
-src-tauri/src/      Rust backend: auth, commands, config, connection, contract, models, store
-```
+See [`docs/development.md`](docs/development.md#repository-layout).
 
 ## Test conventions
 
@@ -76,6 +67,9 @@ src-tauri/src/      Rust backend: auth, commands, config, connection, contract, 
   messages must redact credentials, hashes, emails, tokens, and file paths.
 - Documentation and comments stay concise and function-oriented: explain why, invariants, error
   cases, or domain rules, not what the code already says.
+- Do not weaken or delete existing tests to make a change pass.
+- Schema changes update `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
+  `docs/data-model.md`, and affected queries/models together.
 - Commit messages and pull request titles follow Conventional Commits with a lower-case,
   imperative summary. Use `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `build`,
   `ci`, `style`, `revert`; mark breaking changes with `!` and a `BREAKING CHANGE:` footer.
