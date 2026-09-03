@@ -85,7 +85,9 @@ flowchart TB
 In the desktop application sessions are not persisted: `Sessions` in `src-tauri/src/auth.rs` keeps
 the signed-in user in memory only, so a restart returns to the login page. The frontend holds the id
 of its session in a module variable of `src/features/storage/tauri-repository.ts` and in no storage
-container of the webview, so a reload returns to the login page as well.
+container of the webview, so a reload returns to the login page as well. Each session also holds the
+label of the webview it was started from, and a command only accepts the session id from that
+window.
 
 ## Level 3 — Entities
 
