@@ -150,6 +150,25 @@ function write(key: string, value: unknown): void {
   globalThis.localStorage?.setItem(key, JSON.stringify(value))
 }
 
+/**
+ * Browser storage knows no transaction, so a change and its trail are written
+ * one key after the other. When one of the writes fails — an exhausted quota,
+ * for example — the keys the operation touched are restored, so a change is
+ * never committed without its record and a record never without its change.
+ */
+function atomically(keys: string[], apply: () => void): void {
+  const restore = keys.map((key) => [key, globalThis.localStorage?.getItem(key) ?? null] as const)
+  try {
+    apply()
+  } catch (error) {
+    for (const [key, value] of restore) {
+      if (value === null) globalThis.localStorage?.removeItem(key)
+      else globalThis.localStorage?.setItem(key, value)
+    }
+    throw error
+  }
+}
+
 function expiresAt(): number {
   return Date.now() + SESSION_TIMEOUT_MINUTES * 60_000
 }
@@ -578,12 +597,14 @@ const fallbackRepository: Repository = {
       createdAt: new Date().toISOString(),
       passwordHash: await hashPassword(password),
     }
-    write(USERS_KEY, [...users, user])
+    atomically([USERS_KEY, securityAuditsKey(user.id)], () => {
+      write(USERS_KEY, [...users, user])
+      // The email identifies the account; the password and its hash are never
+      // part of an audit record.
+      appendSecurityAudit(user.id, email, 'user', user.id, 'user.registered', null, { email })
+    })
     startSession(user.id)
     if (users.length === 0) claimLegacyData(user.id)
-    // The email identifies the account; the password and its hash are never
-    // part of an audit record.
-    appendSecurityAudit(user.id, email, 'user', user.id, 'user.registered', null, { email })
     return toAuthUser(user)
   },
   login: async (credentials: Credentials) => {
@@ -619,16 +640,20 @@ const fallbackRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(scopedKey('projects'), [...projects, project])
-    appendSecurityAudit(
-      requireUserId(),
-      currentActor(),
-      'project',
-      project.id,
-      'project.created',
-      null,
-      projectPayload(project),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('projects'), securityAuditsKey(userId)], () => {
+      write(scopedKey('projects'), [...projects, project])
+      appendSecurityAudit(
+        userId,
+        actor,
+        'project',
+        project.id,
+        'project.created',
+        null,
+        projectPayload(project),
+      )
+    })
     return project
   },
   updateProject: async (id, input) => {
@@ -637,44 +662,34 @@ const fallbackRepository: Repository = {
     const current = projects.find((project) => project.id === id)
     if (!current) throw new AppError('notFound', 'Project not found')
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
-    write(
-      scopedKey('projects'),
-      projects.map((project) => (project.id === id ? updated : project)),
-    )
-    appendSecurityAudit(
-      requireUserId(),
-      currentActor(),
-      'project',
-      id,
-      'project.updated',
-      projectPayload(current),
-      projectPayload(updated),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('projects'), securityAuditsKey(userId)], () => {
+      write(
+        scopedKey('projects'),
+        projects.map((project) => (project.id === id ? updated : project)),
+      )
+      appendSecurityAudit(
+        userId,
+        actor,
+        'project',
+        id,
+        'project.updated',
+        projectPayload(current),
+        projectPayload(updated),
+      )
+    })
     return updated
   },
   deleteProject: async (id) => {
     const projects = readProjects()
     const deleted = projects.find((project) => project.id === id)
-    write(
-      scopedKey('projects'),
-      projects.filter((project) => project.id !== id),
-    )
-    // The trail keeps the name, so a deleted project stays readable.
-    if (deleted) {
-      appendSecurityAudit(
-        requireUserId(),
-        currentActor(),
-        'project',
-        id,
-        'project.deleted',
-        projectPayload(deleted),
-        null,
-      )
-    }
-    write(
-      scopedKey('project-budgets'),
-      readBudgets().filter((budget) => budget.projectId !== id),
-    )
+    const budgets = readBudgets()
+    // Deleting a project deletes the budget attached to it, which is a
+    // configuration deletion of its own and is recorded as one.
+    const attachedBudgets = budgets.filter((budget) => budget.projectId === id)
+    const userId = requireUserId()
+    const actor = currentActor()
     const { entries, audits } = readEntryState()
     const updatedAt = new Date().toISOString()
     const updatedEntries = entries.map((entry) =>
@@ -687,7 +702,48 @@ const fallbackRepository: Repository = {
           : all,
       audits,
     )
-    writeEntryState(updatedEntries, updatedAudits)
+    atomically(
+      [
+        scopedKey('projects'),
+        scopedKey('project-budgets'),
+        entryStateKey(),
+        securityAuditsKey(userId),
+      ],
+      () => {
+        write(
+          scopedKey('projects'),
+          projects.filter((project) => project.id !== id),
+        )
+        // The trail keeps the name, so a deleted project stays readable.
+        if (deleted) {
+          appendSecurityAudit(
+            userId,
+            actor,
+            'project',
+            id,
+            'project.deleted',
+            projectPayload(deleted),
+            null,
+          )
+        }
+        write(
+          scopedKey('project-budgets'),
+          budgets.filter((budget) => budget.projectId !== id),
+        )
+        for (const budget of attachedBudgets) {
+          appendSecurityAudit(
+            userId,
+            actor,
+            'budget',
+            budget.id,
+            'budget.deleted',
+            budgetPayload(budget),
+            null,
+          )
+        }
+        writeEntryState(updatedEntries, updatedAudits)
+      },
+    )
   },
   listTimeEntries: async (range) => {
     const window = validateListRange(range)
@@ -833,16 +889,20 @@ const fallbackRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(scopedKey('project-budgets'), [...budgets, budget])
-    appendSecurityAudit(
-      requireUserId(),
-      currentActor(),
-      'budget',
-      budget.id,
-      'budget.created',
-      null,
-      budgetPayload(budget),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
+      write(scopedKey('project-budgets'), [...budgets, budget])
+      appendSecurityAudit(
+        userId,
+        actor,
+        'budget',
+        budget.id,
+        'budget.created',
+        null,
+        budgetPayload(budget),
+      )
+    })
     return budget
   },
   updateProjectBudget: async (id, input) => {
@@ -854,39 +914,47 @@ const fallbackRepository: Repository = {
       throw new AppError('conflict', DUPLICATE_BUDGET_MESSAGE)
     }
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
-    write(
-      scopedKey('project-budgets'),
-      budgets.map((budget) => (budget.id === id ? updated : budget)),
-    )
-    appendSecurityAudit(
-      requireUserId(),
-      currentActor(),
-      'budget',
-      id,
-      'budget.updated',
-      budgetPayload(current),
-      budgetPayload(updated),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
+      write(
+        scopedKey('project-budgets'),
+        budgets.map((budget) => (budget.id === id ? updated : budget)),
+      )
+      appendSecurityAudit(
+        userId,
+        actor,
+        'budget',
+        id,
+        'budget.updated',
+        budgetPayload(current),
+        budgetPayload(updated),
+      )
+    })
     return updated
   },
   deleteProjectBudget: async (id) => {
     const budgets = readBudgets()
     const deleted = budgets.find((budget) => budget.id === id)
-    write(
-      scopedKey('project-budgets'),
-      budgets.filter((budget) => budget.id !== id),
-    )
-    if (deleted) {
-      appendSecurityAudit(
-        requireUserId(),
-        currentActor(),
-        'budget',
-        id,
-        'budget.deleted',
-        budgetPayload(deleted),
-        null,
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
+      write(
+        scopedKey('project-budgets'),
+        budgets.filter((budget) => budget.id !== id),
       )
-    }
+      if (deleted) {
+        appendSecurityAudit(
+          userId,
+          actor,
+          'budget',
+          id,
+          'budget.deleted',
+          budgetPayload(deleted),
+          null,
+        )
+      }
+    })
   },
   listAbsences: async (range) => {
     const window = validateListRange(range)
@@ -1087,17 +1155,21 @@ const fallbackRepository: Repository = {
     const current = read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
       workSettingsSchema.parse(value),
     )
-    write(scopedKey('work-settings'), parsed)
-    // Saving without changing a value records nothing.
-    appendSecurityAudit(
-      requireUserId(),
-      currentActor(),
-      'workSettings',
-      null,
-      'work_settings.updated',
-      settingsPayload(current),
-      settingsPayload(parsed),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('work-settings'), securityAuditsKey(userId)], () => {
+      write(scopedKey('work-settings'), parsed)
+      // Saving without changing a value records nothing.
+      appendSecurityAudit(
+        userId,
+        actor,
+        'workSettings',
+        null,
+        'work_settings.updated',
+        settingsPayload(current),
+        settingsPayload(parsed),
+      )
+    })
     return parsed
   },
   getAppVersion: async () => null,

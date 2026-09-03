@@ -718,6 +718,10 @@ fn record_audit(
     Ok(())
 }
 
+/// Reads the row an update or a delete is about to change and locks it until
+/// the transaction ends. Without the lock two concurrent updates could read the
+/// same original value, and the trail would record a transition that never
+/// happened.
 fn find_budget(
     client: &mut impl postgres::GenericClient,
     id: i64,
@@ -725,13 +729,17 @@ fn find_budget(
 ) -> Result<Option<ProjectBudget>, StoreError> {
     Ok(client
         .query_opt(
-            &format!("SELECT {BUDGET_COLUMNS} FROM project_budgets WHERE id = $1 AND user_id = $2"),
+            &format!(
+                "SELECT {BUDGET_COLUMNS} FROM project_budgets
+                 WHERE id = $1 AND user_id = $2 FOR UPDATE"
+            ),
             &[&id, &user_id],
         )?
         .as_ref()
         .map(budget_from_row))
 }
 
+/// Locks the project for the rest of the transaction, like [`find_budget`].
 fn find_project(
     client: &mut impl postgres::GenericClient,
     id: i64,
@@ -739,11 +747,34 @@ fn find_project(
 ) -> Result<Option<Project>, StoreError> {
     Ok(client
         .query_opt(
-            &format!("SELECT {PROJECT_COLUMNS} FROM projects WHERE id = $1 AND user_id = $2"),
+            &format!(
+                "SELECT {PROJECT_COLUMNS} FROM projects
+                 WHERE id = $1 AND user_id = $2 FOR UPDATE"
+            ),
             &[&id, &user_id],
         )?
         .as_ref()
         .map(project_from_row))
+}
+
+/// The budgets a project delete takes with it, locked so the cascade cannot
+/// remove a row this transaction has not recorded.
+fn budgets_of_project(
+    client: &mut impl postgres::GenericClient,
+    project_id: i64,
+    user_id: i64,
+) -> Result<Vec<ProjectBudget>, StoreError> {
+    Ok(client
+        .query(
+            &format!(
+                "SELECT {BUDGET_COLUMNS} FROM project_budgets
+                 WHERE project_id = $1 AND user_id = $2 FOR UPDATE"
+            ),
+            &[&project_id, &user_id],
+        )?
+        .iter()
+        .map(budget_from_row)
+        .collect())
 }
 
 fn read_entry(
@@ -1001,6 +1032,9 @@ impl Store for PostgresStore {
             .map(entry_from_row)
             .collect();
         let deleted = find_project(&mut transaction, id, user_id)?;
+        // The delete cascades to the budget of the project, so it is read
+        // before the cascade and recorded as the deletion it is.
+        let budgets = budgets_of_project(&mut transaction, id, user_id)?;
         transaction.execute(
             "DELETE FROM projects WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
@@ -1019,6 +1053,17 @@ impl Store for PostgresStore {
                 Some(project_payload(&deleted)),
                 None,
             )?;
+            for budget in &budgets {
+                record_config_audit(
+                    &mut transaction,
+                    user_id,
+                    BUDGET_AUDIT_ENTITY,
+                    Some(budget.id),
+                    "budget.deleted",
+                    Some(budget_payload(budget)),
+                    None,
+                )?;
+            }
         }
         for current in affected {
             let updated = read_entry(&mut transaction, current.id, user_id)?;
@@ -2519,6 +2564,9 @@ mod tests {
         assert_eq!(
             actions,
             vec![
+                // Deleting the project deletes its budget, which is recorded
+                // as the configuration deletion it is.
+                "budget.deleted",
                 "project.deleted",
                 "budget.updated",
                 "budget.created",
@@ -2527,6 +2575,12 @@ mod tests {
                 "user.registered",
             ],
             "{audits:?}"
+        );
+        assert_eq!(audits[0].entity_id, Some(budget.id));
+        assert!(
+            audits[0].old_value.as_deref().unwrap().contains("900"),
+            "{:?}",
+            audits[0]
         );
 
         let update = audits
@@ -2537,7 +2591,7 @@ mod tests {
         assert_eq!(update.old_value.as_deref(), Some(r#"{"name":"Trail"}"#));
         assert_eq!(update.new_value.as_deref(), Some(r#"{"name":"Renamed"}"#));
 
-        let deleted = &audits[0];
+        let deleted = &audits[1];
         assert!(
             deleted.old_value.as_deref().unwrap().contains("Renamed"),
             "{deleted:?}"

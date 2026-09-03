@@ -402,7 +402,7 @@ Recorded, because the action changes state or is security relevant:
 | `user.registered` | `register_user` |
 | `auth.login_failed`, `auth.locked_out` | `login` |
 | `project.created`, `project.updated`, `project.deleted` | the project commands |
-| `budget.created`, `budget.updated`, `budget.deleted` | the project budget commands |
+| `budget.created`, `budget.updated`, `budget.deleted` | the project budget commands, and `delete_project` for the budget the deleted project takes with it |
 | `work_settings.updated` | `save_work_settings` |
 
 Deliberately **not** recorded, so the trail stays evidence instead of a stream of routine events:

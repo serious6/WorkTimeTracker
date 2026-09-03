@@ -11,6 +11,7 @@ import {
   type OvertimeOrigin,
 } from '@/features/overtime/overtime-schema'
 import type { ListRange } from '@/features/storage/list-range'
+import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 import {
   addDays,
   formatDay,
@@ -290,10 +291,42 @@ function securityChanges(
     .filter((change) => change.from !== change.to)
 }
 
+type SecurityContext = {
+  projectNames: Map<number, string>
+  budgetProjects: Map<number, number>
+}
+
+/**
+ * The display context of the records read together. An update stores the
+ * changed fields only, so a record that changed the color of a project names
+ * no project; the created and the deleted record of the same row do, and they
+ * keep the row readable after it is gone.
+ */
+function securityContext(audits: SecurityAudit[]): SecurityContext {
+  const projectNames = new Map<number, string>()
+  const budgetProjects = new Map<number, number>()
+  for (const audit of audits) {
+    const entityId = audit.entityId
+    if (entityId === null) continue
+    for (const value of [audit.oldValue, audit.newValue]) {
+      const payload = parseValue<Record<string, unknown>>(value)
+      if (!payload) continue
+      if (audit.entity === 'project' && typeof payload.name === 'string') {
+        projectNames.set(entityId, payload.name)
+      }
+      if (audit.entity === 'budget' && typeof payload.projectId === 'number') {
+        budgetProjects.set(entityId, payload.projectId)
+      }
+    }
+  }
+  return { projectNames, budgetProjects }
+}
+
 function securitySummary(
   audit: SecurityAudit,
   payload: Record<string, unknown> | null,
   projectName: (projectId: number | null) => string,
+  context: SecurityContext,
 ): string {
   switch (audit.entity) {
     case 'user':
@@ -303,12 +336,20 @@ function securitySummary(
         ? 'Account locked after too many failed sign ins'
         : 'Sign in rejected'
     case 'project': {
-      const name = typeof payload?.name === 'string' ? payload.name : projectName(audit.entityId)
-      return `Project ${name}`
+      const recorded =
+        (typeof payload?.name === 'string' ? payload.name : undefined) ??
+        (audit.entityId === null ? undefined : context.projectNames.get(audit.entityId))
+      if (recorded) return `Project ${recorded}`
+      const current = projectName(audit.entityId)
+      // A record that changed no name and names a row that is gone stays a
+      // record of a project instead of reading as a deleted one.
+      return current === DELETED_PROJECT_NAME ? 'Project' : `Project ${current}`
     }
     case 'budget': {
-      const projectId = typeof payload?.projectId === 'number' ? payload.projectId : null
-      return `Budget for ${projectName(projectId)}`
+      const projectId =
+        (typeof payload?.projectId === 'number' ? payload.projectId : undefined) ??
+        (audit.entityId === null ? undefined : context.budgetProjects.get(audit.entityId))
+      return projectId === undefined ? 'Budget' : `Budget for ${projectName(projectId)}`
     }
     default:
       return 'Work settings'
@@ -323,6 +364,7 @@ export function securityAuditRecords(
   audits: SecurityAudit[],
   projectName: (projectId: number | null) => string,
 ): AuditTrailRecord[] {
+  const context = securityContext(audits)
   return audits.map((audit) => {
     const oldValue = parseValue<Record<string, unknown>>(audit.oldValue)
     const newValue = parseValue<Record<string, unknown>>(audit.newValue)
@@ -332,7 +374,7 @@ export function securityAuditRecords(
       action: audit.action,
       actor: audit.actor,
       recordedAt: audit.recordedAt,
-      summary: securitySummary(audit, newValue ?? oldValue, projectName),
+      summary: securitySummary(audit, newValue ?? oldValue, projectName, context),
       changes: securityChanges(oldValue, newValue, projectName),
     }
   })

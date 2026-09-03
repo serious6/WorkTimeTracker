@@ -915,6 +915,62 @@ describe('local repository identity and configuration trail', () => {
     expect(JSON.parse(audits[2].newValue ?? '{}')).toEqual({ budgetMinutes: 900 })
   })
 
+  it('records the deletion of the budget a deleted project takes with it', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    const budget = await createLocalRepository().createProjectBudget({
+      projectId: project.id,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+    await createLocalRepository().deleteProject(project.id)
+
+    const audits = await records()
+
+    expect(audits.map((audit) => audit.action)).toEqual([
+      'budget.deleted',
+      'project.deleted',
+      'budget.created',
+      'project.created',
+      'user.registered',
+    ])
+    expect(audits[0]).toMatchObject({ entity: 'budget', entityId: budget.id })
+    expect(JSON.parse(audits[0].oldValue ?? '{}')).toMatchObject({ budgetMinutes: 600 })
+  })
+
+  it('keeps a change and its record together when the trail cannot be written', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    const real = globalThis.localStorage
+    // A full storage rejects the write of the trail; the change must not stay
+    // behind without its record.
+    const failing: Storage = {
+      get length() {
+        return real.length
+      },
+      key: (index) => real.key(index),
+      getItem: (key) => real.getItem(key),
+      setItem: (key, value) => {
+        if (key.endsWith('security-audits')) throw new Error('quota exceeded')
+        real.setItem(key, value)
+      },
+      removeItem: (key) => real.removeItem(key),
+      clear: () => real.clear(),
+    }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: failing })
+
+    await expect(
+      createLocalRepository().updateProject(project.id, projectInput('Website Relaunch')),
+    ).rejects.toThrow('quota exceeded')
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: real })
+
+    expect((await createLocalRepository().listProjects())[0].name).toBe('Website Redesign')
+    expect((await records()).map((audit) => audit.action)).toEqual([
+      'project.created',
+      'user.registered',
+    ])
+  })
+
   it('records nothing when a save changes no value', async () => {
     await register('first@example.com')
     const project = await createProject('Website Redesign')

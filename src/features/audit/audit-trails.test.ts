@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 import { addDays, startOfDay } from '@/lib/date'
 import {
   absenceAuditRecords,
@@ -215,6 +216,80 @@ describe('securityAuditRecords', () => {
 
     expect(record.summary).toBe('Budget for Website Redesign')
     expect(record.changes).toEqual([{ field: 'Budget', from: '10h 00m', to: '15h 00m' }])
+  })
+
+  it('keeps a record of a deleted project readable when its diff names none', () => {
+    const [deleted, colored] = securityAuditRecords(
+      [
+        audit({
+          id: 2,
+          entityId: 9,
+          action: 'project.deleted',
+          oldValue: JSON.stringify({ name: 'Intranet' }),
+        }),
+        audit({
+          id: 1,
+          entityId: 9,
+          oldValue: JSON.stringify({ color: '#22c55e' }),
+          newValue: JSON.stringify({ color: '#ef4444' }),
+        }),
+      ],
+      projectName,
+    )
+
+    // The colour change names no project, so its name is read from the record
+    // of the deletion instead of reading as "Deleted project".
+    expect(deleted.summary).toBe('Project Intranet')
+    expect(colored.summary).toBe('Project Intranet')
+  })
+
+  it('names no project when the trail carries none', () => {
+    const [project, budget] = securityAuditRecords(
+      [
+        audit({
+          entityId: 9,
+          oldValue: JSON.stringify({ color: '#22c55e' }),
+          newValue: JSON.stringify({ color: '#ef4444' }),
+        }),
+        audit({
+          id: 2,
+          entity: 'budget',
+          action: 'budget.updated',
+          entityId: 4,
+          oldValue: JSON.stringify({ budgetMinutes: 600 }),
+          newValue: JSON.stringify({ budgetMinutes: 900 }),
+        }),
+      ],
+      () => DELETED_PROJECT_NAME,
+    )
+
+    expect(project.summary).toBe('Project')
+    expect(budget.summary).toBe('Budget')
+  })
+
+  it('names the project of a budget from the record that carries it', () => {
+    const [updated] = securityAuditRecords(
+      [
+        audit({
+          id: 2,
+          entity: 'budget',
+          action: 'budget.updated',
+          entityId: 4,
+          oldValue: JSON.stringify({ budgetMinutes: 600 }),
+          newValue: JSON.stringify({ budgetMinutes: 900 }),
+        }),
+        audit({
+          id: 1,
+          entity: 'budget',
+          action: 'budget.created',
+          entityId: 4,
+          newValue: JSON.stringify({ projectId: 7, budgetMinutes: 600 }),
+        }),
+      ],
+      projectName,
+    )
+
+    expect(updated.summary).toBe('Budget for Website Redesign')
   })
 
   it('keeps a deleted project readable from its recorded name', () => {
