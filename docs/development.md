@@ -42,7 +42,7 @@ loopback address, or the compose host `db`. Production uses a remote database on
 | `npm run icons:generate` | Regenerate application icons and checksums |
 | `npm run licenses:generate` | Regenerate `src/data/licenses.json` |
 | `npm run licenses:check` | Verify `src/data/licenses.json` is current |
-| `npm run db:assert-local` | Refuse a non-local database configuration before tests or migrations |
+| `npm run db:assert-local` | Fail if the configured database is not local |
 | `npm run prebuild` | Verify licenses before the build lifecycle runs |
 | `npm run build` | Typecheck and build the browser bundle |
 | `npm run lint` | Run oxlint |
@@ -57,8 +57,8 @@ loopback address, or the compose host `db`. Production uses a remote database on
 
 ## Quality checks
 
-Run the checks that match the files you changed; before opening a pull request, run the full set when
-possible:
+Run the checks that match the files you changed while iterating. Before opening a pull request, the
+full set is required:
 
 ```sh
 npm run lint
