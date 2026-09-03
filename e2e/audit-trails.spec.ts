@@ -132,7 +132,7 @@ test('AT3: type filters support single, combined and all-type selections', async
 test('AT4: period filters evaluate aged records without waiting for real time', async ({
   page,
 }) => {
-  await page.clock.install({ time: new Date(`${AUDIT_DAY}T09:00:00`) })
+  await page.clock.install({ time: new Date() })
   await createProject(page, 'Aged Audit Project')
   await addEntry(page, 'Aged Audit Project', '09:00', '10:00')
 
