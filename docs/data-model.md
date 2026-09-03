@@ -6,8 +6,7 @@ application and the browser storage fallback used only for UI development and en
 There is no remote application server and no external integration; the bundled compose database runs
 locally through the bundled compose database.
 
-Sources: `drizzle/0000_init.sql`, `drizzle/0001_absences.sql`, `drizzle/0002_login_attempts.sql`,
-`drizzle/0003_overtime.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
+Sources: `drizzle/0000_init.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_store.rs`,
 `src-tauri/src/models.rs`, `src/features/storage/local-repository.ts`, and the Zod schemas under
 `src/features/*/*-schema.ts`.
 
@@ -69,11 +68,11 @@ flowchart TB
 | --- | --- | --- |
 | `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `absences` | One row per absent calendar day, scoped by user | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
-| `absence_audits` | Append-only trail of every change to an absence | `drizzle/0001_absences.sql`, `src-tauri/src/postgres_store.rs` |
-| `overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0003_overtime.sql`, `src-tauri/src/postgres_store.rs` |
-| `overtime_audits` | Append-only trail of every change to an overtime record | `drizzle/0003_overtime.sql`, `src-tauri/src/postgres_store.rs` |
-| `login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0002_login_attempts.sql`, `src-tauri/src/postgres_store.rs` |
+| `absences` | One row per absent calendar day, scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `absence_audits` | Append-only trail of every change to an absence | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `overtime_audits` | Append-only trail of every change to an overtime record | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
@@ -274,7 +273,7 @@ two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 
 ### absences
 
-`drizzle/0001_absences.sql`, `src/features/absences/absence-schema.ts`
+`drizzle/0000_init.sql`, `src/features/absences/absence-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
@@ -286,7 +285,7 @@ two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 
 ### absence_audits
 
-`drizzle/0001_absences.sql`, `src/features/absences/absence-schema.ts`
+`drizzle/0000_init.sql`, `src/features/absences/absence-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
@@ -303,7 +302,7 @@ in a `recorded_at` window (`ListRange`), newest first and bounded by the list li
 
 ### overtime_entries
 
-`drizzle/0003_overtime.sql`, `src/features/overtime/overtime-schema.ts`
+`drizzle/0000_init.sql`, `src/features/overtime/overtime-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
@@ -326,7 +325,7 @@ first entry is tracked.
 
 ### overtime_audits
 
-`drizzle/0003_overtime.sql`, `src/features/overtime/overtime-schema.ts`
+`drizzle/0000_init.sql`, `src/features/overtime/overtime-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
@@ -372,7 +371,7 @@ A user without a row reads `DEFAULT_WORK_SETTINGS`, the row is written on the fi
 
 ### security_audits
 
-`drizzle/0004_security_audits.sql`, `src/features/audit/security-audit-schema.ts`
+`drizzle/0000_init.sql`, `src/features/audit/security-audit-schema.ts`
 
 The shared trail of the actions that change an identity or the configuration and carry no trail of
 their own.
@@ -475,16 +474,11 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 
 ## Migration
 
-Because WorkTimeTracker has not been released yet, the native database starts from the single
-baseline migration `drizzle/0000_init.sql`, followed by `drizzle/0001_absences.sql`,
-`drizzle/0002_login_attempts.sql`, `drizzle/0003_overtime.sql` and
-`drizzle/0004_security_audits.sql`. `PostgresStore::connect` applies every migration listed
-in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, in a single transaction that is
+Because WorkTimeTracker has not been released yet, the native database starts from the complete
+baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies it in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
-an existing database is upgraded exactly once instead of re-running the baseline and concurrent
-starts do not collide. Later schema changes therefore get a new numbered file in `drizzle/`
-rather than an edit of the baseline. `drizzle.config.ts` points Drizzle at the same migration
-directory. Existing pre-release local database files are not migrated by this version.
+a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
+directory.
 
 ## Derived data (not persisted)
 

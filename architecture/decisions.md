@@ -164,3 +164,11 @@ that crosses the IPC boundary, and both sides are checked against it:
 A field added or renamed on one side only fails one of the two suites. `drizzle/*.sql` stays the
 migration history of the database and `src/db/schema.ts` its typed description; neither is consulted
 at runtime, and neither may add a field to an entity without the contract naming it.
+
+## 11. Consolidate the unreleased database schema into one baseline
+
+WorkTimeTracker has not shipped a release, so no deployed database needs an incremental upgrade
+path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, and
+`PostgresStore` registers that single migration.
+
+This makes a fresh installation reproducible without retaining pre-release migration history.

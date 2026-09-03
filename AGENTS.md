@@ -32,7 +32,7 @@ assume a fixed timezone or ignore DST.
 architecture/       LikeC4 model and decision records (read decisions.md before changing behaviour)
 contract/           domain-rules.json, shared by the Rust backend and the browser fallback
 docs/               data model, e2e test cases, UI principles and audit, security advisories
-drizzle/            numbered Postgres migrations
+drizzle/            Postgres migration baseline
 e2e/                Playwright specs (*.spec.ts) and the shared helpers.ts
 scripts/            repository tooling, for example the icon and license generators
 src/                React application
@@ -173,8 +173,8 @@ The summary is lower case, imperative and without a trailing period.
 ## Persistence and IPC
 
 The native backend talks to Postgres only (`src-tauri/src/postgres_store.rs`, connection from
-`DATABASE_URL`, local hosts only). Migrations are the numbered files in `drizzle/`, applied once in
-a transaction by `MIGRATIONS` in `postgres_store.rs` and recorded in `schema_migrations`; the
+`DATABASE_URL`, local hosts only). The complete pre-release migration baseline in `drizzle/` is
+applied once in a transaction by `MIGRATIONS` in `postgres_store.rs` and recorded in `schema_migrations`; the
 Drizzle schema in `src/db/schema.ts` and [`docs/data-model.md`](docs/data-model.md) describe the
 same tables. In the browser the same data lives in `localStorage`, scoped per user.
 
@@ -204,8 +204,8 @@ installers for Windows and macOS and publishes them as the GitHub release `v<ver
 - [ ] `npm run lint`, `npm run typecheck`, `npm run test:coverage`, `npm run test:e2e`,
       `npm run architecture:check`, `npm run licenses:check`, `npm run build`,
       `cargo fmt --check` and `cargo test` pass.
-- [ ] A schema change comes with a new numbered file in `drizzle/`, is appended to `MIGRATIONS` in
-      `src-tauri/src/postgres_store.rs`, and updates `src/db/schema.ts` and `docs/data-model.md`.
+- [ ] A schema change updates the migration in `drizzle/`, `MIGRATIONS` in
+      `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and `docs/data-model.md`.
 - [ ] Documentation that the change invalidates is updated (README, `docs/`, `architecture/`).
 - [ ] Every commit and the pull request title follow Conventional Commits.
 
@@ -224,8 +224,7 @@ Don't:
   `node_modules/`). Generated files that the repository tracks on purpose — `src/data/licenses.json`
   and the icon set with `src-tauri/icons/icons.lock.json` — are regenerated with their command and
   committed with the change.
-- Change the database schema without a migration, and never edit an applied migration —
-  `drizzle/0000_init.sql` is the immutable baseline.
+- Change the database schema without updating the migration.
 - Log or display credentials, hashes, e-mail addresses or file system paths; the redaction rules in
   `src-tauri/src/logging.rs` and `src/lib/redact.ts` stay mirrored.
 - Weaken or delete an existing test to make a change pass, or reformat files you did not otherwise

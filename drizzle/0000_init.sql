@@ -90,3 +90,120 @@ CREATE TABLE IF NOT EXISTS time_entry_audits (
 
 CREATE INDEX IF NOT EXISTS time_entry_audits_user_id ON time_entry_audits (user_id, id);
 
+-- Absences (UC-4): days that are excused from the working-time target.
+--
+-- One record per calendar day, so a range is stored as several rows and the
+-- unique constraint guarantees that a day can never carry two absences.
+CREATE TABLE IF NOT EXISTS absences (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  absence_type TEXT NOT NULL CHECK (absence_type IN ('vacation', 'sick', 'unpaid', 'halfDay')),
+  absence_date TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CONSTRAINT absences_day_unique UNIQUE (user_id, absence_date)
+);
+
+CREATE INDEX IF NOT EXISTS absences_user_id ON absences (user_id, absence_date);
+
+-- Append-only trail of every change to an absence, kept after the absence is
+-- deleted so the record stays defensible.
+CREATE TABLE IF NOT EXISTS absence_audits (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  absence_id BIGINT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS absence_audits_user_id ON absence_audits (user_id, id);
+
+-- Failed logins per email, persisted so that restarting the application does
+-- not clear a lockout. Expired rows are deleted on the next login attempt, so
+-- the table cannot grow without bound.
+CREATE TABLE IF NOT EXISTS login_attempts (
+  email TEXT PRIMARY KEY,
+  failures BIGINT NOT NULL,
+  last_failure TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS login_attempts_last_failure ON login_attempts (last_failure);
+
+-- Explicit overtime records (UC-5): the balance carried over from before the
+-- application was used, absolute corrections and deltas.
+--
+-- The overtime derived from time entries, the working time target and the
+-- absences is never stored here; only the records that are set explicitly are
+-- persisted, so the derived part cannot go stale. `origin` keeps the trace of
+-- how a row came to be: a row written by the application from time entries is
+-- `automatic`, a row entered or edited by the user is `manual` and is never
+-- overwritten by the automatic calculation again.
+CREATE TABLE IF NOT EXISTS overtime_entries (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  effective_date TEXT NOT NULL,
+  minutes BIGINT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('opening', 'balance', 'adjustment')),
+  origin TEXT NOT NULL DEFAULT 'manual' CHECK (origin IN ('automatic', 'manual')),
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CONSTRAINT overtime_entries_day_unique UNIQUE (user_id, effective_date)
+);
+
+CREATE INDEX IF NOT EXISTS overtime_entries_user_id ON overtime_entries (user_id, effective_date);
+
+-- Only one opening balance per user. The database enforces it, so two
+-- concurrent writers cannot both pass an application side check and commit a
+-- second opening balance.
+CREATE UNIQUE INDEX IF NOT EXISTS overtime_entries_opening_unique
+  ON overtime_entries (user_id)
+  WHERE kind = 'opening';
+
+-- Append-only trail of every change to an overtime record, kept after the
+-- record is deleted so the balance stays defensible.
+CREATE TABLE IF NOT EXISTS overtime_audits (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  overtime_entry_id BIGINT NOT NULL,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS overtime_audits_user_id ON overtime_audits (user_id, id);
+
+-- Append-only trail of the identity and configuration changes that carry no
+-- trail of their own: account creation, failed logins and lockouts, and the
+-- create, update and delete of projects, budgets and the work settings.
+--
+-- `user_id` is nullable because a failed login for an unknown email belongs to
+-- no account; such a row is evidence only and is never listed by the audit
+-- view, which is scoped to the signed in user. `entity_id` is nullable for the
+-- records that name no row, such as the work settings or an auth event.
+-- Credentials are never written here: `old_value` and `new_value` carry the
+-- changed fields of the audited record and never a password or a hash.
+CREATE TABLE IF NOT EXISTS security_audits (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id BIGINT REFERENCES users (id) ON DELETE CASCADE,
+  entity TEXT NOT NULL,
+  entity_id BIGINT,
+  action TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS security_audits_user_recorded_at
+  ON security_audits (user_id, recorded_at);
+
+-- The retention job deletes the auth events of the `auth` entity only, so the
+-- configuration records stay for as long as the domain trails do.
+CREATE INDEX IF NOT EXISTS security_audits_entity_recorded_at
+  ON security_audits (entity, recorded_at);
