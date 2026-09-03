@@ -172,3 +172,28 @@ path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, a
 `PostgresStore` registers that single migration.
 
 This makes a fresh installation reproducible without retaining pre-release migration history.
+
+## 12. The webview executes no inline code
+
+`app.security.csp` in `src-tauri/tauri.conf.json` names every directive it relies on instead of
+falling back to `default-src`, and it grants neither `'unsafe-inline'` nor `'unsafe-eval'`:
+scripts and stylesheets come from the bundle (`'self'`), plugins are refused (`object-src 'none'`),
+the document base cannot be rewritten (`base-uri 'self'`), no form may leave the application
+(`form-action 'none'`) and nothing may embed it (`frame-ancestors 'none'`). `connect-src` stays
+limited to the IPC channel, so an injected script has no channel to exfiltrate a session id.
+`dangerousDisableAssetCspModification` stays unset, so Tauri adds the nonces of its own injected
+script on top.
+
+The application needs no inline style: React writes the dynamic project colors and progress widths
+through the CSSOM (`element.style`), which the policy does not gate, and Vite links the compiled
+stylesheet as a file. Zod is the one dependency that wants `eval`: it compiles an object schema with
+`new Function` when the environment allows it and probes for that capability with a `new Function`
+that it catches, which the policy still reports as a violation. `src/lib/zod.ts` therefore configures
+`jitless` once and re-exports `z`; every schema imports Zod from there, so the configuration is
+applied before the first schema is constructed, and `no-restricted-imports` in `.oxlintrc.json`
+keeps a direct `zod` import from slipping back in.
+
+`e2e/security-csp.spec.ts` reads the policy from the Tauri configuration, serves the production
+bundle with it and fails on any `securitypolicyviolation`, so a change that needs inline code is
+noticed in CI instead of in the packaged application. The policy is not applied by the dev server:
+`tauri dev` loads `devUrl` directly, where Vite injects its stylesheets and its HMR client inline.
