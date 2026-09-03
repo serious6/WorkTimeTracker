@@ -1,5 +1,7 @@
 import { render } from '@testing-library/react'
 import { expect, test } from 'vitest'
+import appIcon from '../../src-tauri/icons/app-icon.svg?raw'
+import favicon from '../../public/favicon.svg?raw'
 import { AppLogo } from './logo'
 
 test('renders a decorative mark that inherits the text colour', () => {
@@ -19,4 +21,15 @@ test('accepts sizing classes from the caller', () => {
 
   expect(svg).toHaveClass('size-7', 'text-primary')
   expect(svg).not.toHaveClass('size-6')
+})
+
+test('the shipped icon artwork uses the same mark as the component', () => {
+  const { container } = render(<AppLogo />)
+  const paths = [...container.querySelectorAll('path')].map((path) => path.getAttribute('d'))
+
+  for (const artwork of [favicon, appIcon]) {
+    for (const d of paths) {
+      expect(artwork).toContain(d)
+    }
+  }
 })
