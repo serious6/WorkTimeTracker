@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { formatDay } from '@/lib/date'
 import { OvertimeOverviewCard } from './overtime-overview-card'
 
 const selectedDate = new Date(2026, 7, 27)
@@ -37,6 +38,33 @@ describe('OvertimeOverviewCard', () => {
     )
     const noOvertimes = screen.getAllByText('No overtime')
     expect(noOvertimes.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('lays the "no overtime" rows out without overlapping elements', () => {
+    render(
+      <OvertimeOverviewCard
+        dailyTargetMinutes={480}
+        onOpenDay={vi.fn()}
+        onOpenWeek={vi.fn()}
+        selectedDate={selectedDate}
+        trackedTodayMinutes={0}
+        trackedWeekMinutes={0}
+        weekStart={weekStart}
+        weeklyTargetMinutes={2400}
+      />,
+    )
+    const row = screen.getByRole('button', { name: /One Day/i })
+    // The shared Button defaults (fixed height, centred row) must be overridden,
+    // otherwise the multi-line content is drawn on top of itself.
+    expect(row.className).not.toMatch(/\bh-10\b/)
+    expect(row.className).toMatch(/\bh-auto\b/)
+    expect(row.className).toMatch(/\bflex-col\b/)
+    expect(row.className).not.toMatch(/\bitems-center\b/)
+    // Reading order for assistive technology: label, value, period, target.
+    const text = row.textContent ?? ''
+    expect(text.indexOf('One Day')).toBeLessThan(text.indexOf('No overtime'))
+    expect(text.indexOf('No overtime')).toBeLessThan(text.indexOf(formatDay(selectedDate)))
+    expect(text.indexOf(formatDay(selectedDate))).toBeLessThan(text.indexOf('vs 8h 00m target'))
   })
 
   it('shows "No target scheduled" when target is 0', () => {

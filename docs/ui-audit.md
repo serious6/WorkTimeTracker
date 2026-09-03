@@ -93,6 +93,10 @@ login and registration forms, and the Settings work-schedule fields.
   state while React Query mutations complete, followed by toast feedback.
 - Proximity: correct-start, stop, pause/resume form one group; deleting an entry lives in the row
   `Menu`, not next to them.
+- Layout: the "Overtime Overview" rows reused the shared `Button` defaults (fixed 40 px height,
+  centred row), so label, value, period and target were drawn on top of each other — **fixed**, the
+  row is a `flex-col` button with `h-auto`, explicit gaps and a two-column grid whose long values
+  wrap instead of overflowing.
 
 ### Week (`pages/week-page.tsx`)
 

@@ -20,24 +20,26 @@ function OvertimeSection({
   onOpen: () => void
 }) {
   return (
+    // `h-auto` and the column layout override the Button defaults (fixed 40px
+    // height, centred row); without them the multi-line content overlaps.
     <Button
-      className="w-full rounded-md p-2 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex h-auto w-full flex-col items-stretch justify-start gap-2 rounded-md p-3 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onOpen}
       variant="ghost"
     >
-      <p className="text-sm font-medium text-primary">{label}</p>
-      <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p
-            className={`text-2xl font-semibold tabular-nums ${
+      <span className="block text-sm font-medium text-primary">{label}</span>
+      <div className="grid gap-2 sm:grid-cols-2 sm:items-center">
+        <div className="min-w-0">
+          <span
+            className={`block break-words text-2xl font-semibold tabular-nums ${
               overtime > 0 ? 'text-success' : 'text-muted-foreground'
             }`}
           >
             {overtime > 0 ? formatDuration(overtime) : 'No overtime'}
-          </p>
-          <p className="text-xs text-muted-foreground">{period}</p>
+          </span>
+          <span className="block break-words text-xs text-muted-foreground">{period}</span>
         </div>
-        <div className="w-full sm:w-1/2">
+        <div className="min-w-0">
           {progress !== undefined && (
             <Progress
               indicatorClassName={overtime > 0 ? 'bg-success' : 'bg-muted-foreground'}
@@ -45,7 +47,7 @@ function OvertimeSection({
               value={progress}
             />
           )}
-          <p className="pt-1 text-xs text-muted-foreground">{caption}</p>
+          <span className="block break-words pt-1 text-xs text-muted-foreground">{caption}</span>
         </div>
       </div>
     </Button>
