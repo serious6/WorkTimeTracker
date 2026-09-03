@@ -1,0 +1,35 @@
+name: PR title
+
+# The repository squash-merges, so the pull request title becomes the commit
+# message and has to be a valid Conventional Commit (see CONTRIBUTING.md).
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-commit:
+    name: conventional commit title
+    runs-on: ubuntu-latest
+    # Copilot-generated and draft PRs can use sentence-style working titles;
+    # enforce Conventional Commits before human-authored PRs are ready to merge.
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'Copilot' && github.event.pull_request.user.id != 198982749 }}
+    steps:
+      - name: Check the title
+        env:
+          # Passed as an environment variable, never interpolated into the
+          # script, so a title cannot inject shell commands.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|test|refactor|perf|chore|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo "::error::The pull request title is not a Conventional Commit: $PR_TITLE"
+            echo "Expected '<type>(<optional scope>): <summary>', for example:"
+            echo "  feat(timer): switch the running entry to another project"
+            echo "Allowed types: feat, fix, docs, test, refactor, perf, chore, build, ci, style, revert."
+            echo "See CONTRIBUTING.md for the full cheat sheet."
+            exit 1
+          fi
+          echo "Title follows Conventional Commits: $PR_TITLE"
