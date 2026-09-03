@@ -1,33 +1,11 @@
-//! Postgres backend. Talks to the
-//! database with the synchronous `postgres` crate through a small `r2d2`
-//! connection pool (see `Cargo.toml` for why this crate was chosen over
-//! `sqlx`/`tokio-postgres`+`deadpool`).
+//! Postgres backend through a small `r2d2` pool.
 //!
-//! # User scoping
-//!
-//! Every statement that names a record by its caller supplied id carries
-//! `AND user_id = $n`, so the ownership check is part of the query instead of a
-//! test applied to an already fetched row. A record of another account is
-//! therefore not read, not changed and not deleted, and the operation answers
-//! [`StoreError::NotFound`] - the same answer an unknown id gets, so the id
-//! space of another account stays indistinguishable from an empty one. A write
-//! that references a foreign key supplied by the caller checks that reference
-//! the same way ([`PostgresStore::assert_owns_project`]).
-//!
-//! The statements that carry no `user_id` are these, and each is safe for the
-//! reason given:
-//!
-//! - `users` is read by the id of the live session (`read_user`, `actor`) or by
-//!   the email of a sign in (`read_password_hash`, `record_auth_event`), never
-//!   by an id a signed in caller supplies.
-//! - `login_attempts` is keyed by email and holds no user data; the lockout has
-//!   to work before an account is known.
-//! - `security_audits` of the `auth` entity are written and pruned without a
-//!   session, because a rejected sign in has none. Reading the trail
-//!   (`list_security_audits`) is scoped to the user.
-//! - `app_metadata` and `schema_migrations` hold the release that applied the
-//!   migrations and the migration state, which belong to the database itself
-//!   and to no user.
+//! Ownership checks stay inside the SQL: caller-supplied record ids are matched
+//! with `AND user_id = $n`, and foreign keys supplied by the caller are checked
+//! the same way. Foreign and unknown ids both return [`StoreError::NotFound`].
+//! Tables without a `user_id` are either keyed before a session exists
+//! (`users`, `login_attempts`, auth audits) or describe database state
+//! (`app_metadata`, `schema_migrations`).
 
 use std::time::Duration;
 

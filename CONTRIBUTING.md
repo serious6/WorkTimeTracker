@@ -3,45 +3,10 @@
 Detailed rules for agents and automation are in [`AGENTS.md`](AGENTS.md); this page is the short
 version for humans.
 
-## Prerequisites
+## Prerequisites and local checks
 
-| Software | Version | Needed for | Notes |
-| --- | --- | --- | --- |
-| Node.js + npm | 26+ | Frontend, Vite dev server, Tauri CLI | Enough on its own for `npm run dev` |
-| Rust + Cargo | 1.95+ (stable) | Tauri backend | Install via [rustup](https://rustup.rs/) |
-| C toolchain | — | Linking the Rust backend | **Windows**: MSVC Build Tools (`x86_64-pc-windows-msvc`); the GNU toolchain cannot link the `cdylib` target. **macOS**: Xcode Command Line Tools. **Linux**: see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
-| WebView runtime | — | Native window | **Windows**: WebView2, preinstalled on Windows 11. macOS ships WKWebView, Linux needs `webkit2gtk` |
-| Podman or Docker (+ Compose) | — | Postgres via `compose.yaml` | Not needed with a local Postgres |
-| PostgreSQL | 18 | Backend storage | Provided by the compose `db` service |
-
-## Local development
-
-```sh
-npm ci
-cp .env.example .env       # set POSTGRES_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
-podman compose up -d db    # or: docker compose up -d db
-npm run tauri dev          # desktop application, needs Postgres
-npm run dev                # browser UI on http://127.0.0.1:1420, localStorage only
-podman compose up --build  # browser UI and Postgres in containers
-```
-
-The dev server binds `127.0.0.1` and is therefore not reachable from the network. Testing on a
-physical device is the only reason to change that: `TAURI_DEV_HOST=<address> npm run dev` — or
-`npm run tauri android dev -- --host`, which sets the same variable — binds the dev server to that
-address instead. It then serves the unauthenticated UI and the source maps to everyone on the
-network, so use it only on a network you trust and stop the server afterwards.
-
-`DATABASE_URL` must point at `localhost`, another loopback address, or the compose hostname `db`.
-`podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
-Tauri windows need a desktop display server and belong on the host.
-
-Leave `WORK_TIME_TRACKER_ENV` unset: development, the unit tests, the Playwright suite and every CI
-job run in `development` mode and reject every remote host. Only a deployed build runs with
-`WORK_TIME_TRACKER_ENV=production`, where a remote database is reached over TLS with the
-certificate chain and the host name verified against a pinned authority, and where the process
-verifies the migrations instead of applying them. The connection details of a deployment live in
-the secrets of the protected `production` GitHub environment, never in the repository and never in
-a test or CI job; see the [`README`](README.md#database) for the variables and the secret names.
+Required tool versions, local setup, npm scripts, and quality commands are maintained in
+[`docs/development.md`](docs/development.md).
 
 ## Branches
 
@@ -116,16 +81,7 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 
 ## Project layout
 
-```text
-architecture/   LikeC4 model and decision records
-contract/       Domain rules shared by the Rust backend and the browser fallback
-docs/           Data model and further documentation
-drizzle/        Single Postgres migration applied by the Rust backend and Drizzle
-e2e/            Playwright tests
-scripts/        Repository tooling, for example the icon generator
-src/            React application (app, components, db, features, lib, pages)
-src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, window_state)
-```
+See [`AGENTS.md`](AGENTS.md#repository-layout) for the maintained repository map.
 
 ## Application icon
 
@@ -140,7 +96,7 @@ build, and both repeat the paths of the in-app `AppLogo`. After changing the sou
 - Keep documentation concise.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- `drizzle/0000_init.sql` is the complete current baseline migration. Schema changes keep it,
+- `drizzle/0000_init.sql` is the current baseline migration. Schema changes keep it,
   `MIGRATIONS` in `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and the queries in
   `src-tauri/src/postgres_store.rs` in sync.
 - UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md) and
