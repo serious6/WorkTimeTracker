@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import {
   addEntry,
+  ageSession,
   createProject,
   dateKey,
   dialog,
@@ -530,4 +531,32 @@ test('adds an explicit overtime record on top of the tracked time', async ({ pag
 
   await page.getByRole('button', { name: 'Dashboard' }).click()
   await expect(cumulativeBalance(page)).toHaveText('+2h 30m')
+})
+
+// #23 in docs/e2e-test-cases.md
+test('returns to the login page when the session expires', async ({ page }) => {
+  await createProject(page, 'Session Project')
+
+  await ageSession(page, 'idle')
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Budgets' }).click()
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+
+  // Signing in again continues on the view the expiry interrupted.
+  await login(page, 'first@example.com')
+  await expect(page.getByRole('heading', { name: 'Budgets', level: 1 })).toBeVisible()
+
+  // The session was used a moment ago, so only its absolute lifetime ends it.
+  // The dialog carries unsaved input, which the rejected submit does not store.
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Projects' }).click()
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
+  await page.getByRole('button', { name: 'Create project' }).click()
+  await dialog(page).getByLabel('Name').fill('Unsaved Project')
+  await ageSession(page, 'lifetime')
+  await dialog(page).getByRole('button', { name: 'Create project' }).click()
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+
+  await login(page, 'first@example.com')
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Session Project', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unsaved Project', exact: true })).toBeHidden()
 })

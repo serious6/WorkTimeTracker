@@ -77,7 +77,7 @@ flowchart TB
 | `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, absences, overtime | `src/features/storage/local-repository.ts` (`scopedKey`) |
-| `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
+| `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with its start and its idle expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.timer` | Timer session bookkeeping: project, carried milliseconds, paused | `src/features/timer/timer-store.ts` |
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
 | `logs/work-time-tracker.log` | Redacted, rotated error log, no domain data | `src-tauri/src/logging.rs` |
@@ -85,7 +85,10 @@ flowchart TB
 In the desktop application sessions are not persisted: `Sessions` in `src-tauri/src/auth.rs` keeps
 the signed-in user in memory only, so a restart returns to the login page. The frontend holds the id
 of its session in a module variable of `src/features/storage/tauri-repository.ts` and in no storage
-container of the webview, so a reload returns to the login page as well.
+container of the webview, so a reload returns to the login page as well. Each session also holds the
+label of the webview it was started from, and a command only accepts the session id from that
+window. A session ends when it was idle for 480 minutes or when it reaches its absolute lifetime of
+720 minutes, whichever comes first.
 
 ## Level 3 — Entities
 
@@ -467,7 +470,8 @@ Validation, overlap detection, and the security limits are defined once in
   be below the short ones. Exceeding a limit only produces a warning, it never blocks recording.
 - E-mail addresses are unique after trimming and lower-casing. Registration requires at least 20
   characters, upper and lower case letters, and two special characters.
-- Security limits: session idle timeout 480 minutes, 5 failed logins, 15 minutes lockout.
+- Security limits: session idle timeout 480 minutes, absolute session lifetime 720 minutes, 5 failed
+  logins, 15 minutes lockout.
 
 Enums: `week_starts_on` is `monday` or `sunday`; `working_days` is a subset of `WEEKDAYS`
 (`monday` to `sunday`); `absence_type` is `vacation`, `sick`, `unpaid` or `halfDay`; `overtime kind`

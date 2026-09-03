@@ -1,6 +1,7 @@
 {
   "securityLimits": {
     "sessionTimeoutMinutes": 480,
+    "sessionMaxLifetimeMinutes": 720,
     "maxLoginAttempts": 5,
     "loginLockoutMinutes": 15
   },

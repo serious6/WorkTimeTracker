@@ -122,3 +122,24 @@ export async function login(page: Page, email: string, password = PASSWORD) {
 export async function openAccountMenu(page: Page) {
   await page.getByRole('button', { name: 'Account menu' }).click()
 }
+
+/**
+ * Ages the stored session of the browser fallback: `idle` moves its expiry into
+ * the past, `lifetime` backdates its start beyond any absolute maximum lifetime
+ * while the expiry stays untouched, so a session that is in use also ends.
+ */
+export async function ageSession(page: Page, reason: 'idle' | 'lifetime') {
+  await page.evaluate((kind) => {
+    const key = 'work-time-tracker.sessions'
+    const sessions = JSON.parse(localStorage.getItem(key) ?? '{}') as Record<
+      string,
+      { startedAt: number; expiresAt: number }
+    >
+    const aYearAgo = Date.now() - 365 * 24 * 60 * 60_000
+    for (const session of Object.values(sessions)) {
+      if (kind === 'idle') session.expiresAt = Date.now() - 1
+      else session.startedAt = aYearAgo
+    }
+    localStorage.setItem(key, JSON.stringify(sessions))
+  }, reason)
+}

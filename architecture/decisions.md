@@ -42,7 +42,12 @@ The file is rotated once it passes 512 KiB, and a failing logger never breaks a 
 ## 4. Sessions and credentials
 
 Native sessions live in memory and end after 480 idle minutes; every command extends them, a
-restart always returns to the login page. `login` and `register` start a session and answer with its
+restart always returns to the login page. Next to the idle timeout every session carries the moment
+it started and ends 720 minutes after it, no matter how much it was used: a running timer polls the
+backend all day, so without that absolute lifetime an application left open on an unattended machine
+would stay signed in forever. That age is measured on the wall clock, because `Instant` does not
+count the hours a suspended machine spent asleep, with the monotonic age as its floor, so moving the
+system clock backwards cannot extend a session either. `login` and `register` start a session and answer with its
 opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
 map keyed by that id, and every command names the session it acts for instead of reading one ambient
 process-global session, so two windows can hold two identities and a session is distinguishable in
@@ -52,8 +57,18 @@ bearer token for the whole command surface, so the frontend keeps it in a module
 `sessionStorage` nor `localStorage` nor a cookie — where an injected script or an open devtools
 console could read and replay it. Reloading the window therefore returns to the login page as well;
 the abandoned backend session ends with its idle timeout, and restarting the application starts
-there because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
+there because the backend map is empty again.
+
+A session also records the label of the webview it was started from, and a command only resolves it
+when the call arrives from that webview. Binding the bearer token to its window makes a leaked id
+useless everywhere else: a replay from another window answers `notSignedIn` without extending the
+idle timeout, and only the owning window can end the session. Both storage paths lock an email out for 15 minutes after 5
 failed logins. The limits are part of the contract file, so both sides stay equal.
+
+An expiry costs as little context as possible: the resulting `notSignedIn` error returns the user
+interface to the login page but keeps the view it interrupted, and signing in again as the same user
+continues there. Another user starts on the dashboard, and either way the cached data of the ended
+session is dropped, so no account sees the records of another.
 
 The native counters live in the `login_attempts` table, not in the process: restarting the
 application no longer clears a lockout. A login counts its attempt before it verifies the password,
@@ -69,7 +84,7 @@ A login with an unknown email verifies a fixed dummy hash instead of returning e
 spend the same Argon2 work and the response time does not reveal whether an account exists.
 
 The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
-session record with an expiry. Client-side storage stays fully readable and writable, therefore the
+session record that carries both its start and its idle expiry, and applies the same two limits. Client-side storage stays fully readable and writable, therefore the
 fallback is a development and test tool only, not a security boundary. It is never shipped as the
 production path, which is also why it hashes passwords with PBKDF2-SHA256 (the strongest KDF
 available in the browser) while the Rust backend uses Argon2id for real credentials.
@@ -119,16 +134,18 @@ neither shipped nor constructible there.
 ## 8. Authentication is the default of a command, not a convention
 
 Commands are written with the `authed_command!` macro in `src-tauri/src/commands.rs`. It adds the
-log frame and the lookup of the signed in user, and only then runs the body, which receives the user
+log frame, the lookup of the signed in user and the check that the calling webview owns that
+session, and only then runs the body, which receives the user
 id as a binding. Authorisation can no longer be forgotten by leaving a line out: a command that runs
 without a session has to be written by hand and named in `commands::PUBLIC_COMMANDS`
 (`register`, `login`, `logout`, `current_session`, `get_app_version`, `log_client_error`).
 
-Two tests keep the list honest. Both read the declaration of a function instead of matching a name
-as a substring, so a hand written `pub async fn` is seen too. One fails when the hand written
-`#[tauri::command]` functions are not exactly `PUBLIC_COMMANDS`, the other fails when a command
+Three tests keep the list honest. They read the declaration of a function instead of matching a name
+as a substring, so a hand written `pub async fn` is seen too. The first fails when the hand written
+`#[tauri::command]` functions are not exactly `PUBLIC_COMMANDS`, the second fails when a command
 registered in `tauri::generate_handler!` is neither generated by an `authed_command!` invocation nor
-public.
+public, and the third fails when a command works with a session without taking the calling webview
+and passing its label on.
 
 Input validation that belongs to the domain stays in `models.rs`: `SaveAbsence::validate_range`
 holds the rule that a saved range is not empty, is valid per day and never repeats a day, instead of
@@ -214,7 +231,39 @@ bundle with it and fails on any `securitypolicyviolation`, so a change that need
 noticed in CI instead of in the packaged application. The policy is not applied by the dev server:
 `tauri dev` loads `devUrl` directly, where Vite injects its stylesheets and its HMR client inline.
 
-## 14. Local Postgres for development, a remote database only for a production build
+## 14. The web inspector belongs to a debug build only
+
+An open web inspector reads the running application: the session id in `sessionStorage`, the
+arguments and answers of every IPC command, and the data of the signed in account. A shipped build
+therefore carries no devtools, while `tauri dev` keeps them.
+
+Tauri already draws that line. Everything that opens the inspector is compiled under
+`cfg(any(debug_assertions, feature = "devtools"))`: the `with_devtools` call that turns the
+developer extras of the webview and its "Inspect Element" entry on, the `toggle-devtools.js` that
+tauri injects for the keyboard shortcut, the `internal_toggle_devtools` command behind it and
+`WebviewWindow::open_devtools`. `devtools` is not one of the default features of the `tauri` crate,
+so `tauri dev` compiles the dev profile and keeps them while `npm run tauri build` compiles the
+release profile and drops them — as long as no cargo feature switches them back on and the bundle
+is not built with `--debug`.
+
+Tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
+manifest next: `devtools_stay_out_of_a_release_build` fails when a feature of `src-tauri/Cargo.toml`
+enables `tauri/devtools` or a profile turns `debug-assertions` back on for the release build, and
+`a_devtools_call_carries_a_debug_assertions_guard` fails when a backend source reaches the devtools
+without a condition that governs the call. That scan reads the `cfg` attribute of the item or the
+statement, the attributes of the enclosing items and blocks and a `cfg!` around the block, and it
+evaluates the predicate with `debug_assertions` off and every other flag on, so
+`any(debug_assertions, windows)` and `not(debug_assertions)` count as no guard at all. Comments and
+string literals are stripped before the scan. `a_guard_that_governs_the_call_is_accepted` and
+`a_guard_that_governs_nothing_is_rejected` pin that behaviour on fixtures. What the tests cannot see
+is a `debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS`
+or a `.cargo/config.toml`; the release workflow sets neither.
+
+The window in `tauri.conf.json` names no `devtools` field on purpose. `false` would remove the
+inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has
+already compiled out.
+
+## 15. Local Postgres for development, a remote database only for a production build
 
 Development, the unit and contract suites, the Playwright suite and every CI job connect to the
 compose database on `localhost` (or the service `db` inside compose). A deployment reaches a
