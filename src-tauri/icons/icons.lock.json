@@ -1,0 +1,24 @@
+{
+  "sources": {
+    "src-tauri/icons/app-icon.svg": "3ec65eda838f25548930bda812e189dac4e723b862ae1e923ccdd02ec7e8b025",
+    "public/favicon.svg": "c44526ed39cb34a63a8d86fcd5a26226c9c764497ddd3c4e309e2a7a6cb0a4e5"
+  },
+  "generated": {
+    "src-tauri/icons/128x128.png": "76175ebe76864eb7a8d21c68b3f93949a4a5c6aded2d242a114ef591bfa55e0b",
+    "src-tauri/icons/128x128@2x.png": "4d5235e747f41822ffdf321b4158590dc7961dac2e47f52381119f4c6ef6e2a1",
+    "src-tauri/icons/32x32.png": "c189decbd82c968dc82546601c1844df84a26843607a140e6eecb82ba69f93db",
+    "src-tauri/icons/Square107x107Logo.png": "52109e75e58d567754a497680fe81aeca62f2f683b6c3730ca83347a4d944c2c",
+    "src-tauri/icons/Square142x142Logo.png": "964087f7c33d22c5ead15f088945283dea8ff3f2aa4c1a808238d760948060b0",
+    "src-tauri/icons/Square150x150Logo.png": "4b69f12f5005eef813900a5419dc6031a0f1d8a5a34be214f85c5ba247fff8bf",
+    "src-tauri/icons/Square284x284Logo.png": "8e84d20a641f8bc8f2cb9b21442bc2f274ad95c0338cc930d9cc10b283ee67cc",
+    "src-tauri/icons/Square30x30Logo.png": "e1d9309a3ead03f12b81a4cdab380da17b83eb666020e5e5b7d3c0e4690c61f3",
+    "src-tauri/icons/Square310x310Logo.png": "99a803509fa8d89c7bed39b0e10fd172e053acae7939068a4342dcd384a20ab0",
+    "src-tauri/icons/Square44x44Logo.png": "05114b9f7d3aabf0d4db927073616521552ffa7e4f2a7f0fc13dcfa87c2ec373",
+    "src-tauri/icons/Square71x71Logo.png": "0b1ee70910abdb4fb900c1df59784a00aea81cef8d28291c48ea3a41abb53bd5",
+    "src-tauri/icons/Square89x89Logo.png": "4c437230fc697913f814ebab712ceb97f5ff315f610fa649df6bd5650387a79c",
+    "src-tauri/icons/StoreLogo.png": "baba3906ee0b0fee1b3c5f4917234b9d0bac8bb65f9438fca8ed4e7fb027663b",
+    "src-tauri/icons/icon.icns": "9fc7948af4461a963bcea3ad7688a20f5c8ab21fd2b651f4425ca805a82ee1a6",
+    "src-tauri/icons/icon.ico": "8cc5883f20b4b5b54924e23eeda48a5e676750f3dd7208f03ad2a3ab35a4b8c6",
+    "src-tauri/icons/icon.png": "e2a075398eb748ef0ae0f2ff99a5346e8bcc448e4d9d07c8e0d02d28244d3580"
+  }
+}

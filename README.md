@@ -89,8 +89,13 @@ web build, and both repeat the paths of the in-app `AppLogo` component. Regenera
 set (`icon.ico`, `icon.icns`, and every PNG size) after changing the source:
 
 ```bash
-npm run tauri icon src-tauri/icons/app-icon.svg
+npm run icons:generate
 ```
+
+The command runs `tauri icon`, copies the desktop icons back into `src-tauri/icons` and records the
+checksums of the artwork and of every generated file in `src-tauri/icons/icons.lock.json`. The unit
+tests compare the committed files against that lock, so editing the artwork without regenerating
+fails the test suite.
 
 ## Logs
 
