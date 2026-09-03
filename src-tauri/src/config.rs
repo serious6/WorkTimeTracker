@@ -243,20 +243,24 @@ pub fn redact_database_url(url: &str) -> String {
     let Some((scheme, rest)) = url.split_once("://") else {
         return redact_keyword_values(url);
     };
-    let (authority, query) = match rest.split_once('?') {
-        Some((authority, query)) => (authority, Some(query)),
-        None => (rest, None),
-    };
-    let authority = match authority.split_once('@') {
-        Some((credentials, host_and_path)) => {
-            let user = credentials.split_once(':').map_or(credentials, |(u, _)| u);
-            format!("{user}:{REDACTED}@{host_and_path}")
+    // The driver reads everything up to the first `@` as the credentials, so a
+    // password containing `?` belongs to them and must not be mistaken for the
+    // start of the query. Splitting them off first mirrors that.
+    let (credentials, remainder) = match rest.split_once('@') {
+        Some((credentials, remainder)) => {
+            let user = credentials
+                .split_once(':')
+                .map_or(credentials, |(user, _)| user);
+            (format!("{user}:{REDACTED}@"), remainder)
         }
-        None => authority.to_owned(),
+        None => (String::new(), rest),
     };
-    match query {
-        Some(query) => format!("{scheme}://{authority}?{}", redact_query(query)),
-        None => format!("{scheme}://{authority}"),
+    match remainder.split_once('?') {
+        Some((host_and_path, query)) => format!(
+            "{scheme}://{credentials}{host_and_path}?{}",
+            redact_query(query)
+        ),
+        None => format!("{scheme}://{credentials}{remainder}"),
     }
 }
 
@@ -272,22 +276,68 @@ fn is_secret(key: &str) -> bool {
 }
 
 fn redact_query(query: &str) -> String {
-    redact_pairs(query, '&')
-}
-
-fn redact_keyword_values(connection_string: &str) -> String {
-    redact_pairs(connection_string, ' ')
-}
-
-fn redact_pairs(value: &str, separator: char) -> String {
-    value
-        .split(separator)
+    query
+        .split('&')
         .map(|pair| match pair.split_once('=') {
             Some((key, _)) if is_secret(key) => format!("{key}={REDACTED}"),
             _ => pair.to_owned(),
         })
         .collect::<Vec<_>>()
-        .join(&separator.to_string())
+        .join("&")
+}
+
+/// Redacts a `key=value` connection string with the quoting rules of the
+/// driver, so a quoted or escaped password is redacted as a whole instead of
+/// leaking the part behind its first space.
+fn redact_keyword_values(connection_string: &str) -> String {
+    let mut redacted = String::with_capacity(connection_string.len());
+    let mut rest = connection_string;
+    while !rest.is_empty() {
+        let value = rest.trim_start();
+        redacted.push_str(&rest[..rest.len() - value.len()]);
+        let Some(separator) = value.find('=') else {
+            redacted.push_str(value);
+            break;
+        };
+        let key = &value[..separator];
+        let value = &value[separator + 1..];
+        let space = value.len() - value.trim_start().len();
+        let (secret, remainder) = take_value(&value[space..]);
+        redacted.push_str(key);
+        redacted.push('=');
+        redacted.push_str(&value[..space]);
+        redacted.push_str(if is_secret(key) { REDACTED } else { secret });
+        rest = remainder;
+    }
+    redacted
+}
+
+/// Takes one value of a `key=value` connection string: quoted with `'` or
+/// ending at the next space, with `\` escaping the character behind it.
+fn take_value(value: &str) -> (&str, &str) {
+    let mut characters = value.char_indices();
+    let quoted = value.starts_with('\'');
+    if quoted {
+        characters.next();
+    }
+    let mut end = value.len();
+    while let Some((index, character)) = characters.next() {
+        match character {
+            '\\' => {
+                characters.next();
+            }
+            '\'' if quoted => {
+                end = index + 1;
+                break;
+            }
+            character if !quoted && character.is_whitespace() => {
+                end = index;
+                break;
+            }
+            _ => {}
+        }
+    }
+    value.split_at(end)
 }
 
 #[cfg(test)]
@@ -543,6 +593,55 @@ mod tests {
             format!("postgresql://app:{REDACTED}@{rest}&{key}={REDACTED}")
         );
         assert!(!redacted.contains(secret));
+    }
+
+    #[test]
+    fn redacts_a_password_that_contains_a_question_mark() {
+        // The driver reads the credentials up to the first `@`, so `?` is part
+        // of the password and must not be read as the start of the query.
+        let secret = "hun?ter2";
+        let rest = "db.example.net:6543/postgres?sslmode=verify-full";
+        let url = format!("postgresql://app:{secret}@{rest}");
+
+        let redacted = redact_database_url(&url);
+
+        assert_eq!(redacted, format!("postgresql://app:{REDACTED}@{rest}"));
+        assert!(!redacted.contains(secret));
+    }
+
+    #[test]
+    fn redacts_a_quoted_password_of_a_keyword_value_connection_string() {
+        let secret = "hunter 2";
+        let key = SECRET_KEYS[0];
+        let connection_string = format!("host=localhost {key}='{secret}' dbname=worktimetracker");
+
+        let redacted = redact_database_url(&connection_string);
+
+        assert_eq!(
+            redacted,
+            format!("host=localhost {key}={REDACTED} dbname=worktimetracker")
+        );
+        assert!(!redacted.contains("hunter") && !redacted.contains(" 2"));
+    }
+
+    #[test]
+    fn redacts_an_escaped_password_of_a_keyword_value_connection_string() {
+        let key = SECRET_KEYS[0];
+        let connection_string = format!("host=localhost {key}=hunter\\ 2 dbname=worktimetracker");
+
+        let redacted = redact_database_url(&connection_string);
+
+        assert_eq!(
+            redacted,
+            format!("host=localhost {key}={REDACTED} dbname=worktimetracker")
+        );
+    }
+
+    #[test]
+    fn keeps_a_keyword_value_connection_string_without_a_secret_readable() {
+        let connection_string = "host=localhost  port=5432 user=postgres dbname=worktimetracker";
+
+        assert_eq!(redact_database_url(connection_string), connection_string);
     }
 
     #[test]

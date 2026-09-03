@@ -15,9 +15,9 @@ model {
       technology 'Tauri 2, Rust commands'
       description 'Validates input and returns structured AppError kinds'
     }
-    database = container 'Local database' {
+    database = container 'Database' {
       technology 'Postgres, Drizzle schema'
-      description 'Local Postgres database accessed through a small connection pool'
+      description 'Postgres behind a small connection pool: local in development, the deployed database over verified TLS in production'
     }
 
     session = container 'Sessions' {
