@@ -119,7 +119,8 @@ export function AppSidebar() {
                   <Button
                     aria-current={view === item.view ? 'page' : undefined}
                     className={cn(
-                      'flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+                      'flex min-h-10 w-full items-center gap-3 rounded-md py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+                      sidebarExpanded ? 'justify-start px-3' : 'justify-center px-0',
                       view === item.view && 'bg-primary/15 text-primary',
                     )}
                     onClick={() => navigate(item.view)}
