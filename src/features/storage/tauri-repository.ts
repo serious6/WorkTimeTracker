@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
 import { securityAuditSchema } from '@/features/audit/security-audit-schema'

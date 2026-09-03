@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 
 /** Entity name used for the audit trail of time entries. */

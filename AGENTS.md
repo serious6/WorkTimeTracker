@@ -158,7 +158,8 @@ The summary is lower case, imperative and without a trailing period.
 ## Code style
 
 - **TypeScript**: strict mode; no `any` and no non-null assertion to silence the compiler. Validate
-  external data with Zod schemas from the feature slice. `npm run lint` (oxlint) and
+  external data with Zod schemas from the feature slice, and import Zod from `@/lib/zod`, which
+  configures it for the Content Security Policy of the webview. `npm run lint` (oxlint) and
   `npm run typecheck` must be clean.
 - **React**: function components, feature slices under `src/features/<name>/`, state in Zustand
   stores, server state through TanStack Query. Reuse the kit in `src/components/ui/` and the tokens
