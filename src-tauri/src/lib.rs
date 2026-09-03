@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod config;
+mod connection;
 #[cfg(test)]
 mod contract;
 mod error;
@@ -28,6 +29,23 @@ fn log_panics() {
         logging::error("panic", &format!("{location} {info}"));
         previous(info);
     }));
+}
+
+/// Applies the schema migrations to the configured database. A deployed
+/// database is shared, so it is migrated by this deliberate step instead of by
+/// every client that starts; see `examples/migrate.rs` and decision 16.
+pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
+    let db_config = DbConfig::for_migration()?;
+    if !db_config.run_migrations {
+        return Err(format!(
+            "the {} database may only be migrated with {}=true",
+            db_config.mode,
+            config::MIGRATE_ENV
+        )
+        .into());
+    }
+    Database::open(&db_config)?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

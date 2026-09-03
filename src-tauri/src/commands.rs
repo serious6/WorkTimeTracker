@@ -471,9 +471,14 @@ authed_command!(
     }
 );
 
+/// The version of the running binary. A deployed database is shared by every
+/// installation, so the version is reported from the local build instead of
+/// from the `app_metadata` row another installation may have written.
 #[tauri::command]
-pub fn get_app_version(database: State<'_, Database>) -> AppResult<Option<String>> {
-    logging::logged("get_app_version", || Ok(database.0.read_app_version()?))
+pub fn get_app_version() -> AppResult<Option<String>> {
+    logging::logged("get_app_version", || {
+        Ok(Some(env!("CARGO_PKG_VERSION").to_owned()))
+    })
 }
 
 /// Writes a failure of the user interface into the same log file. The message is

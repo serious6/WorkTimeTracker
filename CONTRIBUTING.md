@@ -35,6 +35,14 @@ network, so use it only on a network you trust and stop the server afterwards.
 `podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
 Tauri windows need a desktop display server and belong on the host.
 
+Leave `WORK_TIME_TRACKER_ENV` unset: development, the unit tests, the Playwright suite and every CI
+job run in `development` mode and reject every remote host. Only a deployed build runs with
+`WORK_TIME_TRACKER_ENV=production`, where a remote database is reached over TLS with the
+certificate chain and the host name verified against a pinned authority, and where the process
+verifies the migrations instead of applying them. The connection details of a deployment live in
+the secrets of the protected `production` GitHub environment, never in the repository and never in
+a test or CI job; see the [`README`](README.md#database) for the variables and the secret names.
+
 ## Branches
 
 Branch off `main` as `<type>/<short-topic>`, for example `feat/project-budgets` or

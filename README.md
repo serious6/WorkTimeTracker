@@ -33,9 +33,24 @@ run `npm run tauri dev` for the desktop application or `npm run dev` for the bro
 
 ## Database
 
-Postgres is required for the native application. `DATABASE_URL` must point at `localhost`, another
-loopback address, or the compose hostname `db`; every other TCP host is rejected before connecting.
-The connection intentionally uses no TLS, and remote Postgres servers are not supported.
+Postgres is required for the native application. `WORK_TIME_TRACKER_ENV` selects how it is reached
+and defaults to `development`.
+
+- `development` — `DATABASE_URL` must point at `localhost`, another loopback address, or the
+  compose hostname `db`; every other TCP host is rejected before connecting. The connection uses no
+  TLS, which is what the bundled database offers. Development, the tests, the Playwright suite and
+  every CI job run in this mode.
+- `production` — the connection may name a remote host, but only over TLS with the certificate
+  chain *and* the host name verified (`sslmode=verify-full`) against the certificate authority
+  pinned in `SUPABASE_DB_ROOT_CERT`. There is no setting that relaxes this: an unverifiable
+  certificate fails the start instead of falling back to an unencrypted connection. A production
+  process never migrates the shared database, it only verifies that the migrations are applied.
+
+The production connection is configuration, never part of the repository: `DATABASE_URL` wins when
+it is set, otherwise it is assembled from `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`,
+`SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD` and `SUPABASE_DB_NAME`. A missing or malformed value
+fails the start with a redacted message. See [`.env.example`](.env.example) for every variable and
+the release section below for the secrets the workflow injects.
 
 Removing the `postgres_data` volume permanently deletes the local database. Database files of
 earlier versions are neither read nor migrated; export what you need before switching.
@@ -54,6 +69,31 @@ tagged `v<version>`.
 
 `src/data/licenses.json` is the committed license notice for shipped dependencies. Run
 `npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.
+
+### Production database secrets
+
+The `migrate-production-database` job of the workflow is the only place that sees the production
+database. It runs in the protected `production` environment, so its secrets are available to no
+other job, none of them is ever printed, and it only runs when the dispatch input
+`migrate_production_database` asks for it — a shared database is migrated deliberately, never by an
+installation that starts. The bundles contain none of these values; a deployment provides them to
+the application at run time. The workflow reads, by name only:
+
+| Secret | Purpose |
+| --- | --- |
+| `SUPABASE_DATABASE_URL` | complete connection string including `sslmode=verify-full`; wins over the parts below |
+| `SUPABASE_DB_HOST` | host of the database, for example the connection pooler of the project |
+| `SUPABASE_DB_PORT` | port, `6543` for the pooler and `5432` for a direct connection |
+| `SUPABASE_DB_USER` | the dedicated least-privilege application role, never `postgres` |
+| `SUPABASE_DB_PASSWORD` | password of that role |
+| `SUPABASE_DB_NAME` | database name |
+| `SUPABASE_DB_ROOT_CERT` | the certificate authority in PEM form; the job writes it to a file and passes its path to the application |
+
+To rotate the credentials, change the password of the role in the Supabase dashboard (or create the
+replacement role), update `SUPABASE_DB_PASSWORD` — or `SUPABASE_DATABASE_URL`, if that is the form
+in use — in the `production` environment, and run the workflow again. Rotating the certificate
+authority means replacing `SUPABASE_DB_ROOT_CERT` with the downloaded PEM file; nothing in the
+repository has to change for either.
 
 ## Documentation
 

@@ -33,3 +33,5 @@ argon2 = { version = "0.5", features = ["std"] }
 postgres = "0.19.14"
 r2d2 = "0.8.10"
 r2d2_postgres = "0.18.2"
+rustls = { version = "0.23.43", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+tokio-postgres-rustls = { version = "0.14.0", default-features = false, features = ["ring"] }

@@ -280,3 +280,47 @@ one. A delete of an id that matches nothing used to report success in both backe
 `notFound` as well, because a silent success cannot be told apart from a delete that was refused.
 `local-repository.ts` follows the same rule, so the browser fallback and the Rust backend answer
 alike.
+
+## 16. Local Postgres for development, a remote database only for a production build
+
+Development, the unit and contract suites, the Playwright suite and every CI job connect to the
+compose database on `localhost` (or the service `db` inside compose). A deployment reaches a
+managed Postgres instead, which is a remote host, so the strict local-only guard of
+`connection::plan` could no longer be the only rule.
+
+The mode is explicit rather than derived from the host: `WORK_TIME_TRACKER_ENV` is `development`
+unless it says `production`, and only a production process may name a remote host. That keeps a
+developer checkout, a test run and a CI job on a local database even when a remote connection
+string happens to be present in the environment, and `test_support` refuses to create or drop a
+database whenever the mode is production or the host is not local, so a deployed server can never
+be the target of a test.
+
+A remote connection is only accepted with `sslmode=verify-full` and a pinned certificate
+authority. The chain and the host name are verified by `rustls` against that one authority instead
+of the certificate store of the machine, and there is deliberately no environment variable, flag or
+debug switch that relaxes the verification: a remote host without a verifiable certificate fails to
+connect instead of falling back to an unencrypted session. The driver itself only knows
+`disable`, `prefer` and `require`, so `connection.rs` splits `sslmode` and `sslrootcert` off the
+connection string, asks the driver for `require`, and implements the verification in the connector.
+A local connection keeps the plain session the compose database offers and is rejected if it asks
+for an ssl mode that verifies nothing, so a half-secure configuration is never silently accepted.
+The rule holds in both directions: a production process that is pointed at `localhost`, a loopback
+address or a Unix socket is refused as well, so production cannot fall back to a plaintext local
+database.
+
+A deployment shares one database between clients, so migrating it on every start is not
+acceptable: a production process only verifies that every migration of `MIGRATIONS` is recorded and
+refuses to start otherwise. Applying them is a deliberate step, `WORK_TIME_TRACKER_DB_MIGRATE=true`
+in a separately approved job that runs after the release artifacts are built. Only that step reads
+the flag: `DbConfig::from_env`, which every application process uses, resolves a production
+database as verify-only whatever the environment asks for, and `DbConfig::for_migration` of the
+`migrate` entry point is the single place that may authorize applying them. The version of the
+running build is reported from the binary, so no client writes into the shared `app_metadata` row;
+only the migration step records the release that established the schema.
+
+The connection details are configuration, not code. No host, project reference, user or password is
+part of the repository: they are read from `DATABASE_URL` or assembled from `SUPABASE_DB_HOST`,
+`SUPABASE_DB_PORT`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`, `SUPABASE_DB_NAME` and
+`SUPABASE_DB_ROOT_CERT`, and the release workflow injects them from the secrets of the protected
+`production` environment only. Every message that names a connection string passes
+`redact_database_url` first.

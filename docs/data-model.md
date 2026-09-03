@@ -73,7 +73,7 @@ flowchart TB
 | `overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `overtime_audits` | Append-only trail of every change to an overtime record | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `app_metadata` | Key/value pairs, today only `app_version` | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `app_metadata` | Key/value pairs, today only the `app_version` the migration step recorded | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, absences, overtime | `src/features/storage/local-repository.ts` (`scopedKey`) |
@@ -439,7 +439,7 @@ evicted as soon as the lockout is served, which is why the auth events are recor
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `key` | TEXT | yes | Only `app_version` today | PK |
-| `value` | TEXT | yes | Application version | — |
+| `value` | TEXT | yes | Version of the release that applied the migrations | — |
 
 ## Invariants and allowed values
 
