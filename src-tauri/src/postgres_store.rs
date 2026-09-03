@@ -1340,11 +1340,19 @@ impl Store for PostgresStore {
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = read_entry(&mut transaction, id, user_id)?;
-        transaction.execute(
-            "DELETE FROM time_entries WHERE id = $1 AND user_id = $2",
-            &[&id, &user_id],
-        )?;
+        // The snapshot comes out of the delete itself, so a concurrent delete
+        // of the same row cannot leave a second trail entry behind: only the
+        // transaction that removed the row gets one back.
+        let current = transaction
+            .query_opt(
+                &format!(
+                    "DELETE FROM time_entries WHERE id = $1 AND user_id = $2
+                     RETURNING {ENTRY_COLUMNS}"
+                ),
+                &[&id, &user_id],
+            )?
+            .map(|row| entry_from_row(&row))
+            .ok_or(StoreError::NotFound)?;
         record_audit(
             &mut transaction,
             user_id,
@@ -1663,11 +1671,18 @@ impl Store for PostgresStore {
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = read_absence(&mut transaction, id, user_id)?;
-        transaction.execute(
-            "DELETE FROM absences WHERE id = $1 AND user_id = $2",
-            &[&id, &user_id],
-        )?;
+        // The snapshot comes out of the delete itself, so a concurrent delete
+        // of the same row cannot leave a second trail entry behind.
+        let current = transaction
+            .query_opt(
+                &format!(
+                    "DELETE FROM absences WHERE id = $1 AND user_id = $2
+                     RETURNING {ABSENCE_COLUMNS}"
+                ),
+                &[&id, &user_id],
+            )?
+            .map(|row| absence_from_row(&row))
+            .ok_or(StoreError::NotFound)?;
         record_absence_audit(
             &mut transaction,
             user_id,
@@ -1801,11 +1816,18 @@ impl Store for PostgresStore {
     fn delete_overtime_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = read_overtime_entry(&mut transaction, id, user_id)?;
-        transaction.execute(
-            "DELETE FROM overtime_entries WHERE id = $1 AND user_id = $2",
-            &[&id, &user_id],
-        )?;
+        // The snapshot comes out of the delete itself, so a concurrent delete
+        // of the same row cannot leave a second trail entry behind.
+        let current = transaction
+            .query_opt(
+                &format!(
+                    "DELETE FROM overtime_entries WHERE id = $1 AND user_id = $2
+                     RETURNING {OVERTIME_COLUMNS}"
+                ),
+                &[&id, &user_id],
+            )?
+            .map(|row| overtime_from_row(&row))
+            .ok_or(StoreError::NotFound)?;
         record_overtime_audit(
             &mut transaction,
             user_id,
@@ -2805,14 +2827,16 @@ mod tests {
         {
             assert_ne!(overtime_id, owner.overtime.id);
         }
-        for entity_id in store
+        // The ids of the entities come from independent sequences, so the pair
+        // of entity and id is what tells one record from another.
+        for record in store
             .list_security_audits(other.user_id, &window)
             .unwrap()
             .iter()
-            .filter_map(|audit| audit.entity_id)
+            .filter_map(|audit| audit.entity_id.map(|id| (audit.entity.as_str(), id)))
         {
-            assert_ne!(entity_id, owner.project.id);
-            assert_ne!(entity_id, owner.budget.id);
+            assert_ne!(record, (PROJECT_AUDIT_ENTITY, owner.project.id));
+            assert_ne!(record, (BUDGET_AUDIT_ENTITY, owner.budget.id));
         }
         assert!(store
             .list_audit_log(other.user_id, &window)
