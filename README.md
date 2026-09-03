@@ -1,22 +1,20 @@
 # WorkTimeTracker
 
-A local-first, open-source desktop work-time tracker built with Tauri 2. The native app stores data
-in a Postgres database you control, for example the bundled local compose service.
+A local-first, open-source desktop work-time tracker built with Tauri 2. Data stays in a Postgres
+database you control, for example the bundled compose service.
 
 ## Features
 
-- **Dashboard**: start, pause, resume, stop, and switch timers, manual entries, day navigation,
-  daily and weekly targets with overtime, a cumulative overtime balance carried across weeks and
-  months, and time distribution per project.
-- **Time Management**: add worked time retroactively via quick-add buttons or custom durations
-  such as `2h 45m`; entries are placed in the first free slot of the day and never overlap.
+- **Dashboard**: start, pause, resume, stop, and switch timers; day navigation; daily and weekly
+  targets with a cumulative overtime balance; time distribution per project.
+- **Time Management**: add worked time retroactively via quick-add buttons or durations such as
+  `2h 45m`; entries are placed in the first free slot of the day and never overlap.
 - **Budgets**: per-project hour budgets with a due date; consumption and forecast appear in `Reports`.
-- **Working Time**: breaks as entries of their own, warnings for the break, daily maximum and rest
-  period limits, a monthly CSV or PDF record per employee, and the audit trail of every change.
-- **Absences**: mark a day or a range as vacation, sick leave, unpaid leave, or half day. A full-day
-  absence drops the target of a working day to zero, a half day keeps half of it, so the overtime
-  balance stays correct. Absences appear in the monthly record and in their own audit trail.
-- **Settings**: weekly working time and working days; the daily target is derived from both. The
+- **Working Time**: breaks as entries of their own, warnings for break, daily maximum and rest
+  period limits, a monthly CSV or PDF record per employee, and an audit trail of every change.
+- **Absences**: vacation, sick leave, unpaid leave, or half day for a day or a range. A full-day
+  absence drops that day's target to zero, a half day keeps half of it.
+- **Settings**: weekly working time and working days; the daily target follows from both. The
   working time limits default to the German ArbZG and can be adjusted or restored.
 - **Accounts**: registration with a strict password policy, Argon2id hashes, login lockout, and
   per-user data isolation.
@@ -28,50 +26,19 @@ Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and 
 
 ## Getting started
 
-```sh
-npm ci
-cp .env.example .env
-# Set POSTGRES_PASSWORD and DATABASE_URL in .env.
-podman compose up -d db   # or: docker compose up -d db
-npm run tauri dev         # desktop application
-npm run dev               # browser-only UI at http://localhost:1420
-```
-
-Prerequisites and the contribution workflow are described in
+Install Node.js and Rust, copy `.env.example` to `.env`, start the bundled Postgres service, then
+run `npm run tauri dev` for the desktop application or `npm run dev` for the browser-only UI at
+<http://localhost:1420>. The exact commands, prerequisites, and the contribution workflow are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-The development container runs the browser UI with `docker compose up --build` or
-`podman compose up --build`. Native Tauri windows need a desktop display server and should be run
-on the host. The compose stack starts Postgres by default and persists it in the `postgres_data`
-volume.
+## Database
 
-`Containerfile.build` is the counterpart for release artifacts: it compiles the desktop
-application and emits the Linux installers, see "Release".
+Postgres is required for the native application. `DATABASE_URL` must point at `localhost`, another
+loopback address, or the compose hostname `db`; every other TCP host is rejected before connecting.
+The connection intentionally uses no TLS, and remote Postgres servers are not supported.
 
-## Database backend
-
-Postgres is required for the native Tauri application. Copy `.env.example` to `.env`, set a local
-`POSTGRES_PASSWORD`, set `DATABASE_URL` to the bundled database using the same password, and start
-the compose service:
-
-```sh
-cp .env.example .env
-# Set POSTGRES_PASSWORD and DATABASE_URL in .env.
-podman compose up -d db   # or: docker compose up -d db
-npm run tauri dev
-```
-
-Set `DATABASE_URL` to use `localhost` (or another loopback address) when running Tauri on the host.
-Compose constructs the development container's URL with the service hostname `db`, because
-`localhost` inside that container would not reach Postgres. The backend intentionally uses no TLS
-and enforces this local-only model: TCP hosts other than `localhost`, loopback addresses, and the
-compose hostname `db` are rejected before connecting. Remote Postgres servers are not supported.
-
-This is a breaking storage change. Earlier local database files are not read or migrated by this
-version; export any data you need before switching to the Postgres-only application.
-
-`podman compose down -v` or `docker compose down -v` removes the `postgres_data` volume and
-permanently deletes the local Postgres database.
+Removing the `postgres_data` volume permanently deletes the local database. Database files of
+earlier versions are neither read nor migrated; export what you need before switching.
 
 ## Project layout
 
@@ -85,42 +52,19 @@ src/            React application (app, components, db, features, lib, pages)
 src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, window_state)
 ```
 
-## Logs
-
 Errors of the backend and of the user interface are appended to
-`<app data directory>/logs/work-time-tracker.log`, for example
-`~/.local/share/io.github.serious6.worktimetracker/logs/work-time-tracker.log` on Linux. Credentials, hashes,
-e-mail addresses and file system paths are redacted, and the file is rotated once it exceeds
-512 KiB.
+`<app data directory>/logs/work-time-tracker.log`, redacted and rotated at 512 KiB.
 
 ## Release
 
-The `Release` workflow runs on manual dispatch. It verifies that `package.json`,
+The `Release` workflow runs on manual dispatch. It checks that `package.json`,
 `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs all checks,
-then bundles the desktop application on Linux, Windows, and macOS and attaches the installers to a
-GitHub release tagged `v<version>`.
+bundles the application on Linux, Windows, and macOS, and attaches the installers to a GitHub
+release tagged `v<version>`. `Containerfile.build` reproduces the Linux bundles locally, see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-`Containerfile.build` reproduces the Linux part of that bundling locally, without installing the
-Rust toolchain or the WebKit development packages on the host:
-
-```sh
-podman build -f Containerfile.build -o type=local,dest=./release .
-# or, when the client rejects --output (Podman on Windows and macOS):
-podman build -f Containerfile.build --target builder -t worktimetracker-release .
-podman create --name worktimetracker-release worktimetracker-release
-podman cp worktimetracker-release:/artifacts ./release
-podman rm worktimetracker-release
-```
-
-`./release` then holds the `.deb`, `.rpm`, and `.AppImage` files. Restrict the bundle formats with
-`--build-arg TAURI_BUNDLES=deb`. Windows and macOS installers cannot be produced this way; they
-need their own operating system and are built by the workflow.
-
-## Third-party licenses
-
-`src/data/licenses.json` is the committed, build-time notice for production npm dependencies and
-Rust crates. Run `npm run licenses:generate` after updating either lockfile; `npm run licenses:check`
-verifies it is current. Development-only npm tools are excluded because they are not shipped.
+`src/data/licenses.json` is the committed license notice for shipped dependencies. Run
+`npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.
 
 ## Documentation
 

@@ -6,25 +6,36 @@ services:
     init: true
     stdin_open: true
     tty: true
+    # The image runs as the unprivileged `node` user; the dev server needs no capabilities and
+    # must not gain any through setuid binaries.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
-      - "1420:1420"
+      # The dev server is unauthenticated: publish it to the host only, not to the network.
+      - "127.0.0.1:1420:1420"
     environment:
-      XDG_DATA_HOME: /root/.local/share
+      XDG_DATA_HOME: /home/node/.local/share
       # `localhost` in the host-native URL would name this container itself.
       DATABASE_URL: ${POSTGRES_CONTAINER_URL:?POSTGRES_CONTAINER_URL must be set in .env}
       WORK_TIME_TRACKER_COMPOSE: "true"
     volumes:
+      # Rootless Podman maps the container's uid 1000 to a subuid, so writes into this bind
+      # mount need `--userns=keep-id`; `npm run dev` itself only reads from it.
       - .:/workspace:z
       - node_modules:/workspace/node_modules
-      - cargo_registry:/root/.cargo/registry
+      - cargo_registry:/usr/local/cargo/registry
       - cargo_target:/workspace/src-tauri/target
-      - app_data:/root/.local/share
+      - app_data:/home/node/.local/share
     depends_on:
       db:
         condition: service_healthy
 
   db:
     image: docker.io/library/postgres:18-alpine
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-worktimetracker}
       POSTGRES_USER: ${POSTGRES_USER:-worktimetracker}
