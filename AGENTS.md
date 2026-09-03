@@ -32,6 +32,7 @@ contract/           domain-rules.json, shared by the Rust backend and the browse
 docs/               data model, e2e test cases, UI principles and audit, security advisories
 drizzle/            numbered Postgres migrations
 e2e/                Playwright specs (*.spec.ts) and the shared helpers.ts
+scripts/            repository tooling, for example the icon and license generators
 src/                React application
   app/              shell, navigation
   components/ui/    the sanctioned UI kit
@@ -70,7 +71,7 @@ link the `cdylib`) plus WebView2, Xcode Command Line Tools on macOS, and on Linu
 
 ```sh
 npm ci                          # installs the frontend and the CLI tools
-cp .env.example .env            # then set POSTGRES_PASSWORD and DATABASE_URL
+cp .env.example .env            # set POSTGRES_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
 podman compose up -d db         # or: docker compose up -d db
 ```
 
@@ -186,7 +187,8 @@ command, its registration, the `Repository` method and both implementations.
 `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` must declare the same
 version. The `Release` workflow is dispatched manually, verifies that the versions match, runs all
 checks, bundles the installers for Linux, Windows and macOS and publishes them as the GitHub
-release `v<version>`.
+release `v<version>`. `Containerfile.build` produces the same Linux bundles locally, see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Definition of Done
 
