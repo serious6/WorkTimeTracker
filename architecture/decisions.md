@@ -172,3 +172,25 @@ path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, a
 `PostgresStore` registers that single migration.
 
 This makes a fresh installation reproducible without retaining pre-release migration history.
+
+## 12. The web inspector belongs to a debug build only
+
+An open web inspector reads the running application: the session id in `sessionStorage`, the
+arguments and answers of every IPC command, and the data of the signed in account. A shipped build
+therefore carries no devtools, while `tauri dev` keeps them.
+
+Tauri already draws that line. The inspector, its "Inspect Element" context menu entry and
+`WebviewWindow::open_devtools` are compiled under
+`cfg(any(debug_assertions, feature = "devtools"))`, and `devtools` is not one of the default
+features of the `tauri` crate. `tauri dev` compiles the dev profile and keeps them,
+`npm run tauri build` compiles the release profile and drops them — as long as no cargo feature
+switches them back on and the bundle is not built with `--debug`.
+
+Two tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
+manifest next: `devtools_stay_out_of_a_release_build` fails when a feature of `src-tauri/Cargo.toml`
+enables `tauri/devtools`, and `a_devtools_call_carries_a_debug_assertions_guard` fails when a
+backend source reaches the devtools without a `#[cfg(debug_assertions)]` in the same block of lines.
+
+The window in `tauri.conf.json` names no `devtools` field on purpose. `false` would remove the
+inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has
+already compiled out.
