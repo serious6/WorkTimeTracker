@@ -24,7 +24,7 @@ It has a TypeScript/React frontend and a Rust backend that stores native app dat
 ```text
 architecture/       LikeC4 model and architecture decisions
 contract/           Shared domain and entity contracts
-docs/               Development guide, data model, e2e cases, UI and security docs
+docs/               Development guide, data model, e2e cases, and UI docs
 drizzle/            Postgres migration baseline
 e2e/                Playwright specs and helpers
 scripts/            Repository tooling
@@ -66,7 +66,17 @@ src-tauri/src/      Rust backend: auth, commands, config, connection, contract, 
 ## Change rules
 
 - Keep changes scoped to the task; do not reformat unrelated files.
+- Feature and bugfix changes need unit tests; user-facing changes also need e2e coverage listed in
+  `docs/e2e-test-cases.md`. Bugfixes start with a failing test, and coverage must stay at or above
+  the `npm run test:coverage` gate.
+- TypeScript stays strict: no `any` or non-null assertions to silence errors, and import Zod from
+  `@/lib/zod`. Rust command paths use `Result`, avoid `unwrap`/`expect`, and data commands use
+  `authed_command!`.
+- IPC errors use `AppError.kind`; frontend code must not branch on message text. Logs and UI
+  messages must redact credentials, hashes, emails, tokens, and file paths.
 - Documentation and comments stay concise and function-oriented: explain why, invariants, error
   cases, or domain rules, not what the code already says.
 - New dependencies must be OSI-approved open source and require regenerated license data.
 - Do not commit secrets, `.env` files, credentials, `dist/`, `target/`, or `node_modules/`.
+- The pull request checklist in [`CONTRIBUTING.md`](CONTRIBUTING.md#pull-request-checklist) is the
+  definition of done for contributors.

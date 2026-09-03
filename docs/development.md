@@ -4,7 +4,7 @@
 
 | Tool | Version | Source |
 | --- | --- | --- |
-| Node.js + npm | 26 | `.github/actions/setup-node/action.yml`, `.github/workflows/release.yml` |
+| Node.js + npm | 26+ | `.github/actions/setup-node/action.yml`, `.github/workflows/release.yml` |
 | Rust + Cargo | 1.95+ stable | `src-tauri/Cargo.toml` (`rust-version`, edition 2021) |
 | Tauri CLI | 2.x | `@tauri-apps/cli` in `package.json`, run through `npm run tauri` |
 | PostgreSQL | 18 | `compose.yaml` and CI service images |

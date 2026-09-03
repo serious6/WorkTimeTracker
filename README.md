@@ -26,7 +26,7 @@ Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and 
 
 ## Getting started
 
-Install Node.js 26 and Rust 1.95 or newer, copy `.env.example` to `.env`, start the bundled
+Install Node.js 26+ and Rust 1.95+, copy `.env.example` to `.env`, start the bundled
 Postgres service, then run `npm run tauri dev` for the desktop application or `npm run dev` for the
 browser-only UI at <http://127.0.0.1:1420>. Commands and prerequisites are in
 [`docs/development.md`](docs/development.md). The contribution workflow is in
