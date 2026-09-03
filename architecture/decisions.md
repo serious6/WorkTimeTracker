@@ -59,8 +59,9 @@ Commands that need a user are generated with `authed_command!`; public commands 
 local compose database; production may use a managed database.
 
 **Decision:** `src-tauri/src/postgres_store.rs` is the native store. The current pre-release baseline
-is `drizzle/0000_init.sql`, registered in `MIGRATIONS`. Production processes verify migrations;
-only the separate migration entry point may apply them.
+is `drizzle/0000_init.sql`, registered in `MIGRATIONS`. Production processes verify migrations.
+Only the separate migration entry point `DbConfig::for_migration` may apply them, and only when
+`WORK_TIME_TRACKER_DB_MIGRATE=true`.
 
 **Consequences:** Schema changes keep `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
 queries, models, and `docs/data-model.md` aligned. A production app start never mutates the shared

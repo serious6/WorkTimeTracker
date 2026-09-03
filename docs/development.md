@@ -29,9 +29,10 @@ podman compose up --build  # browser UI and Postgres in containers
 The development server binds `127.0.0.1`. Use `TAURI_DEV_HOST=<address>` only for physical-device
 testing, because it serves the unauthenticated UI to the network.
 
-`WORK_TIME_TRACKER_ENV` defaults to `development`: `DATABASE_URL` must name `localhost`, another
-loopback address, or the compose host `db`. Production uses a remote database only with
-`sslmode=verify-full` and `SUPABASE_DB_ROOT_CERT`; see [`.env.example`](../.env.example) and
+Leave `WORK_TIME_TRACKER_ENV` unset for development, tests, and CI. It defaults to `development`:
+`DATABASE_URL` must name `localhost`, another loopback address, or the compose host `db`.
+Production uses a remote database only with `sslmode=verify-full` and `SUPABASE_DB_ROOT_CERT`; see
+[`.env.example`](../.env.example) and
 [`architecture/decisions.md`](../architecture/decisions.md#separate-local-development-databases-from-verified-production-databases).
 
 ## Npm scripts
@@ -63,7 +64,6 @@ full set is required:
 ```sh
 npm run lint
 npm run typecheck
-npm test
 npm run test:coverage
 npm run test:e2e
 npm run architecture:check
