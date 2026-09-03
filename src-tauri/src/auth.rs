@@ -26,6 +26,9 @@ pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
 /// Absolute lifetime of a session. Activity does not extend it, so a running
 /// timer cannot keep an unattended machine signed in forever.
 pub const SESSION_MAX_LIFETIME_MINUTES: u64 = 720;
+/// The absolute lifetime only adds to the idle timeout while it outlasts it,
+/// otherwise an idle session would already have ended before its lifetime.
+const _: () = assert!(SESSION_MAX_LIFETIME_MINUTES > SESSION_TIMEOUT_MINUTES);
 /// Failed logins of one email before the account is locked for a while.
 pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
 /// Duration of the lockout that follows the last allowed attempt.
@@ -317,10 +320,6 @@ mod tests {
 
     #[test]
     fn ends_a_continuously_used_session_at_its_absolute_lifetime() {
-        // The absolute lifetime only bites when it outlasts the idle timeout,
-        // otherwise the idle timeout would already have ended every session.
-        assert!(SESSION_MAX_LIFETIME_MINUTES > SESSION_TIMEOUT_MINUTES);
-
         let sessions = Sessions::default();
         let now = Instant::now();
         let id = sessions.start_at(7, now).unwrap();
