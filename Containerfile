@@ -1,16 +1,15 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 # Development container for the browser-only UI, see `compose.yaml`.
 #
-# Base images are pinned by digest so that a rebuild is reproducible and a tag cannot be
-# repointed at different content; Dependabot's `docker` ecosystem raises the updates.
-ARG NODE_IMAGE=docker.io/library/node:26-bookworm-slim@sha256:27f5e13512830beb5d9a574108daa6701a0a0b91528aeaf1ee84ecdcddaeeaae
-ARG RUST_IMAGE=docker.io/library/rust:1.98-bookworm@sha256:4e4a7e7939c17991ab35f2b8c2e67593980f771d28f6b1254b1850f860fd0c7f
+# Base images are pinned by the digest of their multi-architecture index, so a tag cannot be
+# repointed at different content and amd64 and arm64 hosts still build natively. The reference
+# stays in `FROM`, which is the only place Dependabot's `docker` ecosystem discovers it.
 
 # The toolchain is copied from the official Rust image instead of piping https://sh.rustup.rs
 # into a shell, which executes unverified remote code and pins nothing.
-FROM ${RUST_IMAGE} AS rust
+FROM docker.io/library/rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS rust
 
-FROM ${NODE_IMAGE}
+FROM docker.io/library/node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -23,19 +22,22 @@ RUN apt-get update \
     patchelf \
   && rm -rf /var/lib/apt/lists/*
 
+# `CARGO_HOME` is the only writable part of the toolchain and lives in the home directory of
+# `node`; the compiler itself stays outside it.
 ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
+    CARGO_HOME=/home/node/.cargo \
     PATH=/usr/local/cargo/bin:${PATH} \
     NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_FUND=false \
     NPM_CONFIG_UPDATE_NOTIFIER=false
 
-COPY --from=rust --chown=node:node /usr/local/rustup /usr/local/rustup
-COPY --from=rust --chown=node:node /usr/local/cargo /usr/local/cargo
+COPY --from=rust /usr/local/rustup /usr/local/rustup
+COPY --from=rust /usr/local/cargo /usr/local/cargo
 # The Rust image leaves both trees world-writable, which would let any process in the
-# container replace the compiler.
+# container replace the compiler. They stay root-owned and read-only for `node`.
 RUN chmod -R go-w /usr/local/rustup /usr/local/cargo \
-  && install -d -o node -g node /usr/local/cargo/registry /workspace/node_modules /home/node/.local/share
+  && install -d -o node -g node /home/node/.cargo /home/node/.cargo/registry \
+    /workspace/node_modules /home/node/.local/share
 
 WORKDIR /workspace
 RUN chown node:node /workspace

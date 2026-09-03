@@ -25,7 +25,7 @@ services:
       # mount need `--userns=keep-id`; `npm run dev` itself only reads from it.
       - .:/workspace:z
       - node_modules:/workspace/node_modules
-      - cargo_registry:/usr/local/cargo/registry
+      - cargo_registry:/home/node/.cargo/registry
       - cargo_target:/workspace/src-tauri/target
       - app_data:/home/node/.local/share
     depends_on:

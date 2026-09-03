@@ -15,7 +15,7 @@
 
 ```sh
 npm ci
-cp .env.example .env       # set POSTGRES_PASSWORD and DATABASE_URL
+cp .env.example .env       # set POSTGRES_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
 podman compose up -d db    # or: docker compose up -d db
 npm run tauri dev          # desktop application, needs Postgres
 npm run dev                # browser UI on http://localhost:1420, localStorage only

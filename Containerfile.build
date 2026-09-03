@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
-# Reproducible Linux release build of the Tauri desktop application.
+# syntax=docker/dockerfile:1.26@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+# Containerized Linux release build of the Tauri desktop application.
 #
 #   podman build -f Containerfile.build -o type=local,dest=./release .
 #   docker build -f Containerfile.build -o type=local,dest=./release .
@@ -17,16 +17,19 @@
 # GitHub release. Only Linux bundles are built; Windows and macOS installers require their
 # own operating system.
 #
-# Base images are pinned by digest so that a rebuild is reproducible and a tag cannot be
-# repointed at different content; Dependabot's `docker` ecosystem raises the updates.
-ARG NODE_IMAGE=docker.io/library/node:26-bookworm-slim@sha256:27f5e13512830beb5d9a574108daa6701a0a0b91528aeaf1ee84ecdcddaeeaae
-ARG RUST_IMAGE=docker.io/library/rust:1.98-bookworm@sha256:4e4a7e7939c17991ab35f2b8c2e67593980f771d28f6b1254b1850f860fd0c7f
+# The Dockerfile frontend and both base images are pinned by digest, so a tag cannot be
+# repointed at different content. The `apt-get install` below is not snapshot-pinned, so the
+# Debian packages of an uncached rebuild can differ: the build is repeatable and pinned, not
+# bit-for-bit reproducible, and it does not recreate the artifacts of the `Release` workflow.
+# The image digests are those of the multi-architecture index, so amd64 and arm64 hosts both
+# build natively, and they stay in `FROM`, which is the only place Dependabot's `docker`
+# ecosystem discovers them.
 
 # The toolchain is copied from the official Rust image instead of piping https://sh.rustup.rs
 # into a shell, which executes unverified remote code and pins nothing.
-FROM ${RUST_IMAGE} AS rust
+FROM docker.io/library/rust:1.98-bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS rust
 
-FROM ${NODE_IMAGE} AS builder
+FROM docker.io/library/node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS builder
 
 # Comma-separated Tauri bundle targets, for example "deb" or "deb,rpm,appimage".
 ARG TAURI_BUNDLES=deb,rpm,appimage
@@ -53,16 +56,19 @@ RUN apt-get update \
     wget \
   && rm -rf /var/lib/apt/lists/*
 
+# `CARGO_HOME` is the only writable part of the toolchain and lives in the home directory of
+# `node`; the compiler itself stays outside it.
 ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
+    CARGO_HOME=/home/node/.cargo \
     PATH=/usr/local/cargo/bin:${PATH}
 
-COPY --from=rust --chown=node:node /usr/local/rustup /usr/local/rustup
-COPY --from=rust --chown=node:node /usr/local/cargo /usr/local/cargo
+COPY --from=rust /usr/local/rustup /usr/local/rustup
+COPY --from=rust /usr/local/cargo /usr/local/cargo
 # The Rust image leaves both trees world-writable, which would let any build step replace the
-# compiler for the steps that follow.
+# compiler for the steps that follow. They stay root-owned and read-only for `node`.
 RUN chmod -R go-w /usr/local/rustup /usr/local/cargo \
-  && install -d -o node -g node /usr/local/cargo/registry /workspace /artifacts
+  && install -d -o node -g node /home/node/.cargo /home/node/.cargo/registry \
+    /workspace /artifacts
 
 WORKDIR /workspace
 # The build itself compiles untrusted third-party code (npm packages and crates) and must not
