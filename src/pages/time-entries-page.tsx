@@ -16,22 +16,15 @@ import { formatDay, formatDuration } from '@/lib/date'
 
 export function TimeEntriesPage() {
   const projectFilter = useNavigationStore((state) => state.projectFilter)
+  const setProjectFilter = useNavigationStore((state) => state.setProjectFilter)
   const dateFilter = useNavigationStore((state) => state.dateFilter)
   const { data: entries = [] } = useTimeEntries()
   const { data: projects = [] } = useProjects()
   const now = useTicker(true)
   const timer = useTimer(now)
-  const [filterState, setFilterState] = useState({
-    projectFilter,
-    value: projectFilter ? `${projectFilter}` : '',
-  })
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  if (filterState.projectFilter !== projectFilter) {
-    setFilterState({ projectFilter, value: projectFilter ? `${projectFilter}` : '' })
-  }
-
-  const filter = filterState.value
+  const filter = projectFilter ? `${projectFilter}` : ''
 
   const days = useMemo(() => {
     const projectEntries = filter
@@ -62,7 +55,7 @@ export function TimeEntriesPage() {
             aria-label="Filter by project"
             className="w-48"
             onChange={(event) =>
-              setFilterState({ projectFilter: null, value: event.target.value })
+              setProjectFilter(event.target.value ? Number(event.target.value) : null)
             }
             value={filter}
           >

@@ -34,10 +34,18 @@ test('W2: quick add updates day delta, week progress and month overview metrics'
   await page.getByRole('button', { name: 'Add' }).first().click()
 
   await expect(page.getByText('Tracked this week')).toBeVisible()
-  await expect(page.getByText('2h 00m', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText(/[+-]\d+h \d\dm vs target/).first()).toBeVisible()
+  await expect(
+    page.getByText('Tracked this week').locator('xpath=following-sibling::p[1]'),
+  ).toHaveText('2h 00m')
+  await expect(page.getByText(/Full week vs target .+: [+-]\d+h \d\dm/)).toBeVisible()
   await expect(page.getByRole('progressbar', { name: 'Week progress' })).toBeVisible()
 
+  // The month card follows the month of the selected week's start, so a week that starts in the
+  // previous month shows that month instead of the one the entries were booked in.
+  const monthTitle = (await page.getByText(/– month to date$/).textContent()) ?? ''
+  const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   await expect(page.getByText('Tracked month-to-date')).toBeVisible()
-  await expect(page.getByText('2h 00m', { exact: true }).first()).toBeVisible()
+  await expect(
+    page.getByText('Tracked month-to-date').locator('xpath=following-sibling::p[1]'),
+  ).toHaveText(monthTitle.startsWith(currentMonth) ? '2h 00m' : '0h 00m')
 })

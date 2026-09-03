@@ -45,7 +45,12 @@ test('P2: deleted project entries stay usable and project links open filtered en
   await gotoPage(page, 'Projects')
   await page.getByRole('button', { name: 'Cleanup Project', exact: true }).first().click()
   await expectHeading(page, 'Time Entries')
-  await expect(page.getByText(/Cleanup Project, .*8:00 AM/)).toBeVisible()
+  await expect(
+    page
+      .locator('li')
+      .filter({ hasText: 'Cleanup Project' })
+      .getByText('8:00 AM – 9:00 AM', { exact: true }),
+  ).toBeVisible()
   await expect(page.getByText('Total: 1h 00m')).toBeVisible()
 
   await gotoPage(page, 'Projects')

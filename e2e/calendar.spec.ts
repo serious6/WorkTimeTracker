@@ -30,5 +30,10 @@ test('C1: calendar shows six-week grid, tracked/absence days and opens the filte
   await expectHeading(page, 'Time Entries')
   await expect(page.getByText('Tracked time for')).toBeVisible()
   await expect(page.getByText('Total: 1h 00m')).toBeVisible()
-  await expect(page.getByText(/Calendar Project, .*9:00 AM/)).toBeVisible()
+  await expect(
+    page
+      .locator('li')
+      .filter({ hasText: 'Calendar Project' })
+      .getByText('9:00 AM – 10:00 AM', { exact: true }),
+  ).toBeVisible()
 })
