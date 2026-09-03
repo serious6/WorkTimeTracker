@@ -8,7 +8,7 @@
 | Rust + Cargo | 1.95+ stable | `src-tauri/Cargo.toml` (`rust-version`, edition 2021) |
 | Tauri CLI | 2.x | `@tauri-apps/cli` in `package.json`, run through `npm run tauri` |
 | PostgreSQL | 18 | `compose.yaml` and CI service images |
-| Podman or Docker + Compose | current stable | local Postgres service |
+| Podman or Docker + Compose | current stable | `compose.yaml` local services |
 
 Native builds also need the platform prerequisites from the
 [Tauri guide](https://v2.tauri.app/start/prerequisites/): MSVC Build Tools and WebView2 on Windows,

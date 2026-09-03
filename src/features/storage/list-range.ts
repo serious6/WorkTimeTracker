@@ -1,6 +1,9 @@
 import { AppError } from '@/lib/errors'
 
-/** Window of a list query, bounded by ISO dates or timestamps and an optional limit. */
+/**
+ * Window of a list query: `from` is inclusive, `to` is exclusive, and a missing
+ * limit still falls back to {@link DEFAULT_LIST_LIMIT}.
+ */
 export type ListRange = {
   from?: string
   to?: string
