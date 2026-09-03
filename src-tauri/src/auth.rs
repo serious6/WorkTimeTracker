@@ -46,6 +46,9 @@ fn minutes(value: u64) -> Duration {
 
 struct ActiveSession {
     user_id: i64,
+    /// Label of the webview the session was started from. The id alone is a
+    /// bearer token, so it is only accepted from that webview again.
+    window: String,
     last_seen: Instant,
 }
 
@@ -78,17 +81,21 @@ impl From<String> for SessionId {
 
 /// The signed in sessions of the running application, keyed by their id. They
 /// are only kept in memory, so a restart always returns to the login page, and
-/// two windows can hold two different identities instead of sharing one.
+/// two windows can hold two different identities instead of sharing one. Each
+/// session also remembers the webview it was started from, so a leaked id
+/// cannot be replayed from another window of the same process.
 #[derive(Default)]
 pub struct Sessions(Mutex<HashMap<SessionId, ActiveSession>>);
 
 impl Sessions {
-    /// Resolves a session id to its user and extends the session.
-    pub fn user_id(&self, id: &SessionId) -> AppResult<Option<i64>> {
-        self.user_id_at(id, Instant::now())
+    /// Resolves a session id to its user and extends the session. An id that
+    /// reaches the backend from another webview than the one it was issued to
+    /// resolves to nothing, exactly like an unknown id.
+    pub fn user_id(&self, id: &SessionId, window: &str) -> AppResult<Option<i64>> {
+        self.user_id_at(id, window, Instant::now())
     }
 
-    fn user_id_at(&self, id: &SessionId, now: Instant) -> AppResult<Option<i64>> {
+    fn user_id_at(&self, id: &SessionId, window: &str, now: Instant) -> AppResult<Option<i64>> {
         let mut sessions = self.0.lock()?;
         // An idle session ends; expired sessions never pile up in the map.
         sessions.retain(|_, session| {
@@ -97,31 +104,45 @@ impl Sessions {
         let Some(active) = sessions.get_mut(id) else {
             return Ok(None);
         };
+        // A rejected window must not keep the session of another window alive
+        // either, so the timeout is only extended for the owning webview.
+        if active.window != window {
+            return Ok(None);
+        }
         active.last_seen = now;
         Ok(Some(active.user_id))
     }
 
-    /// Starts a session and returns its id. The caller hands the id back with
-    /// every following command.
-    pub fn start(&self, user_id: i64) -> AppResult<SessionId> {
-        self.start_at(user_id, Instant::now())
+    /// Starts a session for the given webview and returns its id. The caller
+    /// hands the id back with every following command.
+    pub fn start(&self, user_id: i64, window: &str) -> AppResult<SessionId> {
+        self.start_at(user_id, window, Instant::now())
     }
 
-    fn start_at(&self, user_id: i64, now: Instant) -> AppResult<SessionId> {
+    fn start_at(&self, user_id: i64, window: &str, now: Instant) -> AppResult<SessionId> {
         let id = SessionId::generate();
         self.0.lock()?.insert(
             id.clone(),
             ActiveSession {
                 user_id,
+                window: window.to_owned(),
                 last_seen: now,
             },
         );
         Ok(id)
     }
 
-    /// Ends one session; the other sessions of the process stay signed in.
-    pub fn end(&self, id: &SessionId) -> AppResult<()> {
-        self.0.lock()?.remove(id);
+    /// Ends one session; the other sessions of the process stay signed in. Only
+    /// the webview that owns the session can end it, so a leaked id cannot sign
+    /// another window out either.
+    pub fn end(&self, id: &SessionId, window: &str) -> AppResult<()> {
+        let mut sessions = self.0.lock()?;
+        if sessions
+            .get(id)
+            .is_some_and(|session| session.window == window)
+        {
+            sessions.remove(id);
+        }
         Ok(())
     }
 }
@@ -276,13 +297,13 @@ mod tests {
     fn keeps_a_used_session_alive() {
         let sessions = Sessions::default();
         let now = Instant::now();
-        let id = sessions.start_at(7, now).unwrap();
+        let id = sessions.start_at(7, "main", now).unwrap();
         let later = now + minutes(SESSION_TIMEOUT_MINUTES) - Duration::from_secs(1);
 
-        assert_eq!(sessions.user_id_at(&id, later).unwrap(), Some(7));
+        assert_eq!(sessions.user_id_at(&id, "main", later).unwrap(), Some(7));
         assert_eq!(
             sessions
-                .user_id_at(&id, later + minutes(SESSION_TIMEOUT_MINUTES / 2))
+                .user_id_at(&id, "main", later + minutes(SESSION_TIMEOUT_MINUTES / 2))
                 .unwrap(),
             Some(7)
         );
@@ -292,42 +313,80 @@ mod tests {
     fn ends_an_idle_session() {
         let sessions = Sessions::default();
         let now = Instant::now();
-        let id = sessions.start_at(7, now).unwrap();
+        let id = sessions.start_at(7, "main", now).unwrap();
 
         assert_eq!(
             sessions
-                .user_id_at(&id, now + minutes(SESSION_TIMEOUT_MINUTES))
+                .user_id_at(&id, "main", now + minutes(SESSION_TIMEOUT_MINUTES))
                 .unwrap(),
             None
         );
-        assert_eq!(sessions.user_id(&id).unwrap(), None);
+        assert_eq!(sessions.user_id(&id, "main").unwrap(), None);
     }
 
     #[test]
     fn gives_every_session_its_own_identity() {
         let sessions = Sessions::default();
         let now = Instant::now();
-        let first = sessions.start_at(7, now).unwrap();
-        let second = sessions.start_at(9, now).unwrap();
+        let first = sessions.start_at(7, "main", now).unwrap();
+        let second = sessions.start_at(9, "second", now).unwrap();
 
         assert_ne!(first, second);
-        assert_eq!(sessions.user_id_at(&first, now).unwrap(), Some(7));
-        assert_eq!(sessions.user_id_at(&second, now).unwrap(), Some(9));
+        assert_eq!(sessions.user_id_at(&first, "main", now).unwrap(), Some(7));
+        assert_eq!(
+            sessions.user_id_at(&second, "second", now).unwrap(),
+            Some(9)
+        );
 
-        sessions.end(&first).unwrap();
+        sessions.end(&first, "main").unwrap();
 
-        assert_eq!(sessions.user_id_at(&first, now).unwrap(), None);
-        assert_eq!(sessions.user_id_at(&second, now).unwrap(), Some(9));
+        assert_eq!(sessions.user_id_at(&first, "main", now).unwrap(), None);
+        assert_eq!(
+            sessions.user_id_at(&second, "second", now).unwrap(),
+            Some(9)
+        );
+    }
+
+    #[test]
+    fn rejects_a_session_replayed_from_another_window() {
+        let sessions = Sessions::default();
+        let now = Instant::now();
+        let id = sessions.start_at(7, "main", now).unwrap();
+        let expiry = now + minutes(SESSION_TIMEOUT_MINUTES);
+
+        // The session of the owning window stays untouched by the replay ...
+        assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), Some(7));
+        assert_eq!(
+            sessions
+                .user_id_at(&id, "second", expiry - Duration::from_secs(1))
+                .unwrap(),
+            None
+        );
+        // ... and the replay does not keep it alive past its original timeout.
+        assert_eq!(sessions.user_id_at(&id, "main", expiry).unwrap(), None);
+    }
+
+    #[test]
+    fn ends_a_session_only_from_its_own_window() {
+        let sessions = Sessions::default();
+        let now = Instant::now();
+        let id = sessions.start_at(7, "main", now).unwrap();
+
+        sessions.end(&id, "second").unwrap();
+
+        assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), Some(7));
+        sessions.end(&id, "main").unwrap();
+        assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), None);
     }
 
     #[test]
     fn rejects_an_unknown_session_id() {
         let sessions = Sessions::default();
-        sessions.start(7).unwrap();
+        sessions.start(7, "main").unwrap();
 
         assert_eq!(
             sessions
-                .user_id(&SessionId::from("not-a-session".to_owned()))
+                .user_id(&SessionId::from("not-a-session".to_owned()), "main")
                 .unwrap(),
             None
         );
