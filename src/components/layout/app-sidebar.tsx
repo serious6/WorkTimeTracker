@@ -58,6 +58,7 @@ const groups: {
 
 export function AppSidebar() {
   const view = useNavigationStore((state) => state.view)
+  const projectFilter = useNavigationStore((state) => state.projectFilter)
   const navigate = useNavigationStore((state) => state.navigate)
   const sidebarExpanded = useNavigationStore((state) => state.sidebarExpanded)
   const toggleSidebar = useNavigationStore((state) => state.toggleSidebar)
@@ -123,7 +124,14 @@ export function AppSidebar() {
                       sidebarExpanded ? 'justify-start px-3' : 'justify-center px-0',
                       view === item.view && 'bg-primary/15 text-primary',
                     )}
-                    onClick={() => navigate(item.view)}
+                    onClick={() =>
+                      navigate(
+                        item.view,
+                        item.view === 'reports' && projectFilter
+                          ? { projectFilter }
+                          : undefined,
+                      )
+                    }
                     variant="ghost"
                   >
                     <item.icon aria-hidden className="size-4 shrink-0" />

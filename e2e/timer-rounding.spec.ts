@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createProject, dialog, register, trackingCard } from './helpers'
+import { createProject, dialog, downloadText, register, trackingCard } from './helpers'
 
 const PROJECT = 'Website Redesign'
 const OTHER_PROJECT = 'Mobile App'
@@ -40,20 +40,6 @@ async function addProject(page: Page, name: string) {
 async function stopTimer(page: Page) {
   await page.getByRole('button', { name: 'Stop timer' }).click()
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
-}
-
-/** Clicks an export button and returns the generated file as text. */
-async function downloadText(page: Page, button: string) {
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    page.getByRole('button', { name: button }).click(),
-  ])
-  const stream = await download.createReadStream()
-  const chunks: Buffer[] = []
-  for await (const chunk of stream) {
-    chunks.push(chunk as Buffer)
-  }
-  return Buffer.concat(chunks).toString('latin1')
 }
 
 /**
