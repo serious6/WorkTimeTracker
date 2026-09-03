@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 
 export const PROJECT_COLORS = [
   '#22c55e',

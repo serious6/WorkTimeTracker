@@ -81,6 +81,11 @@ podman compose up -d db         # or: docker compose up -d db
 The browser-only UI needs Node.js alone; it stores its data in `localStorage` and is what the
 Playwright suite runs against.
 
+The dev server binds `127.0.0.1` (`resolveDevServerHost` in `vite.config.ts`), so it is not
+reachable from the network. Only testing on a physical device justifies the opt-in
+`TAURI_DEV_HOST=<address>`, which the Tauri CLI also sets for `tauri android dev --host`: the
+unauthenticated UI is then served to the whole network.
+
 ## Common commands
 
 | Purpose | Command |
@@ -154,7 +159,8 @@ The summary is lower case, imperative and without a trailing period.
 ## Code style
 
 - **TypeScript**: strict mode; no `any` and no non-null assertion to silence the compiler. Validate
-  external data with Zod schemas from the feature slice. `npm run lint` (oxlint) and
+  external data with Zod schemas from the feature slice, and import Zod from `@/lib/zod`, which
+  configures it for the Content Security Policy of the webview. `npm run lint` (oxlint) and
   `npm run typecheck` must be clean.
 - **React**: function components, feature slices under `src/features/<name>/`, state in Zustand
   stores, server state through TanStack Query. Reuse the kit in `src/components/ui/` and the tokens
@@ -190,7 +196,7 @@ remote host, only with `sslmode=verify-full` and the certificate authority pinne
 verifies the migrations instead of applying them: `WORK_TIME_TRACKER_DB_MIGRATE=true` authorizes
 the separate migration step of the release workflow (`DbConfig::for_migration`) alone, never an
 application process. There is no switch that weakens the verification, no host or credential belongs in the repository, and every message naming
-a connection string goes through `config::redact_database_url` first. See decision 12 in
+a connection string goes through `config::redact_database_url` first. See decision 14 in
 [`architecture/decisions.md`](architecture/decisions.md).
 
 The complete IPC command inventory is the `invoke_handler` list in `src-tauri/src/lib.rs`,
@@ -200,6 +206,12 @@ directly: it goes through the `Repository` type in `src/features/storage/`, whic
 therefore needs the Rust command, its registration, the `Repository` method and both
 implementations. Infrastructure commands are the exception: `src/lib/logger.ts` invokes
 `log_client_error` directly and falls back to the console in the browser.
+
+Every authed command carries the id of its session. That id is a bearer token, so
+`tauri-repository.ts` holds it in a module variable and writes it to no storage a page script can
+read — not `sessionStorage`, `localStorage` or a cookie. A reload of the webview therefore drops
+the session and returns to the login page instead of resuming it; the abandoned backend session
+ends with its idle timeout.
 
 ## Release and versioning
 

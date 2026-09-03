@@ -21,9 +21,15 @@ npm ci
 cp .env.example .env       # set POSTGRES_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
 podman compose up -d db    # or: docker compose up -d db
 npm run tauri dev          # desktop application, needs Postgres
-npm run dev                # browser UI on http://localhost:1420, localStorage only
+npm run dev                # browser UI on http://127.0.0.1:1420, localStorage only
 podman compose up --build  # browser UI and Postgres in containers
 ```
+
+The dev server binds `127.0.0.1` and is therefore not reachable from the network. Testing on a
+physical device is the only reason to change that: `TAURI_DEV_HOST=<address> npm run dev` — or
+`npm run tauri android dev -- --host`, which sets the same variable — binds the dev server to that
+address instead. It then serves the unauthenticated UI and the source maps to everyone on the
+network, so use it only on a network you trust and stop the server afterwards.
 
 `DATABASE_URL` must point at `localhost`, another loopback address, or the compose hostname `db`.
 `podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
