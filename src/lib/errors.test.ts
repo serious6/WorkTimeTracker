@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import { AppError, errorMessage, isErrorKind, toAppError } from './errors'
 
 describe('structured errors', () => {

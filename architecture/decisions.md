@@ -46,9 +46,13 @@ restart always returns to the login page. `login` and `register` start a session
 opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
 map keyed by that id, and every command names the session it acts for instead of reading one ambient
 process-global session, so two windows can hold two identities and a session is distinguishable in
-an audit. Expired sessions are dropped whenever the map is read, so it stays bounded. The frontend
-keeps the id in `sessionStorage` of the webview: reloading the window keeps the session, restarting
-the application starts at the login page because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
+an audit. Expired sessions are dropped whenever the map is read, so it stays bounded. The id is a
+bearer token for the whole command surface, so the frontend keeps it in a module variable of
+`src/features/storage/tauri-repository.ts` and in no storage a page script can reach — neither
+`sessionStorage` nor `localStorage` nor a cookie — where an injected script or an open devtools
+console could read and replay it. Reloading the window therefore returns to the login page as well;
+the abandoned backend session ends with its idle timeout, and restarting the application starts
+there because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
 failed logins. The limits are part of the contract file, so both sides stay equal.
 
 The native counters live in the `login_attempts` table, not in the process: restarting the
@@ -173,7 +177,44 @@ path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, a
 
 This makes a fresh installation reproducible without retaining pre-release migration history.
 
-## 12. The web inspector belongs to a debug build only
+## 12. The dev server is loopback only, LAN access is an opt-in
+
+The dev server used to start with `--host 0.0.0.0` from `beforeDevCommand`, which offered the
+unauthenticated UI and the source maps to every host on the network for the whole development
+session. `vite.config.ts` now resolves the bind address in `resolveDevServerHost` and defaults to
+`127.0.0.1`.
+
+Testing on a physical device is the one case that needs more, and it uses the variable the Tauri CLI
+already sets for `tauri android dev --host`: `TAURI_DEV_HOST=<address>` binds the dev server to that
+address. Nothing else in the repository binds a wildcard address, apart from the container image,
+whose port `compose.yaml` publishes on `127.0.0.1` only.
+
+## 13. The webview executes no inline code
+
+`app.security.csp` in `src-tauri/tauri.conf.json` names every directive it relies on instead of
+falling back to `default-src`, and it grants neither `'unsafe-inline'` nor `'unsafe-eval'`:
+scripts and stylesheets come from the bundle (`'self'`), plugins are refused (`object-src 'none'`),
+the document base cannot be rewritten (`base-uri 'self'`), no form may leave the application
+(`form-action 'none'`) and nothing may embed it (`frame-ancestors 'none'`). `connect-src` stays
+limited to the IPC channel, so an injected script has no channel to exfiltrate a session id.
+`dangerousDisableAssetCspModification` stays unset, so Tauri adds the nonces of its own injected
+script on top.
+
+The application needs no inline style: React writes the dynamic project colors and progress widths
+through the CSSOM (`element.style`), which the policy does not gate, and Vite links the compiled
+stylesheet as a file. Zod is the one dependency that wants `eval`: it compiles an object schema with
+`new Function` when the environment allows it and probes for that capability with a `new Function`
+that it catches, which the policy still reports as a violation. `src/lib/zod.ts` therefore configures
+`jitless` once and re-exports `z`; every schema imports Zod from there, so the configuration is
+applied before the first schema is constructed, and `no-restricted-imports` in `.oxlintrc.json`
+keeps a direct `zod` import from slipping back in.
+
+`e2e/security-csp.spec.ts` reads the policy from the Tauri configuration, serves the production
+bundle with it and fails on any `securitypolicyviolation`, so a change that needs inline code is
+noticed in CI instead of in the packaged application. The policy is not applied by the dev server:
+`tauri dev` loads `devUrl` directly, where Vite injects its stylesheets and its HMR client inline.
+
+## 14. The web inspector belongs to a debug build only
 
 An open web inspector reads the running application: the session id in `sessionStorage`, the
 arguments and answers of every IPC command, and the data of the signed in account. A shipped build
@@ -196,11 +237,10 @@ without a condition that governs the call. That scan reads the `cfg` attribute o
 statement, the attributes of the enclosing items and blocks and a `cfg!` around the block, and it
 evaluates the predicate with `debug_assertions` off and every other flag on, so
 `any(debug_assertions, windows)` and `not(debug_assertions)` count as no guard at all. Comments and
-string literals are stripped before the scan.
-`a_guard_that_governs_the_call_is_accepted` and `a_guard_that_governs_nothing_is_rejected` pin that
-behaviour on fixtures. What the tests cannot see is a
-`debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS` or a
-`.cargo/config.toml`; the release workflow sets neither.
+string literals are stripped before the scan. `a_guard_that_governs_the_call_is_accepted` and
+`a_guard_that_governs_nothing_is_rejected` pin that behaviour on fixtures. What the tests cannot see
+is a `debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS`
+or a `.cargo/config.toml`; the release workflow sets neither.
 
 The window in `tauri.conf.json` names no `devtools` field on purpose. `false` would remove the
 inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has
