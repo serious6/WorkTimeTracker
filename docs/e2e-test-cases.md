@@ -146,7 +146,7 @@ webview enforces.
 | #  | Test (`e2e/persistence.spec.ts`) | Given | When | Then |
 |----|----------------------------------|-------|------|------|
 | X1 | `X1: project, entries, absence and settings persist across reload while staying signed in` | A user created project/time/absence/settings data | The user reloads | Data remains available and the user stays signed in |
-| X2 | `X2: absences, overtime, budgets and settings stay isolated per user` | User A created absences/overtime/budgets/settings | User B signs in, then the test switches back to user A | User B cannot see user A data; user A still sees own data |
+| X2 | `X2: absences, overtime, budgets and settings stay isolated per user` | User A created a project, absences, overtime, budgets and settings | User B signs in, creates and deletes an own project that carries the same record id, then the test switches back to user A | User B cannot see user A data, and the delete of user B leaves the records of user A untouched |
 | X3 | `X3: pausing and resuming from the entry list continues the running timer` | A running timer exists | The user pauses and resumes from Time Entries list controls | The running timer continues and is visible again on Dashboard |
 | X4 | `X4: monthly exports include tracked rows in CSV and PDF` | A monthly tracked entry exists | The user exports monthly record from Working Time | CSV and PDF exports contain the expected tracked duration row |
 | X5 | `X5: empty-state pages stay stable and switch to first values after data creation` | Calendar/Week/Budgets/Absences/Overtime/Reports have no data | The user visits each page, then creates first values and revisits | Empty states render without crashes and each page shows first-value content afterwards |

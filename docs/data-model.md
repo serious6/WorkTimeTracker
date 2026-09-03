@@ -447,9 +447,13 @@ Validation, overlap detection, and the security limits are defined once in
 `contract/domain-rules.json` and asserted by `src-tauri/src/contract.rs` and
 `src/features/storage/domain-rules.contract.test.ts`.
 
-- User-owned CRUD queries are filtered by the signed-in user, entities of other users stay
-  invisible; account lookup/count queries and the `app_metadata` write of the migration step are
-  intentionally not user-scoped.
+- User-owned CRUD queries are filtered by the signed-in user in SQL (`AND user_id = $n`), and a
+  write that names a project checks that the project belongs to the caller. A read, an update and a
+  delete of a record of another account answer `notFound`, like an unknown id, and a delete that
+  matches no row answers `notFound` instead of reporting success. Only the account lookups of a sign
+  in, the lockout counters, the `auth` records of `security_audits` and the installation metadata
+  (`app_metadata`, `schema_migrations`) are intentionally not user-scoped; the module documentation
+  of `src-tauri/src/postgres_store.rs` names them with the reason each is safe.
 - Time entries of one user must not overlap. A running entry (`end_time IS NULL`) counts as open
   ended, and switching projects reuses one timestamp so that no gap or overlap appears.
 - `end_time`, when present, must be strictly later than `start_time`.

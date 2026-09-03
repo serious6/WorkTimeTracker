@@ -196,7 +196,7 @@ remote host, only with `sslmode=verify-full` and the certificate authority pinne
 verifies the migrations instead of applying them: `WORK_TIME_TRACKER_DB_MIGRATE=true` authorizes
 the separate migration step of the release workflow (`DbConfig::for_migration`) alone, never an
 application process. There is no switch that weakens the verification, no host or credential belongs in the repository, and every message naming
-a connection string goes through `config::redact_database_url` first. See decision 15 in
+a connection string goes through `config::redact_database_url` first. See decision 16 in
 [`architecture/decisions.md`](architecture/decisions.md).
 
 The complete IPC command inventory is the `invoke_handler` list in `src-tauri/src/lib.rs`,

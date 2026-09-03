@@ -701,6 +701,7 @@ const fallbackRepository: Repository = {
   deleteProject: async (id) => {
     const projects = readProjects()
     const deleted = projects.find((project) => project.id === id)
+    if (!deleted) throw new AppError('notFound', 'Project not found')
     const budgets = readBudgets()
     // Deleting a project deletes the budget attached to it, which is a
     // configuration deletion of its own and is recorded as one.
@@ -857,9 +858,10 @@ const fallbackRepository: Repository = {
   deleteTimeEntry: async (id) => {
     const { entries, audits } = readEntryState()
     const current = entries.find((entry) => entry.id === id)
+    if (!current) throw new AppError('notFound', 'Time entry not found')
     writeEntryState(
       entries.filter((entry) => entry.id !== id),
-      current ? appendAudit(audits, id, 'deleted', current, null) : audits,
+      appendAudit(audits, id, 'deleted', current, null),
     )
   },
   listTimeEntryAudits: async (range) => {
@@ -953,6 +955,7 @@ const fallbackRepository: Repository = {
   deleteProjectBudget: async (id) => {
     const budgets = readBudgets()
     const deleted = budgets.find((budget) => budget.id === id)
+    if (!deleted) throw new AppError('notFound', 'Budget not found')
     const userId = requireUserId()
     const actor = currentActor()
     atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
@@ -960,17 +963,15 @@ const fallbackRepository: Repository = {
         scopedKey('project-budgets'),
         budgets.filter((budget) => budget.id !== id),
       )
-      if (deleted) {
-        appendSecurityAudit(
-          userId,
-          actor,
-          'budget',
-          id,
-          'budget.deleted',
-          budgetPayload(deleted),
-          null,
-        )
-      }
+      appendSecurityAudit(
+        userId,
+        actor,
+        'budget',
+        id,
+        'budget.deleted',
+        budgetPayload(deleted),
+        null,
+      )
     })
   },
   listAbsences: async (range) => {
@@ -1061,9 +1062,10 @@ const fallbackRepository: Repository = {
   deleteAbsence: async (id) => {
     const { absences, audits } = readAbsenceState()
     const current = absences.find((absence) => absence.id === id) ?? null
+    if (!current) throw new AppError('notFound', 'Absence not found')
     writeAbsenceState(
       absences.filter((absence) => absence.id !== id),
-      current ? appendAbsenceAudit(audits, id, 'deleted', current, null) : audits,
+      appendAbsenceAudit(audits, id, 'deleted', current, null),
     )
   },
   listAbsenceAudits: async (range) => {
@@ -1134,9 +1136,10 @@ const fallbackRepository: Repository = {
   deleteOvertimeEntry: async (id) => {
     const { entries, audits } = readOvertimeState()
     const current = entries.find((entry) => entry.id === id) ?? null
+    if (!current) throw new AppError('notFound', 'Overtime record not found')
     writeOvertimeState(
       entries.filter((entry) => entry.id !== id),
-      current ? appendOvertimeAudit(audits, id, 'deleted', current, null) : audits,
+      appendOvertimeAudit(audits, id, 'deleted', current, null),
     )
   },
   listOvertimeAudits: async (range) => {
