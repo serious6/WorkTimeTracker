@@ -82,7 +82,7 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 
 ## Project layout
 
-See [`AGENTS.md`](AGENTS.md#repository-layout) for the maintained repository map.
+See [`docs/development.md`](docs/development.md#repository-layout) for the maintained repository map.
 
 ## Application icon
 

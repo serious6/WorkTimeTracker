@@ -78,6 +78,19 @@ Run `npx playwright install --with-deps chromium` before the first e2e run in a 
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
 
+## Repository layout
+
+```text
+architecture/       LikeC4 model and architecture decisions
+contract/           Shared domain and entity contracts
+docs/               Development guide, data model, e2e cases, and UI docs
+drizzle/            Postgres migration baseline
+e2e/                Playwright specs and helpers
+scripts/            Repository tooling
+src/                React app: app, components, db, features, lib, pages, test
+src-tauri/src/      Rust backend: auth, commands, config, connection, contract, models, store
+```
+
 ## Release checks
 
 The manual `Release` workflow verifies that `package.json`, `src-tauri/Cargo.toml`, and

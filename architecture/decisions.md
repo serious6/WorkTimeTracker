@@ -139,3 +139,16 @@ connection values from the protected `production` environment.
 **Consequences:** Test helpers refuse to create or drop databases outside development/local hosts.
 Remote connection strings are redacted before logging. Production database credentials never belong
 in the repository or CI jobs outside the protected migration step.
+
+## Accept the current transitive glib advisory until Tauri upgrades
+
+**Status:** accepted
+
+**Context:** Linux builds currently pull `glib` 0.18.5 through Tauri's GTK/WebKit stack. That version
+is affected by RUSTSEC-2024-0429 in `VariantStrIter`.
+
+**Decision:** Accept the advisory while no compatible Tauri/GTK stack upgrade is available. The
+affected iterator is not used by this repository, and Windows and macOS builds do not link `glib`.
+
+**Consequences:** Re-evaluate this exception when Tauri's Linux backend depends on `glib` 0.20 or
+newer, then take the upgrade through the regular cargo dependency update path.
