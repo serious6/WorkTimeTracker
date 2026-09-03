@@ -48,6 +48,8 @@ Rust tests that need a database skip without a reachable `DATABASE_URL`; `REQUIR
 
 ## Linux release bundles
 
+Linux bundles are local, unsupported builds and are not published as release assets.
+
 ```sh
 podman build -f Containerfile.build -o type=local,dest=./release .
 # or, when the client rejects --output (Podman on Windows and macOS):
