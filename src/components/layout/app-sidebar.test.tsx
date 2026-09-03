@@ -72,6 +72,29 @@ describe('AppSidebar', () => {
     expect(label.className).not.toContain('hidden')
   })
 
+  test('left-aligns the nav items on one icon column when expanded', () => {
+    renderWithProviders(<AppSidebar />)
+    for (const label of ['Dashboard', 'Time Management', 'Settings']) {
+      const item = screen.getByRole('button', { name: label })
+      expect(item.className).toContain('justify-start')
+      expect(item.className).not.toContain('justify-center')
+      expect(item.className).toContain('px-3')
+      expect(item.className).toContain('min-h-10')
+      expect(item.querySelector('svg')?.getAttribute('class')).toContain('shrink-0')
+    }
+  })
+
+  test('centres the nav icons in the collapsed rail', () => {
+    useNavigationStore.setState({ sidebarExpanded: false })
+    renderWithProviders(<AppSidebar />)
+    for (const label of ['Dashboard', 'Time Management', 'Settings']) {
+      const item = screen.getByRole('button', { name: label })
+      expect(item.className).toContain('justify-center')
+      expect(item.className).not.toContain('justify-start')
+      expect(item.className).toContain('min-h-10')
+    }
+  })
+
   test('persists a user-selected collapsed rail', () => {
     renderWithProviders(<AppSidebar />)
     fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }))

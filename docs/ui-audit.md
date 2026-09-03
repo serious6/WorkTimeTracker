@@ -203,6 +203,10 @@ login and registration forms, and the Settings work-schedule fields.
 - Keyboard: a visible-on-focus "Skip to main content" link is the first app control and moves focus
   to the focusable main landmark.
 - Fitts's Law: nav items and the rail control keep a 40 px minimum height.
+- Alignment: expanded nav items are `justify-start` with a fixed-width icon slot, so every icon shares
+  one vertical axis and every label starts at the same x position, independent of label length; the
+  group headings use the same `px-3` as the items. The collapsed rail switches to `justify-center`
+  so the icons stay centred in the rail.
 - Serial Position Effect: Dashboard and Time Entries open the Track group, while Settings keeps the
   final position where users expect it (Jakob's Law).
 - Header: the account menu trigger is icon-only but labelled `Account menu`; logout is marked
