@@ -2,10 +2,11 @@
 
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
-(`calendar`, `week`, `projects`, `absences`, `overtime`, `reports-settings`, `licenses`,
-`persistence`) covers one use case as a complete click path. The marker in the first column is
-repeated as a comment above the matching test (`#<number>`, `E<number>`, `C<number>`, `W<number>`,
-`P<number>`, `A<number>`, `O<number>`, `R<number>`, `S<number>`, `L<number>`, `X<number>`), so a
+(`calendar`, `week`, `projects`, `absences`, `overtime`, `audit-trails`, `reports-settings`,
+`licenses`, `persistence`) covers one use case as a complete click path. The marker in the first
+column is repeated as a comment above the matching test (`#<number>`, `E<number>`, `C<number>`,
+`W<number>`, `P<number>`, `A<number>`, `O<number>`, `AT<number>`, `R<number>`, `S<number>`,
+`L<number>`, `X<number>`), so a
 test and its specification can always be matched in both directions.
 
 Run the suite with `npm run test:e2e`. Every test starts from the shared `test.beforeEach` setup,
@@ -97,6 +98,19 @@ timer on it.
 | #  | Test (`e2e/overtime.spec.ts`) | Given | When | Then |
 |----|-------------------------------|-------|------|------|
 | O1 | `O1: overtime origin filter, audit trail and cross-page balance stay consistent` | Automatic overtime is neutral and an explicit overtime record is added | The user filters by origin, edits the record, checks dashboard/reports balance, then deletes it | Origin filter narrows records, audit trail shows create/update/delete, and cumulative balance matches across pages |
+
+## Audit Trails
+
+| #   | Test (`e2e/audit-trails.spec.ts`) | Given | When | Then |
+|-----|-----------------------------------|-------|------|------|
+| AT1 | `AT1: Audit group opens Audit Trails with the current page marker` | The dashboard sidebar is visible | The user checks the Manage/Audit/Settings order and opens Audit Trails | The Audit group is between Manage and Settings, the Audit Trails heading appears and its navigation item has `aria-current="page"` |
+| AT2 | `AT2: merged trails list time entries, absences and overtime newest first` | The clock is fixed and the user creates a time entry, an absence and an overtime record | The user opens Audit Trails | One combined list shows all three Created rows newest first, including type, actor and timestamp |
+| AT3 | `AT3: type filters support single, combined and all-type selections` | All three audit trail types have a record | The user selects one type, several types and then clears the selection | Single selections show only that type, combined selections include both selected types and no selection shows all types |
+| AT4 | `AT4: period filters evaluate aged records without waiting for real time` | A record is created under a fixed clock and then aged by moving the Playwright clock forward ten days | The user switches between Today, Last 3/7/14 days, Last month and Always | The default Last 7 days and shorter periods hide the record, while Last 14 days, Last month and Always show it |
+| AT5 | `AT5: editing and deleting a record creates action rows with changed fields` | A time entry exists | The user edits its end time, deletes it and opens Audit Trails | Edited and Deleted rows appear, and the Edited row lists the changed End field |
+| AT6 | `AT6: unmatched filter combinations show the empty callout` | Only a time-entry audit record exists | The user filters to Absence | The empty callout says no audit records match the selected filters |
+| AT7 | `AT7: Audit Trails is read-only and exposes no write controls` | Audit records exist for each trail type | The user opens Audit Trails | The main page exposes no create, add, edit, delete or save button |
+| AT8 | `AT8: audit records stay isolated after switching users` | User A has audit records | The user switches to and registers User B | User B's Audit Trails page is empty and does not show User A's records |
 
 ## Reports and Settings
 
