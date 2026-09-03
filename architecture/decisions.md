@@ -46,9 +46,13 @@ restart always returns to the login page. `login` and `register` start a session
 opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
 map keyed by that id, and every command names the session it acts for instead of reading one ambient
 process-global session, so two windows can hold two identities and a session is distinguishable in
-an audit. Expired sessions are dropped whenever the map is read, so it stays bounded. The frontend
-keeps the id in `sessionStorage` of the webview: reloading the window keeps the session, restarting
-the application starts at the login page because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
+an audit. Expired sessions are dropped whenever the map is read, so it stays bounded. The id is a
+bearer token for the whole command surface, so the frontend keeps it in a module variable of
+`src/features/storage/tauri-repository.ts` and in no storage a page script can reach — neither
+`sessionStorage` nor `localStorage` nor a cookie — where an injected script or an open devtools
+console could read and replay it. Reloading the window therefore returns to the login page as well;
+the abandoned backend session ends with its idle timeout, and restarting the application starts
+there because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
 failed logins. The limits are part of the contract file, so both sides stay equal.
 
 The native counters live in the `login_attempts` table, not in the process: restarting the

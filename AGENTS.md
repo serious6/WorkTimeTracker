@@ -192,6 +192,12 @@ therefore needs the Rust command, its registration, the `Repository` method and 
 implementations. Infrastructure commands are the exception: `src/lib/logger.ts` invokes
 `log_client_error` directly and falls back to the console in the browser.
 
+Every authed command carries the id of its session. That id is a bearer token, so
+`tauri-repository.ts` holds it in a module variable and writes it to no storage a page script can
+read — not `sessionStorage`, `localStorage` or a cookie. A reload of the webview therefore drops
+the session and returns to the login page instead of resuming it; the abandoned backend session
+ends with its idle timeout.
+
 ## Release and versioning
 
 `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` must declare the same
