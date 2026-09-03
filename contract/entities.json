@@ -398,6 +398,54 @@
         }
       ]
     },
+    "securityAudit": {
+      "rust": "SecurityAudit",
+      "zod": "securityAuditSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "entity",
+          "type": "string",
+          "nullable": false,
+          "sample": "project"
+        },
+        {
+          "name": "entityId",
+          "type": "integer",
+          "nullable": true
+        },
+        {
+          "name": "action",
+          "type": "string",
+          "nullable": false,
+          "sample": "project.created"
+        },
+        {
+          "name": "actor",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "oldValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "newValue",
+          "type": "string",
+          "nullable": true
+        },
+        {
+          "name": "recordedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
     "workSettings": {
       "rust": "WorkSettings",
       "zod": "workSettingsSchema",

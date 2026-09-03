@@ -16,6 +16,14 @@ import {
   type TimeEntryAudit,
 } from '@/features/audit/audit-schema'
 import {
+  authAuditExpiry,
+  fieldDiff,
+  securityAuditSchema,
+  AUTH_AUDIT_ENTITY,
+  type SecurityAudit,
+  type SecurityAuditAction,
+} from '@/features/audit/security-audit-schema'
+import {
   DUPLICATE_EMAIL_MESSAGE,
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
@@ -88,6 +96,7 @@ const SCOPED_KEYS = [
   'audit-log',
   'absence-state',
   'overtime-state',
+  'security-audits',
 ] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
@@ -288,6 +297,104 @@ function appendAudit(
   ]
 }
 
+/**
+ * The shared trail of the identity and configuration changes, stored below the
+ * key of its owner like every other record. The user id is named explicitly,
+ * because a failed login is recorded without a session.
+ */
+function securityAuditsKey(userId: number): string {
+  return `work-time-tracker.${userId}.security-audits`
+}
+
+function readSecurityAudits(userId: number): SecurityAudit[] {
+  return read(securityAuditsKey(userId), [], (value) => securityAuditSchema.array().parse(value))
+}
+
+type AuditPayload = Record<string, unknown> | null
+
+/**
+ * Appends to the shared trail; recorded values are never modified or removed.
+ * An update carries the changed fields only and writes nothing when no field
+ * changed, so repeated saves cannot flood the trail. Credentials are never
+ * part of a payload.
+ */
+function appendSecurityAudit(
+  userId: number,
+  actor: string,
+  entity: string,
+  entityId: number | null,
+  action: SecurityAuditAction,
+  oldValue: AuditPayload,
+  newValue: AuditPayload,
+): void {
+  let oldText = oldValue ? JSON.stringify(oldValue) : null
+  let newText = newValue ? JSON.stringify(newValue) : null
+  if (oldValue && newValue) {
+    const diff = fieldDiff(oldValue, newValue)
+    if (!diff) return
+    oldText = JSON.stringify(diff.oldValue)
+    newText = JSON.stringify(diff.newValue)
+  }
+  // The retention deletes the auth events only; the configuration records are
+  // kept like the domain trails.
+  const expiry = authAuditExpiry()
+  const audits = readSecurityAudits(userId).filter(
+    (audit) => audit.entity !== AUTH_AUDIT_ENTITY || audit.recordedAt >= expiry,
+  )
+  write(securityAuditsKey(userId), [
+    ...audits,
+    securityAuditSchema.parse({
+      id: nextId(audits),
+      entity,
+      entityId,
+      action,
+      actor,
+      oldValue: oldText,
+      newValue: newText,
+      recordedAt: new Date().toISOString(),
+    }),
+  ])
+}
+
+/** The audited fields of a project; the identifiers and timestamps are not. */
+function projectPayload(project: Project): AuditPayload {
+  return {
+    name: project.name,
+    description: project.description,
+    color: project.color,
+    active: project.active,
+  }
+}
+
+function budgetPayload(budget: ProjectBudget): AuditPayload {
+  return {
+    projectId: budget.projectId,
+    budgetMinutes: budget.budgetMinutes,
+    dueDate: budget.dueDate,
+  }
+}
+
+/** The limits are flattened, so a changed limit reads as one changed field. */
+function settingsPayload(settings: WorkSettings): AuditPayload {
+  return {
+    weeklyTargetMinutes: settings.weeklyTargetMinutes,
+    workingDays: settings.workingDays,
+    weekStartsOn: settings.weekStartsOn,
+    ...settings.complianceLimits,
+  }
+}
+
+/**
+ * Records a failed login or a lockout. An attempt on an unknown email belongs
+ * to no account and is not stored: the browser fallback keeps every record
+ * below the key of its owner and is never a security boundary.
+ */
+function recordAuthEvent(email: string, action: SecurityAuditAction): void {
+  const user = readUsers().find((stored) => stored.email === email)
+  if (!user) return
+  appendSecurityAudit(user.id, email, AUTH_AUDIT_ENTITY, user.id, action, null, null)
+}
+
 function absenceStateKey(): string {
   return scopedKey('absence-state')
 }
@@ -461,16 +568,26 @@ const fallbackRepository: Repository = {
     write(USERS_KEY, [...users, user])
     startSession(user.id)
     if (users.length === 0) claimLegacyData(user.id)
+    // The email identifies the account; the password and its hash are never
+    // part of an audit record.
+    appendSecurityAudit(user.id, email, 'user', user.id, 'user.registered', null, { email })
     return toAuthUser(user)
   },
   login: async (credentials: Credentials) => {
     const { email, password } = validate(credentialsSchema, credentials)
-    if (!loginAttempts.allows(email)) throw new AppError('rateLimited', LOCKED_OUT_MESSAGE)
+    if (!loginAttempts.allows(email)) {
+      recordAuthEvent(email, 'auth.locked_out')
+      throw new AppError('rateLimited', LOCKED_OUT_MESSAGE)
+    }
     const user = readUsers().find((stored) => stored.email === email)
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       loginAttempts.recordFailure(email)
+      // Durable evidence: the counter of the lockout expires, this does not.
+      recordAuthEvent(email, 'auth.login_failed')
       throw new AppError('validation', INVALID_CREDENTIALS_MESSAGE)
     }
+    // A successful login and a logout are routine session events and are
+    // deliberately not recorded.
     loginAttempts.recordSuccess(email)
     startSession(user.id)
     return toAuthUser(user)
@@ -490,6 +607,15 @@ const fallbackRepository: Repository = {
       updatedAt: now,
     })
     write(scopedKey('projects'), [...projects, project])
+    appendSecurityAudit(
+      requireUserId(),
+      currentActor(),
+      'project',
+      project.id,
+      'project.created',
+      null,
+      projectPayload(project),
+    )
     return project
   },
   updateProject: async (id, input) => {
@@ -502,13 +628,36 @@ const fallbackRepository: Repository = {
       scopedKey('projects'),
       projects.map((project) => (project.id === id ? updated : project)),
     )
+    appendSecurityAudit(
+      requireUserId(),
+      currentActor(),
+      'project',
+      id,
+      'project.updated',
+      projectPayload(current),
+      projectPayload(updated),
+    )
     return updated
   },
   deleteProject: async (id) => {
+    const projects = readProjects()
+    const deleted = projects.find((project) => project.id === id)
     write(
       scopedKey('projects'),
-      readProjects().filter((project) => project.id !== id),
+      projects.filter((project) => project.id !== id),
     )
+    // The trail keeps the name, so a deleted project stays readable.
+    if (deleted) {
+      appendSecurityAudit(
+        requireUserId(),
+        currentActor(),
+        'project',
+        id,
+        'project.deleted',
+        projectPayload(deleted),
+        null,
+      )
+    }
     write(
       scopedKey('project-budgets'),
       readBudgets().filter((budget) => budget.projectId !== id),
@@ -672,6 +821,15 @@ const fallbackRepository: Repository = {
       updatedAt: now,
     })
     write(scopedKey('project-budgets'), [...budgets, budget])
+    appendSecurityAudit(
+      requireUserId(),
+      currentActor(),
+      'budget',
+      budget.id,
+      'budget.created',
+      null,
+      budgetPayload(budget),
+    )
     return budget
   },
   updateProjectBudget: async (id, input) => {
@@ -687,13 +845,35 @@ const fallbackRepository: Repository = {
       scopedKey('project-budgets'),
       budgets.map((budget) => (budget.id === id ? updated : budget)),
     )
+    appendSecurityAudit(
+      requireUserId(),
+      currentActor(),
+      'budget',
+      id,
+      'budget.updated',
+      budgetPayload(current),
+      budgetPayload(updated),
+    )
     return updated
   },
   deleteProjectBudget: async (id) => {
+    const budgets = readBudgets()
+    const deleted = budgets.find((budget) => budget.id === id)
     write(
       scopedKey('project-budgets'),
-      readBudgets().filter((budget) => budget.id !== id),
+      budgets.filter((budget) => budget.id !== id),
     )
+    if (deleted) {
+      appendSecurityAudit(
+        requireUserId(),
+        currentActor(),
+        'budget',
+        id,
+        'budget.deleted',
+        budgetPayload(deleted),
+        null,
+      )
+    }
   },
   listAbsences: async (range) => {
     const window = validateListRange(range)
@@ -872,13 +1052,39 @@ const fallbackRepository: Repository = {
       listLimit(window),
     )
   },
+  listSecurityAudits: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(
+        readSecurityAudits(requireUserId()).sort(
+          (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+        ),
+        window,
+        (audit) => audit.recordedAt,
+      ),
+      listLimit(window),
+    )
+  },
   getWorkSettings: async () =>
     read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
       workSettingsSchema.parse(value),
     ),
   updateWorkSettings: async (settings) => {
     const parsed: WorkSettings = validate(workSettingsSchema, settings)
+    const current = read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
+      workSettingsSchema.parse(value),
+    )
     write(scopedKey('work-settings'), parsed)
+    // Saving without changing a value records nothing.
+    appendSecurityAudit(
+      requireUserId(),
+      currentActor(),
+      'workSettings',
+      null,
+      'work_settings.updated',
+      settingsPayload(current),
+      settingsPayload(parsed),
+    )
     return parsed
   },
   getAppVersion: async () => null,

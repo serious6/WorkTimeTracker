@@ -3,6 +3,11 @@ import { getRepository } from '@/features/storage'
 import { listAllAuditPages, type ListRange } from '@/features/storage/list-range'
 import { timeEntryKeys } from '@/features/time-entries/time-entry-keys'
 
+export const securityAuditKeys = {
+  all: ['security-audits'] as const,
+  range: (range?: ListRange) => ['security-audits', range ?? null] as const,
+}
+
 export const auditKeys = {
   all: ['audit-log'] as const,
   /** One cache entry per window, invalidating `all` still refreshes them all. */
@@ -34,5 +39,19 @@ export function useTimeEntryAudits(range?: ListRange) {
       range
         ? getRepository().listTimeEntryAudits(range)
         : listAllAuditPages((page) => getRepository().listTimeEntryAudits(page)),
+  })
+}
+
+/**
+ * The recorded identity and configuration changes of a window, or the whole
+ * trail in bounded pages when the caller names none.
+ */
+export function useSecurityAudits(range?: ListRange) {
+  return useQuery({
+    queryKey: securityAuditKeys.range(range),
+    queryFn: () =>
+      range
+        ? getRepository().listSecurityAudits(range)
+        : listAllAuditPages((page) => getRepository().listSecurityAudits(page)),
   })
 }

@@ -11,12 +11,26 @@ import {
   type OvertimeOrigin,
 } from '@/features/overtime/overtime-schema'
 import type { ListRange } from '@/features/storage/list-range'
-import { addDays, formatDay, formatSignedDuration, fromDateKey, startOfDay } from '@/lib/date'
+import {
+  addDays,
+  formatDay,
+  formatDuration,
+  formatSignedDuration,
+  fromDateKey,
+  startOfDay,
+} from '@/lib/date'
 import { auditChanges, auditSummary } from './audit-changes'
 import { parseSnapshot, type AuditAction, type AuditChange, type TimeEntryAudit } from './audit-schema'
+import type { SecurityAudit, SecurityAuditAction } from './security-audit-schema'
 
 /** The trails the audit view can read, all of them append-only and read-only. */
-export const AUDIT_TRAIL_TYPES = ['timeEntry', 'absence', 'overtime'] as const
+export const AUDIT_TRAIL_TYPES = [
+  'timeEntry',
+  'absence',
+  'overtime',
+  'identity',
+  'configuration',
+] as const
 
 export type AuditTrailType = (typeof AUDIT_TRAIL_TYPES)[number]
 
@@ -24,12 +38,27 @@ export const AUDIT_TRAIL_TYPE_LABELS: Record<AuditTrailType, string> = {
   timeEntry: 'Time Entry',
   absence: 'Absence',
   overtime: 'Overtime',
+  identity: 'Identity',
+  configuration: 'Configuration',
 }
 
-export const AUDIT_TRAIL_ACTION_LABELS: Record<AuditAction, string> = {
+/** The action of a record, from a domain trail or from the shared trail. */
+export type AuditTrailAction = AuditAction | SecurityAuditAction
+
+export const AUDIT_TRAIL_ACTION_LABELS: Record<AuditTrailAction, string> = {
   created: 'Created',
   updated: 'Edited',
   deleted: 'Deleted',
+  'user.registered': 'Registered',
+  'auth.login_failed': 'Failed sign in',
+  'auth.locked_out': 'Locked out',
+  'project.created': 'Created',
+  'project.updated': 'Edited',
+  'project.deleted': 'Deleted',
+  'budget.created': 'Created',
+  'budget.updated': 'Edited',
+  'budget.deleted': 'Deleted',
+  'work_settings.updated': 'Edited',
 }
 
 export type AuditRangeId = 'today' | 'last3' | 'last7' | 'last14' | 'lastMonth' | 'always'
@@ -77,7 +106,7 @@ export function auditListRange(id: AuditRangeId, now = new Date()): ListRange | 
 export type AuditTrailRecord = {
   key: string
   type: AuditTrailType
-  action: AuditAction
+  action: AuditTrailAction
   actor: string
   recordedAt: string
   summary: string
@@ -189,6 +218,122 @@ export function overtimeAuditRecords(audits: OvertimeAudit[]): AuditTrailRecord[
         },
         { field: 'Note', value: (snapshot) => snapshot.note ?? 'no note' },
       ]),
+    }
+  })
+}
+
+/** Identity events belong to the account, everything else to its setup. */
+const SECURITY_TRAIL_TYPES: Record<string, AuditTrailType> = {
+  user: 'identity',
+  auth: 'identity',
+  project: 'configuration',
+  budget: 'configuration',
+  workSettings: 'configuration',
+}
+
+const SECURITY_FIELD_LABELS: Record<string, string> = {
+  email: 'Email',
+  name: 'Name',
+  description: 'Description',
+  color: 'Color',
+  active: 'Active',
+  projectId: 'Project',
+  budgetMinutes: 'Budget',
+  dueDate: 'Due date',
+  weeklyTargetMinutes: 'Weekly target',
+  workingDays: 'Working days',
+  weekStartsOn: 'Week starts on',
+  breakThresholdMinutes: 'Break threshold',
+  requiredBreakMinutes: 'Required break',
+  longBreakThresholdMinutes: 'Long break threshold',
+  requiredLongBreakMinutes: 'Required long break',
+  minBreakBlockMinutes: 'Shortest break block',
+  maxContinuousWorkMinutes: 'Longest work stretch',
+  maxDailyWorkMinutes: 'Daily maximum',
+  minRestMinutes: 'Rest between days',
+}
+
+/** `weeklyTargetMinutes` reads as "Weekly target minutes" when unlabelled. */
+function fieldLabel(field: string): string {
+  const label = SECURITY_FIELD_LABELS[field]
+  if (label) return label
+  const words = field.replace(/([A-Z])/g, ' $1').toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+function fieldValue(
+  field: string,
+  value: unknown,
+  projectName: (projectId: number | null) => string,
+): string {
+  if (value === null || value === undefined) return '—'
+  if (field === 'projectId' && typeof value === 'number') return projectName(value)
+  if (field.endsWith('Minutes') && typeof value === 'number') return formatDuration(value)
+  if (typeof value === 'boolean') return value ? 'yes' : 'no'
+  if (Array.isArray(value)) return value.join(', ')
+  return `${value}`
+}
+
+/** The changed fields of a record of the shared trail, in the stored order. */
+function securityChanges(
+  oldValue: Record<string, unknown> | null,
+  newValue: Record<string, unknown> | null,
+  projectName: (projectId: number | null) => string,
+): AuditChange[] {
+  if (!oldValue || !newValue) return []
+  return [...new Set([...Object.keys(oldValue), ...Object.keys(newValue)])]
+    .map((field) => ({
+      field: fieldLabel(field),
+      from: fieldValue(field, oldValue[field], projectName),
+      to: fieldValue(field, newValue[field], projectName),
+    }))
+    .filter((change) => change.from !== change.to)
+}
+
+function securitySummary(
+  audit: SecurityAudit,
+  payload: Record<string, unknown> | null,
+  projectName: (projectId: number | null) => string,
+): string {
+  switch (audit.entity) {
+    case 'user':
+      return 'Account created'
+    case 'auth':
+      return audit.action === 'auth.locked_out'
+        ? 'Account locked after too many failed sign ins'
+        : 'Sign in rejected'
+    case 'project': {
+      const name = typeof payload?.name === 'string' ? payload.name : projectName(audit.entityId)
+      return `Project ${name}`
+    }
+    case 'budget': {
+      const projectId = typeof payload?.projectId === 'number' ? payload.projectId : null
+      return `Budget for ${projectName(projectId)}`
+    }
+    default:
+      return 'Work settings'
+  }
+}
+
+/**
+ * The records of the shared trail of identity and configuration changes. An
+ * update carries the changed fields only, so the row lists exactly what moved.
+ */
+export function securityAuditRecords(
+  audits: SecurityAudit[],
+  projectName: (projectId: number | null) => string,
+): AuditTrailRecord[] {
+  return audits.map((audit) => {
+    const oldValue = parseValue<Record<string, unknown>>(audit.oldValue)
+    const newValue = parseValue<Record<string, unknown>>(audit.newValue)
+    return {
+      key: `security-${audit.id}`,
+      type: SECURITY_TRAIL_TYPES[audit.entity] ?? 'configuration',
+      action: audit.action,
+      actor: audit.actor,
+      recordedAt: audit.recordedAt,
+      summary: securitySummary(audit, newValue ?? oldValue, projectName),
+      changes: securityChanges(oldValue, newValue, projectName),
     }
   })
 }

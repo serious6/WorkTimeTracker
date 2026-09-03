@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { bigint, boolean, check, pgTable, text, unique } from 'drizzle-orm/pg-core'
+import { bigint, boolean, check, index, pgTable, text, unique } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -177,6 +177,33 @@ export const overtimeAudits = pgTable('overtime_audits', {
   newValue: text('new_value'),
   recordedAt: text('recorded_at').notNull(),
 })
+
+/**
+ * Append-only trail of the identity and configuration changes that carry no
+ * trail of their own. `userId` is null for a failed login of an unknown email,
+ * `entityId` for the records that name no row, such as the work settings.
+ * Credentials are never stored in `oldValue`/`newValue`.
+ */
+export const securityAudits = pgTable(
+  'security_audits',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: bigint('user_id', { mode: 'number' }).references(() => users.id, {
+      onDelete: 'cascade',
+    }),
+    entity: text().notNull(),
+    entityId: bigint('entity_id', { mode: 'number' }),
+    action: text().notNull(),
+    actor: text().notNull(),
+    oldValue: text('old_value'),
+    newValue: text('new_value'),
+    recordedAt: text('recorded_at').notNull(),
+  },
+  (table) => [
+    index('security_audits_user_recorded_at').on(table.userId, table.recordedAt),
+    index('security_audits_entity_recorded_at').on(table.entity, table.recordedAt),
+  ],
+)
 
 /**
  * Failed logins per email. Persisted so a restart does not clear a lockout;
