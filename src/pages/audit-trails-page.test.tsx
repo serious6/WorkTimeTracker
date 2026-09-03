@@ -34,7 +34,11 @@ async function seedEveryTrail(): Promise<void> {
   await seedOvertimeEntry({ effectiveDate: toDateKey(today), minutes: 60, kind: 'adjustment' })
 }
 
-/** Moves every recorded change of the user back in time, as an older trail. */
+/**
+ * Moves every recorded change of the user back in time, as an older trail.
+ * The shared trail of the identity and configuration records is a list of its
+ * own, so it is aged next to the domain trails.
+ */
 function ageAudits(userId: number, recordedAt: string): void {
   for (const key of STATE_KEYS) {
     const storageKey = `work-time-tracker.${userId}.${key}`
@@ -44,6 +48,14 @@ function ageAudits(userId: number, recordedAt: string): void {
     state.audits = state.audits.map((audit) => ({ ...audit, recordedAt }))
     globalThis.localStorage.setItem(storageKey, JSON.stringify(state))
   }
+  const securityKey = `work-time-tracker.${userId}.security-audits`
+  const raw = globalThis.localStorage.getItem(securityKey)
+  if (!raw) return
+  const audits = (JSON.parse(raw) as { recordedAt: string }[]).map((audit) => ({
+    ...audit,
+    recordedAt,
+  }))
+  globalThis.localStorage.setItem(securityKey, JSON.stringify(audits))
 }
 
 function daysAgo(days: number): string {
@@ -52,10 +64,14 @@ function daysAgo(days: number): string {
   return date.toISOString()
 }
 
+// Registering the user is itself a recorded action, so the tests that expect
+// an empty view have to age that record as well.
+let user: Awaited<ReturnType<typeof signIn>>
+
 beforeEach(async () => {
   vi.restoreAllMocks()
   await resetAppState()
-  await signIn()
+  user = await signIn()
 })
 
 describe('AuditTrailsPage', () => {
@@ -65,6 +81,7 @@ describe('AuditTrailsPage', () => {
   })
 
   test('explains the empty state without any recorded change', async () => {
+    ageAudits(user.id, daysAgo(10))
     renderWithProviders(<AuditTrailsPage />)
     expect(
       await screen.findByText('No audit records for the selected filters.'),
@@ -75,19 +92,25 @@ describe('AuditTrailsPage', () => {
     await seedEveryTrail()
     renderWithProviders(<AuditTrailsPage />)
 
-    await waitFor(() => expect(records().getAllByRole('listitem').length).toBeGreaterThan(2))
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(5))
     expect(records().getByText('Time Entry')).toBeInTheDocument()
     expect(records().getByText('Absence')).toBeInTheDocument()
     expect(records().getByText('Overtime')).toBeInTheDocument()
-    expect(records().getAllByText('Created').length).toBe(3)
-    expect(records().getAllByText(/tester@example\.com/).length).toBe(3)
+    expect(records().getByText('Identity')).toBeInTheDocument()
+    expect(records().getByText('Configuration')).toBeInTheDocument()
+    // The three domain records and the created project; the registration is
+    // labelled "Registered".
+    expect(records().getAllByText('Created').length).toBe(4)
+    expect(records().getByText('Registered')).toBeInTheDocument()
+    expect(records().getByText('Project Alpha')).toBeInTheDocument()
+    expect(records().getAllByText(/tester@example\.com/).length).toBe(5)
   })
 
   test('offers no action that changes a record', async () => {
     await seedEveryTrail()
     renderWithProviders(<AuditTrailsPage />)
 
-    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(3))
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(5))
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
@@ -104,8 +127,8 @@ describe('AuditTrailsPage', () => {
   })
 
   test.each([
-    ['last14', 3],
-    ['always', 3],
+    ['last14', 5],
+    ['always', 5],
     ['today', 0],
     ['last3', 0],
   ])('reads the records of the %s window', async (option, expected) => {
@@ -129,7 +152,7 @@ describe('AuditTrailsPage', () => {
   test('keeps the type filters when the window changes', async () => {
     await seedEveryTrail()
     renderWithProviders(<AuditTrailsPage />)
-    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(3))
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(5))
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Absence' }))
     fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'always' } })
@@ -142,7 +165,7 @@ describe('AuditTrailsPage', () => {
   test('filters on a single type and on several types at once', async () => {
     await seedEveryTrail()
     renderWithProviders(<AuditTrailsPage />)
-    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(3))
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(5))
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
     await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(1))
@@ -154,13 +177,14 @@ describe('AuditTrailsPage', () => {
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'Absence' }))
-    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(3))
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(5))
   })
 
   test('shows an empty state when a type filter matches nothing', async () => {
     await createLocalRepository().createAbsence({ type: 'vacation', date: toDateKey(new Date()) })
     renderWithProviders(<AuditTrailsPage />)
-    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(1))
+    // The absence and the registration of the user.
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(2))
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
 
@@ -242,6 +266,7 @@ describe('AuditTrailsPage', () => {
   })
 
   test('waits for the trails instead of announcing an empty result', async () => {
+    ageAudits(user.id, daysAgo(10))
     let release = () => {}
     const pending = new Promise<never[]>((resolve) => {
       release = () => resolve([])
@@ -264,13 +289,15 @@ describe('AuditTrailsPage', () => {
   test('never shows the records of another user', async () => {
     await seedEveryTrail()
     await createLocalRepository().logout()
-    await signIn('second@example.com')
+    const second = await signIn('second@example.com')
 
     renderWithProviders(<AuditTrailsPage />)
 
-    expect(
-      await screen.findByText('No audit records for the selected filters.'),
-    ).toBeInTheDocument()
+    // Only the own registration of the second user, none of the records of the
+    // first one.
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(1))
+    expect(records().getByText(/second@example\.com/)).toBeInTheDocument()
     expect(screen.queryByText(/tester@example\.com/)).not.toBeInTheDocument()
+    expect(second.id).not.toBe(user.id)
   })
 })

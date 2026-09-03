@@ -535,30 +535,38 @@ fn field_diff(old: &serde_json::Value, new: &serde_json::Value) -> Option<(Strin
     ))
 }
 
+/// One record of the shared trail, before it is appended.
+struct SecurityAuditRecord<'a> {
+    /// `None` for an event that belongs to no account, such as a failed login
+    /// of an unknown e-mail.
+    user_id: Option<i64>,
+    actor: &'a str,
+    entity: &'a str,
+    /// `None` where the action names no row, such as the work settings.
+    entity_id: Option<i64>,
+    action: &'a str,
+    old_value: Option<&'a str>,
+    new_value: Option<&'a str>,
+}
+
 /// Appends to the shared trail of identity and configuration changes. Every
 /// write path goes through this one place, so the recorded shape cannot drift.
 /// The values carry the audited fields only and never a password or a hash.
 fn record_security_audit(
     client: &mut impl postgres::GenericClient,
-    user_id: Option<i64>,
-    actor: &str,
-    entity: &str,
-    entity_id: Option<i64>,
-    action: &str,
-    old_value: Option<&str>,
-    new_value: Option<&str>,
+    record: SecurityAuditRecord<'_>,
 ) -> Result<(), StoreError> {
     client.execute(
         "INSERT INTO security_audits (user_id, entity, entity_id, action, actor, old_value, new_value, recorded_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         &[
-            &user_id,
-            &entity,
-            &entity_id,
-            &action,
-            &actor,
-            &old_value,
-            &new_value,
+            &record.user_id,
+            &record.entity,
+            &record.entity_id,
+            &record.action,
+            &record.actor,
+            &record.old_value,
+            &record.new_value,
             &now_iso(),
         ],
     )?;
@@ -589,13 +597,15 @@ fn record_config_audit(
     let actor = actor(client, user_id)?;
     record_security_audit(
         client,
-        Some(user_id),
-        &actor,
-        entity,
-        entity_id,
-        action,
-        old_text.as_deref(),
-        new_text.as_deref(),
+        SecurityAuditRecord {
+            user_id: Some(user_id),
+            actor: &actor,
+            entity,
+            entity_id,
+            action,
+            old_value: old_text.as_deref(),
+            new_value: new_text.as_deref(),
+        },
     )
 }
 
@@ -1901,13 +1911,15 @@ impl Store for PostgresStore {
             .map(|row| row.get(0));
         record_security_audit(
             &mut transaction,
-            user_id,
-            email,
-            AUTH_AUDIT_ENTITY,
-            user_id,
-            action,
-            None,
-            None,
+            SecurityAuditRecord {
+                user_id,
+                actor: email,
+                entity: AUTH_AUDIT_ENTITY,
+                entity_id: user_id,
+                action,
+                old_value: None,
+                new_value: None,
+            },
         )?;
         transaction.commit()?;
         Ok(())
@@ -1930,17 +1942,20 @@ impl Store for PostgresStore {
             email: row.get(1),
             created_at: row.get(2),
         };
+        // The email identifies the account; the password and its hash are
+        // never part of an audit record.
+        let registered = serde_json::json!({ "email": user.email }).to_string();
         record_security_audit(
             &mut transaction,
-            Some(user.id),
-            &user.email,
-            USER_AUDIT_ENTITY,
-            Some(user.id),
-            "user.registered",
-            None,
-            // The email identifies the account; the password and its hash are
-            // never part of an audit record.
-            Some(&serde_json::json!({ "email": user.email }).to_string()),
+            SecurityAuditRecord {
+                user_id: Some(user.id),
+                actor: &user.email,
+                entity: USER_AUDIT_ENTITY,
+                entity_id: Some(user.id),
+                action: "user.registered",
+                old_value: None,
+                new_value: Some(&registered),
+            },
         )?;
         if first_user == 0 {
             for table in [

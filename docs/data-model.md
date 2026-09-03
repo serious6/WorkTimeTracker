@@ -99,9 +99,11 @@ erDiagram
   USERS o|--o{ ABSENCE_AUDITS : owns
   USERS o|--o{ OVERTIME_ENTRIES : owns
   USERS o|--o{ OVERTIME_AUDITS : owns
+  USERS o|--o{ SECURITY_AUDITS : owns
   ABSENCES ||..o{ ABSENCE_AUDITS : "changes recorded in"
   OVERTIME_ENTRIES ||..o{ OVERTIME_AUDITS : "changes recorded in"
   TIME_ENTRIES ||..o{ TIME_ENTRY_AUDITS : "changes recorded in"
+  PROJECTS ||..o{ SECURITY_AUDITS : "changes recorded in"
   PROJECTS o|--o{ TIME_ENTRIES : "booked on, optional"
   PROJECTS ||--o| PROJECT_BUDGETS : "budgeted by"
 
@@ -368,6 +370,62 @@ in a `recorded_at` window (`ListRange`), newest first and bounded by the list li
 A user without a row reads `DEFAULT_WORK_SETTINGS`, the row is written on the first save
 (`read_settings` and `write_settings` in `src-tauri/src/postgres_store.rs`).
 
+### security_audits
+
+`drizzle/0004_security_audits.sql`, `src/features/audit/security-audit-schema.ts`
+
+The shared trail of the actions that change an identity or the configuration and carry no trail of
+their own.
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT | yes | Surrogate key | PK, generated identity |
+| `user_id` | BIGINT | no | Owner; `NULL` for a failed login of an unknown e-mail, which belongs to no account and is therefore never listed | FK to `users.id` ON DELETE CASCADE, index `security_audits_user_recorded_at` on `(user_id, recorded_at)` |
+| `entity` | TEXT | yes | `user`, `auth`, `project`, `budget` or `workSettings` | index `security_audits_entity_recorded_at` on `(entity, recorded_at)` |
+| `entity_id` | BIGINT | no | Changed row; no foreign key, so the trail outlives a deleted project or budget. `NULL` where the action names no row, such as the work settings | — |
+| `action` | TEXT | yes | See the policy below | — |
+| `actor` | TEXT | yes | E-mail of the acting user, also for a failed login of an unknown e-mail | — |
+| `old_value`, `new_value` | TEXT | no | JSON of the **changed fields only**, never a full snapshot of a wide record and never a password, hash or token | — |
+| `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
+
+Rows are only inserted, never updated or deleted by a command; the repository layer offers no such
+path. Each record is written in the same transaction as the change it describes, so a failed write
+leaves no record. `list_security_audits` reads the trail of one user in a `recorded_at` window
+(`ListRange`), newest first and bounded by the list limits.
+
+#### Recording policy
+
+Recorded, because the action changes state or is security relevant:
+
+| Action | Written by |
+| --- | --- |
+| `user.registered` | `register_user` |
+| `auth.login_failed`, `auth.locked_out` | `login` |
+| `project.created`, `project.updated`, `project.deleted` | the project commands |
+| `budget.created`, `budget.updated`, `budget.deleted` | the project budget commands |
+| `work_settings.updated` | `save_work_settings` |
+
+Deliberately **not** recorded, so the trail stays evidence instead of a stream of routine events:
+
+- successful logins and logouts,
+- any read, list, query, export or navigation,
+- the ticks of a running timer — only the start and the stop of an entry appear, in
+  `time_entry_audits`,
+- a save that changes no field: the recording helper compares the audited fields and suppresses the
+  record when the difference is empty.
+
+#### Retention
+
+| Trail | Retention |
+| --- | --- |
+| `security_audits` with `entity = 'auth'` | 90 days (`AUTH_AUDIT_RETENTION_DAYS`), pruned when the next auth event is recorded |
+| All other `security_audits` records | kept, like the domain trails |
+| `time_entry_audits`, `absence_audits`, `overtime_audits` | kept at least `RETENTION_YEARS` (`src/features/compliance/compliance-rules.ts`) |
+
+The prune deletes rows of the `auth` entity only, so the compliance and configuration trails are
+never touched by it. `login_attempts` is not a trail: it holds the counter of the lockout and is
+evicted as soon as the lockout is served, which is why the auth events are recorded separately.
+
 ### app_metadata
 
 `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs`
@@ -417,7 +475,8 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 
 Because WorkTimeTracker has not been released yet, the native database starts from the single
 baseline migration `drizzle/0000_init.sql`, followed by `drizzle/0001_absences.sql`,
-`drizzle/0002_login_attempts.sql` and `drizzle/0003_overtime.sql`. `PostgresStore::connect` applies every migration listed
+`drizzle/0002_login_attempts.sql`, `drizzle/0003_overtime.sql` and
+`drizzle/0004_security_audits.sql`. `PostgresStore::connect` applies every migration listed
 in `MIGRATIONS` (`src-tauri/src/postgres_store.rs`) in order, in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
 an existing database is upgraded exactly once instead of re-running the baseline and concurrent

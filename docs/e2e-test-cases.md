@@ -85,6 +85,7 @@ timer on it.
 |----|-------------------------------|-------|------|------|
 | P1 | `P1: projects page supports CRUD with confirm flow and project total` | A project with tracked time exists | The user edits the project, cancels deletion once, then confirms deletion | Name/description/color update, total duration is shown, cancel keeps the project, confirm removes it |
 | P2 | `P2: deleted project entries stay usable and project links open filtered entries` | A project has a time entry | The user opens Time Entries from the project link and later deletes the project | Time Entries opens pre-filtered to that project; after deletion the entry still exists and is shown as "Deleted project" |
+| P3 | `P3: audit trails list the registration and every project change` | The user registered and created a project | The user renames and deletes the project, then opens Audit Trails | The registration appears once as an Identity record, the create/edit/delete of the project appear as Configuration records with the changed name, the trail of the deleted project stays readable, no successful sign in is recorded, and the Identity filter narrows the list to the registration |
 
 ## Absences
 
