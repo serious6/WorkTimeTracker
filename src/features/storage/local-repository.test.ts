@@ -838,9 +838,13 @@ describe('local repository identity and configuration trail', () => {
         }),
       ).rejects.toThrow(INVALID_CREDENTIALS_MESSAGE)
     }
-    await expect(
-      createLocalRepository().login({ email: 'lockout-trail@example.com', password: PASSWORD }),
-    ).rejects.toThrow(LOCKED_OUT_MESSAGE)
+    // Every further attempt is rejected as locked out, and none of them adds
+    // another record: an unauthenticated caller cannot flood the trail.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        createLocalRepository().login({ email: 'lockout-trail@example.com', password: PASSWORD }),
+      ).rejects.toThrow(LOCKED_OUT_MESSAGE)
+    }
 
     // The locked out account cannot sign in, so the trail of the account is
     // read from its own key: the records outlive the evicted lockout counter.

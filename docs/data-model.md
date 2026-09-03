@@ -412,7 +412,9 @@ Deliberately **not** recorded, so the trail stays evidence instead of a stream o
 - the ticks of a running timer — only the start and the stop of an entry appear, in
   `time_entry_audits`,
 - a save that changes no field: the recording helper compares the audited fields and suppresses the
-  record when the difference is empty.
+  record when the difference is empty,
+- the repeated attempts a running lockout rejects: `auth.locked_out` is recorded once per lockout
+  window, so an unauthenticated caller cannot grow the trail with further requests.
 
 #### Retention
 

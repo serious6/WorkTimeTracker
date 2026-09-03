@@ -11,13 +11,14 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_postgres::PostgresConnectionManager;
 
 use crate::{
+    auth::LOGIN_LOCKOUT_MINUTES,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, OvertimeAudit,
         OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject,
         SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User,
         WorkSettings, AUDIT_LOG_LIMIT, AUTH_AUDIT_ENTITY, AUTH_AUDIT_RETENTION_DAYS,
         BUDGET_AUDIT_ENTITY, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
-        OVERTIME_ORIGIN_MANUAL, PROJECT_AUDIT_ENTITY, USER_AUDIT_ENTITY,
+        LOCKED_OUT_ACTION, OVERTIME_ORIGIN_MANUAL, PROJECT_AUDIT_ENTITY, USER_AUDIT_ENTITY,
         WORK_SETTINGS_AUDIT_ENTITY,
     },
     store::{
@@ -607,6 +608,23 @@ fn record_config_audit(
             new_value: new_text.as_deref(),
         },
     )
+}
+
+/// Answers whether the running lockout of this email is already recorded, so
+/// the repeated attempts it rejects add no further record.
+fn locked_out_recently(
+    client: &mut impl postgres::GenericClient,
+    email: &str,
+) -> Result<bool, StoreError> {
+    let since = iso(Utc::now() - chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64));
+    let row = client.query_one(
+        "SELECT EXISTS (
+           SELECT 1 FROM security_audits
+           WHERE entity = $1 AND action = $2 AND actor = $3 AND recorded_at > $4
+         )",
+        &[&AUTH_AUDIT_ENTITY, &LOCKED_OUT_ACTION, &email, &since],
+    )?;
+    Ok(row.get(0))
 }
 
 /// Deletes the auth events that served their retention. It never touches the
@@ -1906,6 +1924,12 @@ impl Store for PostgresStore {
         // Evidence of a failed sign in stays after the counter of the lockout
         // is evicted, and it is kept for the retention of the auth events.
         prune_auth_audits(&mut transaction)?;
+        // Every attempt during a lockout is rejected as rate limited, so only
+        // the first one is recorded: one record per lockout, instead of one
+        // per request of an unauthenticated caller.
+        if action == LOCKED_OUT_ACTION && locked_out_recently(&mut transaction, email)? {
+            return Ok(());
+        }
         let user_id: Option<i64> = transaction
             .query_opt("SELECT id FROM users WHERE email = $1", &[&email])?
             .map(|row| row.get(0));
@@ -2433,6 +2457,10 @@ mod tests {
         store
             .record_auth_event(&email, LOGIN_FAILED_ACTION)
             .unwrap();
+        store.record_auth_event(&email, LOCKED_OUT_ACTION).unwrap();
+        // Every further attempt is rejected as locked out; recording each of
+        // them would let an unauthenticated caller flood the trail.
+        store.record_auth_event(&email, LOCKED_OUT_ACTION).unwrap();
         store.record_auth_event(&email, LOCKED_OUT_ACTION).unwrap();
         // An unknown email must not be attributed to any account.
         store

@@ -61,6 +61,7 @@ import {
 } from '@/features/settings/work-settings-schema'
 import {
   LOCKED_OUT_MESSAGE,
+  LOGIN_LOCKOUT_MINUTES,
   LoginAttempts,
   PBKDF2_ITERATIONS,
   SESSION_TIMEOUT_MINUTES,
@@ -387,12 +388,24 @@ function settingsPayload(settings: WorkSettings): AuditPayload {
 /**
  * Records a failed login or a lockout. An attempt on an unknown email belongs
  * to no account and is not stored: the browser fallback keeps every record
- * below the key of its owner and is never a security boundary.
+ * below the key of its owner and is never a security boundary. Every attempt
+ * during a lockout is rejected, so only the first one is recorded: one record
+ * per lockout instead of one per attempt.
  */
 function recordAuthEvent(email: string, action: SecurityAuditAction): void {
   const user = readUsers().find((stored) => stored.email === email)
   if (!user) return
+  if (action === 'auth.locked_out' && lockedOutRecently(user.id, email)) return
   appendSecurityAudit(user.id, email, AUTH_AUDIT_ENTITY, user.id, action, null, null)
+}
+
+/** Whether the running lockout of this email is already recorded. */
+function lockedOutRecently(userId: number, email: string): boolean {
+  const since = new Date(Date.now() - LOGIN_LOCKOUT_MINUTES * 60_000).toISOString()
+  return readSecurityAudits(userId).some(
+    (audit) =>
+      audit.action === 'auth.locked_out' && audit.actor === email && audit.recordedAt > since,
+  )
 }
 
 function absenceStateKey(): string {
