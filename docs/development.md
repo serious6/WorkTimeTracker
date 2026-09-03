@@ -29,6 +29,9 @@ podman compose up --build  # browser UI and Postgres in containers
 The development server binds `127.0.0.1`. Use `TAURI_DEV_HOST=<address>` only for physical-device
 testing, because it serves the unauthenticated UI to the network.
 
+`podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
+Tauri windows need a desktop display server and belong on the host.
+
 Leave `WORK_TIME_TRACKER_ENV` unset for development, tests, and CI. It defaults to `development`:
 `DATABASE_URL` must name `localhost`, another loopback address, or the compose host `db`.
 Production uses a remote database only with `sslmode=verify-full` and `SUPABASE_DB_ROOT_CERT`; see
