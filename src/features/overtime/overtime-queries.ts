@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
-import type { ListRange } from '@/features/storage/list-range'
+import { listAllAuditPages, type ListRange } from '@/features/storage/list-range'
 import type { SaveOvertimeEntry } from './overtime-schema'
 
 export const overtimeKeys = {
@@ -26,10 +26,14 @@ export function useOvertimeEntries() {
   })
 }
 
+/** The recorded changes of a window, or the whole trail in bounded pages. */
 export function useOvertimeAudits(range?: ListRange) {
   return useQuery({
     queryKey: overtimeKeys.auditRange(range),
-    queryFn: () => getRepository().listOvertimeAudits(range),
+    queryFn: () =>
+      range
+        ? getRepository().listOvertimeAudits(range)
+        : listAllAuditPages((page) => getRepository().listOvertimeAudits(page)),
   })
 }
 

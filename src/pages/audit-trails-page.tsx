@@ -34,12 +34,17 @@ export function AuditTrailsPage() {
   const timeEntryAudits = useTimeEntryAudits(range)
   const absenceAudits = useAbsenceAudits(range)
   const overtimeAudits = useOvertimeAudits(range)
-  const { data: projects = [] } = useProjects()
+  const projectQuery = useProjects()
+  const projects = projectQuery.data ?? []
 
   const projectName = (id: number | null) =>
     projects.find((project) => project.id === id)?.name ?? DELETED_PROJECT_NAME
 
-  const isError = timeEntryAudits.isError || absenceAudits.isError || overtimeAudits.isError
+  // The project names label the time entry records, so a failed or pending
+  // project query would present every project as deleted.
+  const queries = [timeEntryAudits, absenceAudits, overtimeAudits, projectQuery]
+  const isError = queries.some((query) => query.isError)
+  const isPending = queries.some((query) => query.isPending)
   const records = mergeAuditRecords([
     timeEntryAuditRecords(timeEntryAudits.data ?? [], projectName),
     absenceAuditRecords(absenceAudits.data ?? []),
@@ -70,7 +75,9 @@ export function AuditTrailsPage() {
           <div>
             <CardTitle>Recorded changes</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {visible.length} record{visible.length === 1 ? '' : 's'} in the selected period.
+              {isPending
+                ? 'Reading the audit trails…'
+                : `${visible.length} record${visible.length === 1 ? '' : 's'} in the selected period.`}
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-4">
@@ -104,6 +111,8 @@ export function AuditTrailsPage() {
         <CardContent>
           {isError ? (
             <p className="py-6 text-sm text-destructive">The audit trails could not be loaded.</p>
+          ) : isPending ? (
+            <p className="py-6 text-sm text-muted-foreground">Loading the audit trails…</p>
           ) : visible.length === 0 ? (
             <p className="py-6 text-sm text-muted-foreground">
               No audit records for the selected filters.

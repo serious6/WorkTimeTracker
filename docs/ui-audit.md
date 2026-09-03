@@ -213,7 +213,7 @@ login and registration forms, and the Settings work-schedule fields.
 - Accessibility: the sidebar defaults to its labelled, expanded state and has a persisted, labelled
   40 px expand/collapse control. Collapsed labels remain `sr-only`, including the "Local data"
   notice, and group labels remain accessible headings.
-- Navigation: all 12 destinations are list items in one labelled navigation list, so their set size
+- Navigation: all 13 destinations are list items in one labelled navigation list, so their set size
   and position are exposed. Track, Review, Manage and Audit headings chunk related views; the
   settings item remains last and ungrouped.
 - Keyboard: a visible-on-focus "Skip to main content" link is the first app control and moves focus
@@ -228,6 +228,6 @@ login and registration forms, and the Settings work-schedule fields.
 
 Verified in Chromium at 1440 px, 1024 px and 768 px: every top-level view renders without horizontal
 overflow (`scrollWidth === clientWidth`) and keeps exactly one level-1 heading. The collapsed sidebar
-keeps all 12 navigation names in the accessibility tree and all controls remain at least 40 px high;
+keeps all 13 navigation names in the accessibility tree and all controls remain at least 40 px high;
 the only control whose painted box is smaller than 40 px is the inline "View all" link, whose
 transparent hit area was verified by clicking 6 px above its visible box.

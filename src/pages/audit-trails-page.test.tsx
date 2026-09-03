@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { MAX_LIST_LIMIT } from '@/features/storage/list-range'
 import { createLocalRepository } from '@/features/storage/local-repository'
 import { toDateKey } from '@/lib/date'
 import {
@@ -52,6 +53,7 @@ function daysAgo(days: number): string {
 }
 
 beforeEach(async () => {
+  vi.restoreAllMocks()
   await resetAppState()
   await signIn()
 })
@@ -167,6 +169,55 @@ describe('AuditTrailsPage', () => {
     ).toBeInTheDocument()
   })
 
+  test('reads every page of a trail that exceeds one page in the always window', async () => {
+    // A backend answers at most one page, so the oldest record only shows up
+    // once the view asks for the records before the page it already read.
+    const oldest = {
+      id: MAX_LIST_LIMIT + 1,
+      overtimeEntryId: 1,
+      action: 'created' as const,
+      actor: 'pager@example.com',
+      oldValue: null,
+      newValue: JSON.stringify({
+        effectiveDate: '2020-01-02',
+        minutes: 60,
+        kind: 'adjustment',
+        origin: 'manual',
+        note: null,
+      }),
+      recordedAt: '2020-01-02T00:00:00.000Z',
+    }
+    // The first page ends inside a pair of records of the same instant, the
+    // collision the page bound has to survive.
+    const trail = [
+      ...Array.from({ length: MAX_LIST_LIMIT }, (_, index) => ({
+        ...oldest,
+        id: MAX_LIST_LIMIT - index,
+        // The two oldest rows of the page share their instant.
+        recordedAt: new Date(
+          Date.UTC(2020, 0, 3) + Math.max(MAX_LIST_LIMIT - index, 2) * 60_000,
+        ).toISOString(),
+      })),
+      oldest,
+    ]
+    const asked: (string | undefined)[] = []
+    vi.spyOn(createLocalRepository(), 'listOvertimeAudits').mockImplementation(async (range) => {
+      asked.push(range?.to)
+      const before = range?.to ? trail.filter((audit) => audit.recordedAt < range.to!) : trail
+      return before.slice(0, range?.limit ?? MAX_LIST_LIMIT)
+    })
+
+    renderWithProviders(<AuditTrailsPage />)
+    await screen.findByRole('heading', { name: 'Audit Trails' })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'always' } })
+
+    await waitFor(() => expect(asked.length).toBeGreaterThan(1))
+    await waitFor(() =>
+      expect(records().getAllByRole('listitem').length).toBe(MAX_LIST_LIMIT + 1),
+    )
+  }, 30_000)
+
   test('shows a load error instead of the empty state', async () => {
     vi.spyOn(createLocalRepository(), 'listTimeEntryAudits').mockRejectedValueOnce(
       new Error('unavailable'),
@@ -178,6 +229,36 @@ describe('AuditTrailsPage', () => {
     expect(
       screen.queryByText('No audit records for the selected filters.'),
     ).not.toBeInTheDocument()
+  })
+
+  test('shows a load error when the projects cannot be read', async () => {
+    vi.spyOn(createLocalRepository(), 'listProjects').mockRejectedValueOnce(
+      new Error('unavailable'),
+    )
+
+    renderWithProviders(<AuditTrailsPage />)
+
+    expect(await screen.findByText(/audit trails could not be loaded/i)).toBeInTheDocument()
+  })
+
+  test('waits for the trails instead of announcing an empty result', async () => {
+    let release = () => {}
+    const pending = new Promise<never[]>((resolve) => {
+      release = () => resolve([])
+    })
+    vi.spyOn(createLocalRepository(), 'listAbsenceAudits').mockReturnValueOnce(pending)
+
+    renderWithProviders(<AuditTrailsPage />)
+
+    expect(await screen.findByText('Loading the audit trails…')).toBeInTheDocument()
+    expect(
+      screen.queryByText('No audit records for the selected filters.'),
+    ).not.toBeInTheDocument()
+
+    release()
+    expect(
+      await screen.findByText('No audit records for the selected filters.'),
+    ).toBeInTheDocument()
   })
 
   test('never shows the records of another user', async () => {

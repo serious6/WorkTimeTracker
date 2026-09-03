@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
-import { listAllPages, type ListRange } from '@/features/storage/list-range'
+import { listAllAuditPages, listAllPages, type ListRange } from '@/features/storage/list-range'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
 import type { SaveAbsence } from './absence-schema'
 
@@ -45,10 +45,14 @@ export function useAbsenceIndex(range?: ListRange): AbsenceIndex {
   return data ? absenceIndex(data) : NO_ABSENCES
 }
 
+/** The recorded changes of a window, or the whole trail in bounded pages. */
 export function useAbsenceAudits(range?: ListRange) {
   return useQuery({
     queryKey: absenceKeys.auditRange(range),
-    queryFn: () => getRepository().listAbsenceAudits(range),
+    queryFn: () =>
+      range
+        ? getRepository().listAbsenceAudits(range)
+        : listAllAuditPages((page) => getRepository().listAbsenceAudits(page)),
   })
 }
 
