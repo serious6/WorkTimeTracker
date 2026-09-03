@@ -51,6 +51,9 @@ const pages = {
   calendar: lazy(() =>
     import('@/pages/calendar-page').then((module) => ({ default: module.CalendarPage })),
   ),
+  'audit-trails': lazy(() =>
+    import('@/pages/audit-trails-page').then((module) => ({ default: module.AuditTrailsPage })),
+  ),
   settings: lazy(() =>
     import('@/pages/settings-page').then((module) => ({ default: module.SettingsPage })),
   ),

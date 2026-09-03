@@ -13,6 +13,7 @@ export type View =
   | 'absences'
   | 'overtime'
   | 'calendar'
+  | 'audit-trails'
   | 'settings'
   | 'licenses'
 

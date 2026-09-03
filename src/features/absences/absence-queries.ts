@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
-import { listAllPages, type ListRange } from '@/features/storage/list-range'
+import { listAllAuditPages, listAllPages, type ListRange } from '@/features/storage/list-range'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
 import type { SaveAbsence } from './absence-schema'
 
@@ -9,6 +9,8 @@ export const absenceKeys = {
   /** One cache entry per window, invalidating `all` still refreshes them all. */
   range: (range?: ListRange) => ['absences', range ?? null] as const,
   audits: ['absence-audits'] as const,
+  /** One cache entry per audit window, invalidating `audits` refreshes them all. */
+  auditRange: (range?: ListRange) => ['absence-audits', range ?? null] as const,
 }
 
 /** Every write of an absence also appends to the audit trail. */
@@ -43,8 +45,15 @@ export function useAbsenceIndex(range?: ListRange): AbsenceIndex {
   return data ? absenceIndex(data) : NO_ABSENCES
 }
 
-export function useAbsenceAudits() {
-  return useQuery({ queryKey: absenceKeys.audits, queryFn: () => getRepository().listAbsenceAudits() })
+/** The recorded changes of a window, or the whole trail in bounded pages. */
+export function useAbsenceAudits(range?: ListRange) {
+  return useQuery({
+    queryKey: absenceKeys.auditRange(range),
+    queryFn: () =>
+      range
+        ? getRepository().listAbsenceAudits(range)
+        : listAllAuditPages((page) => getRepository().listAbsenceAudits(page)),
+  })
 }
 
 export function useCreateAbsence() {

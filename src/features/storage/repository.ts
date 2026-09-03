@@ -42,12 +42,12 @@ export type Repository = {
     updateId?: number,
   ) => Promise<Absence[]>
   deleteAbsence: (id: number) => Promise<void>
-  listAbsenceAudits: () => Promise<AbsenceAudit[]>
+  listAbsenceAudits: (range?: ListRange) => Promise<AbsenceAudit[]>
   listOvertimeEntries: () => Promise<OvertimeEntry[]>
   createOvertimeEntry: (input: SaveOvertimeEntry) => Promise<OvertimeEntry>
   updateOvertimeEntry: (id: number, input: SaveOvertimeEntry) => Promise<OvertimeEntry>
   deleteOvertimeEntry: (id: number) => Promise<void>
-  listOvertimeAudits: () => Promise<OvertimeAudit[]>
+  listOvertimeAudits: (range?: ListRange) => Promise<OvertimeAudit[]>
   getWorkSettings: () => Promise<WorkSettings>
   updateWorkSettings: (settings: SaveWorkSettings) => Promise<WorkSettings>
   getAppVersion: () => Promise<string | null>

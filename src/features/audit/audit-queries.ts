@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
-import type { ListRange } from '@/features/storage/list-range'
+import { listAllAuditPages, type ListRange } from '@/features/storage/list-range'
 import { timeEntryKeys } from '@/features/time-entries/time-entry-keys'
 
 export const auditKeys = {
@@ -23,9 +23,16 @@ export function useAuditLog(range?: ListRange) {
   })
 }
 
+/**
+ * The recorded changes of a window, or the whole trail in bounded pages when
+ * the caller names none, so the audit view never shows a truncated history.
+ */
 export function useTimeEntryAudits(range?: ListRange) {
   return useQuery({
     queryKey: timeEntryAuditKeys.range(range),
-    queryFn: () => getRepository().listTimeEntryAudits(range),
+    queryFn: () =>
+      range
+        ? getRepository().listTimeEntryAudits(range)
+        : listAllAuditPages((page) => getRepository().listTimeEntryAudits(page)),
   })
 }

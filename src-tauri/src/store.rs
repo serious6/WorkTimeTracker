@@ -203,7 +203,11 @@ pub trait Store: LoginAttemptStore {
         update_id: Option<i64>,
     ) -> Result<Vec<Absence>, StoreError>;
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
-    fn list_absence_audits(&self, user_id: i64) -> Result<Vec<AbsenceAudit>, StoreError>;
+    fn list_absence_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<AbsenceAudit>, StoreError>;
 
     fn list_overtime_entries(&self, user_id: i64) -> Result<Vec<OvertimeEntry>, StoreError>;
     fn insert_overtime_entry(
@@ -218,7 +222,11 @@ pub trait Store: LoginAttemptStore {
         input: &SaveOvertimeEntry,
     ) -> Result<OvertimeEntry, OvertimeWriteError>;
     fn delete_overtime_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
-    fn list_overtime_audits(&self, user_id: i64) -> Result<Vec<OvertimeAudit>, StoreError>;
+    fn list_overtime_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<OvertimeAudit>, StoreError>;
 
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError>;
     fn write_settings(

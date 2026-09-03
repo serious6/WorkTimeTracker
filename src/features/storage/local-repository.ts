@@ -788,8 +788,17 @@ const fallbackRepository: Repository = {
       current ? appendAbsenceAudit(audits, id, 'deleted', current, null) : audits,
     )
   },
-  listAbsenceAudits: async () =>
-    readAbsenceState().audits.sort((left, right) => right.id - left.id),
+  listAbsenceAudits: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(
+        readAbsenceState().audits.sort((left, right) => right.id - left.id),
+        window,
+        (audit) => audit.recordedAt,
+      ),
+      listLimit(window),
+    )
+  },
   listOvertimeEntries: async () =>
     readOvertimeState().entries.sort((left, right) =>
       right.effectiveDate.localeCompare(left.effectiveDate),
@@ -852,8 +861,17 @@ const fallbackRepository: Repository = {
       current ? appendOvertimeAudit(audits, id, 'deleted', current, null) : audits,
     )
   },
-  listOvertimeAudits: async () =>
-    readOvertimeState().audits.sort((left, right) => right.id - left.id),
+  listOvertimeAudits: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(
+        readOvertimeState().audits.sort((left, right) => right.id - left.id),
+        window,
+        (audit) => audit.recordedAt,
+      ),
+      listLimit(window),
+    )
+  },
   getWorkSettings: async () =>
     read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
       workSettingsSchema.parse(value),

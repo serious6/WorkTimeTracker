@@ -7,6 +7,7 @@ import {
   Hourglass,
   LayoutDashboard,
   ListChecks,
+  ScrollText,
   Settings,
   ShieldCheck,
   Timer,
@@ -52,6 +53,10 @@ const groups: {
       { view: 'absences', label: 'Absences', icon: CalendarOff },
       { view: 'overtime', label: 'Overtime', icon: Hourglass },
     ],
+  },
+  {
+    label: 'Audit',
+    items: [{ view: 'audit-trails', label: 'Audit Trails', icon: ScrollText }],
   },
   { items: [{ view: 'settings', label: 'Settings', icon: Settings }] },
 ]

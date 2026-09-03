@@ -296,7 +296,8 @@ two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 | `old_value`, `new_value` | TEXT | no | JSON of the absence before and after the change | — |
 | `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
-Rows are only inserted, never updated or deleted.
+Rows are only inserted, never updated or deleted. `list_absence_audits` reads the trail of one user
+in a `recorded_at` window (`ListRange`), newest first and bounded by the list limits.
 
 ### overtime_entries
 
@@ -335,7 +336,8 @@ first entry is tracked.
 | `old_value`, `new_value` | TEXT | no | JSON of the record before and after the change, including `origin` | — |
 | `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
-Rows are only inserted, never updated or deleted.
+Rows are only inserted, never updated or deleted. `list_overtime_audits` reads the trail of one user
+in a `recorded_at` window (`ListRange`), newest first and bounded by the list limits.
 
 ### project_budgets
 
