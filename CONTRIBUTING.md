@@ -2,9 +2,18 @@
 
 ## Prerequisites
 
-- Node.js 26+
-- Rust stable
-- [Tauri system dependencies](https://v2.tauri.app/start/prerequisites/)
+Required to run the app in dev mode:
+
+| Software | Version | Needed for | Notes |
+| --- | --- | --- | --- |
+| Node.js + npm | 26+ | Frontend, Vite dev server, Tauri CLI | |
+| Rust + Cargo | 1.95+ (stable) | Tauri backend | Install via [rustup](https://rustup.rs/) |
+| C toolchain | — | Linking the Rust backend | **Windows only**: MSVC Build Tools (`x86_64-pc-windows-msvc`); the GNU toolchain cannot link the `cdylib` target. **macOS only**: Xcode Command Line Tools. Linux: see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
+| WebView runtime | — | Native window | **Windows only**: WebView2, preinstalled on Windows 11. macOS ships WKWebView; Linux needs `webkit2gtk` |
+| Podman or Docker (+ Compose) | — | Postgres via `compose.yaml` | Not needed if a local Postgres is already running |
+| PostgreSQL | 18 | Backend storage | Provided by the compose `db` service |
+
+The browser-only UI (`npm run dev`) needs Node.js and npm alone.
 
 Install the dependencies once:
 
@@ -40,9 +49,11 @@ Run before opening a pull request:
 ```sh
 npm run lint
 npm run typecheck
+npm run licenses:check
 npm run test:coverage
 npm run test:e2e
 npm run architecture:check
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 

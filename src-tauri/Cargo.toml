@@ -12,7 +12,7 @@ rust-version = "1.95"
 
 [lib]
 name = "work_time_tracker_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
