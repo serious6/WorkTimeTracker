@@ -50,10 +50,7 @@ Errors of the backend and of the user interface are appended to
 The `Release` workflow runs on manual dispatch. It checks that `package.json`,
 `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs all checks,
 bundles the application on Windows and macOS, and attaches those installers to a GitHub release
-tagged `v<version>`. `Containerfile.build` can build Linux bundle formats locally in a container,
-on its own pinned Debian and Rust base images rather than the runner image and toolchain of the
-workflow, but Linux bundles are not part of the published release, see
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+tagged `v<version>`.
 
 `src/data/licenses.json` is the committed license notice for shipped dependencies. Run
 `npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.

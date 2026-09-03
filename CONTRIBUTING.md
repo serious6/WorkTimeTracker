@@ -46,22 +46,6 @@ cargo test --manifest-path src-tauri/Cargo.toml
 Rust tests that need a database skip without a reachable `DATABASE_URL`; `REQUIRE_POSTGRES_TESTS=1`
 (as in CI) turns the skip into a failure.
 
-## Linux release bundles
-
-Linux bundles are local, unsupported builds and are not published as release assets.
-
-```sh
-podman build -f Containerfile.build -o type=local,dest=./release .
-# or, when the client rejects --output (Podman on Windows and macOS):
-podman build -f Containerfile.build --target builder -t worktimetracker-release .
-podman create --name worktimetracker-release worktimetracker-release
-podman cp worktimetracker-release:/artifacts ./release
-podman rm worktimetracker-release
-```
-
-`./release` then holds the `.deb`, `.rpm`, and `.AppImage` files; `--build-arg TAURI_BUNDLES=deb`
-restricts the formats. Windows and macOS installers are built by the `Release` workflow.
-
 ## Project layout
 
 ```text
