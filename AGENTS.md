@@ -193,9 +193,7 @@ version. The `Release` workflow is dispatched manually, verifies that the versio
 `npm run lint`, `npm run typecheck`, `npm test` (without the coverage gate),
 `npm run architecture:check`, `npm run build`, `cargo fmt --check`, `cargo test` (without a
 database, so the Postgres tests skip), `npm run licenses:check` and the e2e suite, bundles the
-installers for Linux, Windows and macOS and publishes them as the GitHub release `v<version>`.
-`Containerfile.build` produces the same Linux bundles locally, see
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+installers for Windows and macOS and publishes them as the GitHub release `v<version>`.
 
 ## Definition of Done
 

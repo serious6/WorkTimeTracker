@@ -1,5 +1,5 @@
-# The Linux release build and scripts/generate-licenses.mjs parse lock files with LF-only
-# patterns, so the working tree must not depend on the platform or on core.autocrlf.
+# scripts/generate-licenses.mjs parses lock files with LF-only patterns, so the working tree
+# must not depend on the platform or on core.autocrlf.
 * text=auto eol=lf
 
 *.png binary

@@ -13,6 +13,9 @@ jobs:
   conventional-commit:
     name: conventional commit title
     runs-on: ubuntu-latest
+    # Copilot-generated PRs currently use sentence-style titles, so this check
+    # applies only to human-authored PRs.
+    if: ${{ github.event.pull_request.user.login != 'Copilot' }}
     steps:
       - name: Check the title
         env:

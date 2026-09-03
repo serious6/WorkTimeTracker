@@ -100,20 +100,6 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 - [ ] A schema change ships with a new numbered migration in `drizzle/`.
 - [ ] The title follows Conventional Commits.
 
-## Linux release bundles
-
-```sh
-podman build -f Containerfile.build -o type=local,dest=./release .
-# or, when the client rejects --output (Podman on Windows and macOS):
-podman build -f Containerfile.build --target builder -t worktimetracker-release .
-podman create --name worktimetracker-release worktimetracker-release
-podman cp worktimetracker-release:/artifacts ./release
-podman rm worktimetracker-release
-```
-
-`./release` then holds the `.deb`, `.rpm`, and `.AppImage` files; `--build-arg TAURI_BUNDLES=deb`
-restricts the formats. Windows and macOS installers are built by the `Release` workflow.
-
 ## Project layout
 
 ```text
