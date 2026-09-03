@@ -45,6 +45,9 @@ The development container runs the browser UI with `docker compose up --build` o
 on the host. The compose stack starts Postgres by default and persists it in the `postgres_data`
 volume.
 
+`Containerfile.build` is the counterpart for release artifacts: it compiles the desktop
+application and emits the Linux installers, see "Release".
+
 ## Database backend
 
 Postgres is required for the native Tauri application. Copy `.env.example` to `.env`, set a local
@@ -96,6 +99,22 @@ The `Release` workflow runs on manual dispatch. It verifies that `package.json`,
 `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs all checks,
 then bundles the desktop application on Linux, Windows, and macOS and attaches the installers to a
 GitHub release tagged `v<version>`.
+
+`Containerfile.build` reproduces the Linux part of that bundling locally, without installing the
+Rust toolchain or the WebKit development packages on the host:
+
+```sh
+podman build -f Containerfile.build -o type=local,dest=./release .
+# or, when the client rejects --output (Podman on Windows and macOS):
+podman build -f Containerfile.build --target builder -t worktimetracker-release .
+podman create --name worktimetracker-release worktimetracker-release
+podman cp worktimetracker-release:/artifacts ./release
+podman rm worktimetracker-release
+```
+
+`./release` then holds the `.deb`, `.rpm`, and `.AppImage` files. Restrict the bundle formats with
+`--build-arg TAURI_BUNDLES=deb`. Windows and macOS installers cannot be produced this way; they
+need their own operating system and are built by the workflow.
 
 ## Third-party licenses
 

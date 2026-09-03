@@ -3,5 +3,6 @@
 dist
 node_modules
 playwright-report
+release
 src-tauri/target
 test-results

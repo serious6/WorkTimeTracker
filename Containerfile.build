@@ -1,0 +1,67 @@
+# Reproducible Linux release build of the Tauri desktop application.
+#
+#   podman build -f Containerfile.build -o type=local,dest=./release .
+#   docker build -f Containerfile.build -o type=local,dest=./release .
+#
+# A remote client, such as Podman on Windows or macOS, rejects `--output`. Copy the installers
+# out of the build stage instead:
+#
+#   podman build -f Containerfile.build --target builder -t worktimetracker-release .
+#   podman create --name worktimetracker-release worktimetracker-release
+#   podman cp worktimetracker-release:/artifacts ./release
+#   podman rm worktimetracker-release
+#
+# The result is not a runnable server image: `Containerfile` provides the development
+# environment, this file produces the installers that the `Release` workflow attaches to a
+# GitHub release. Only Linux bundles are built; Windows and macOS installers require their
+# own operating system.
+
+FROM node:26-bookworm AS builder
+
+ARG RUST_TOOLCHAIN=stable
+# Comma-separated Tauri bundle targets, for example "deb" or "deb,rpm,appimage".
+ARG TAURI_BUNDLES=deb,rpm,appimage
+
+ENV CARGO_TERM_COLOR=always \
+    NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FUND=false
+# appimagetool cannot mount a FUSE filesystem inside an unprivileged container.
+ENV APPIMAGE_EXTRACT_AND_RUN=1
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    desktop-file-utils \
+    file \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    libssl-dev \
+    libwebkit2gtk-4.1-dev \
+    patchelf \
+    pkg-config \
+    wget \
+  && rm -rf /var/lib/apt/lists/* \
+  && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --profile minimal --default-toolchain "${RUST_TOOLCHAIN}"
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+WORKDIR /workspace
+
+COPY package.json package-lock.json ./
+RUN npm ci --prefer-offline
+
+COPY . .
+
+# `npm run tauri build` runs `npm run build`, which verifies src/data/licenses.json first.
+RUN npm run tauri build -- --bundles "${TAURI_BUNDLES}"
+
+RUN mkdir /artifacts \
+  && find src-tauri/target/release/bundle -type f \
+    \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+    -exec cp {} /artifacts/ \; \
+  && [ -n "$(ls -A /artifacts)" ] || { echo 'No bundles were produced.' >&2; exit 1; }
+
+# Default target: the installers only, so `--output` writes a clean directory.
+FROM scratch AS artifacts
+COPY --from=builder /artifacts/ /
