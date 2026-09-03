@@ -93,6 +93,10 @@ login and registration forms, and the Settings work-schedule fields.
   state while React Query mutations complete, followed by toast feedback.
 - Proximity: correct-start, stop, pause/resume form one group; deleting an entry lives in the row
   `Menu`, not next to them.
+- Layout: the "Overtime Overview" rows reused the shared `Button` defaults (fixed 40 px height,
+  centred row), so label, value, period and target were drawn on top of each other — **fixed**, the
+  row is a `flex-col` button with `h-auto`, explicit gaps and a two-column grid whose long values
+  wrap instead of overflowing.
 
 ### Week (`pages/week-page.tsx`)
 
@@ -165,6 +169,22 @@ login and registration forms, and the Settings work-schedule fields.
   `AlertTriangle` + the rule message), never colour alone.
 - Tesler's Law: ArbZG rules are evaluated in `features/compliance`, the user only picks a month.
 
+### Audit Trails (`pages/audit-trails-page.tsx`)
+
+- Read-only by design: the view renders the append-only trails of time entries, absences and
+  overtime and offers no create, edit or delete action, so compliance evidence cannot be changed
+  from the interface.
+- Hick's Law: two filters only — a period (Today, Last 3/7/14 days, Last month, Always; default
+  Last 7 days) and a multi-select of the trail types, where no selection reads as "all types".
+- Tesler's Law: the period is sent to the repositories as a `ListRange`, so the window is applied
+  where the records are read instead of after a full read.
+- Hierarchy: every row leads with the trail type, the action and a summary; changed fields and the
+  actor with the timestamp follow as secondary text.
+- Empty and error state are both handled as text callouts ("No audit records for the selected
+  filters.", "The audit trails could not be loaded.").
+- Privacy: the queries are scoped to the signed-in user by the backend; the view has no control to
+  select another user.
+
 ### Settings (`pages/settings-page.tsx`)
 
 - Consistency: the working-day checkboxes were raw `<input type="checkbox">` — **fixed**, they use
@@ -197,12 +217,16 @@ login and registration forms, and the Settings work-schedule fields.
 - Accessibility: the sidebar defaults to its labelled, expanded state and has a persisted, labelled
   40 px expand/collapse control. Collapsed labels remain `sr-only`, including the "Local data"
   notice, and group labels remain accessible headings.
-- Navigation: all 11 destinations are list items in one labelled navigation list, so their set size
-  and position are exposed. Track, Review and Manage headings chunk related views; the settings item
-  remains last and ungrouped.
+- Navigation: all 13 destinations are list items in one labelled navigation list, so their set size
+  and position are exposed. Track, Review, Manage and Audit headings chunk related views; the
+  settings item remains last and ungrouped.
 - Keyboard: a visible-on-focus "Skip to main content" link is the first app control and moves focus
   to the focusable main landmark.
 - Fitts's Law: nav items and the rail control keep a 40 px minimum height.
+- Alignment: expanded nav items are `justify-start` with a fixed-width icon slot, so every icon shares
+  one vertical axis and every label starts at the same x position, independent of label length; the
+  group headings use the same `px-3` as the items. The collapsed rail switches to `justify-center`
+  so the icons stay centred in the rail.
 - Serial Position Effect: Dashboard and Time Entries open the Track group, while Settings keeps the
   final position where users expect it (Jakob's Law).
 - Header: the account menu trigger is icon-only but labelled `Account menu`; logout is marked
@@ -212,6 +236,6 @@ login and registration forms, and the Settings work-schedule fields.
 
 Verified in Chromium at 1440 px, 1024 px and 768 px: every top-level view renders without horizontal
 overflow (`scrollWidth === clientWidth`) and keeps exactly one level-1 heading. The collapsed sidebar
-keeps all 11 navigation names in the accessibility tree and all controls remain at least 40 px high;
+keeps all 13 navigation names in the accessibility tree and all controls remain at least 40 px high;
 the only control whose painted box is smaller than 40 px is the inline "View all" link, whose
 transparent hit area was verified by clicking 6 px above its visible box.

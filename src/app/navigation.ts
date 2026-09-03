@@ -13,6 +13,7 @@ export type View =
   | 'absences'
   | 'overtime'
   | 'calendar'
+  | 'audit-trails'
   | 'settings'
   | 'licenses'
 
@@ -22,6 +23,7 @@ type NavigationState = {
   dateFilter: Date | null
   sidebarExpanded: boolean
   navigate: (view: View, options?: { projectFilter?: number | null; dateFilter?: Date | null }) => void
+  setProjectFilter: (projectFilter: number | null) => void
   toggleSidebar: () => void
 }
 
@@ -38,6 +40,7 @@ export const useNavigationStore = create<NavigationState>()(
           projectFilter: options?.projectFilter ?? null,
           dateFilter: options?.dateFilter ?? null,
         }),
+      setProjectFilter: (projectFilter) => set({ projectFilter }),
       toggleSidebar: () => set((state) => ({ sidebarExpanded: !state.sidebarExpanded })),
     }),
     {

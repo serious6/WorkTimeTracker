@@ -373,8 +373,12 @@ authed_command!(
 );
 
 authed_command!(
-    fn list_absence_audits() -> Vec<AbsenceAudit>,
-    |db, user| Ok(db.0.list_absence_audits(user)?)
+    /// The audit trail is read only, it has no command that changes or removes it.
+    fn list_absence_audits(range: Option<ListRange>) -> Vec<AbsenceAudit>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_absence_audits(user, &range)?)
+    }
 );
 
 authed_command!(
@@ -406,8 +410,12 @@ authed_command!(
 );
 
 authed_command!(
-    fn list_overtime_audits() -> Vec<OvertimeAudit>,
-    |db, user| Ok(db.0.list_overtime_audits(user)?)
+    /// The audit trail is read only, it has no command that changes or removes it.
+    fn list_overtime_audits(range: Option<ListRange>) -> Vec<OvertimeAudit>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_overtime_audits(user, &range)?)
+    }
 );
 
 authed_command!(

@@ -40,17 +40,7 @@ The connection intentionally uses no TLS, and remote Postgres servers are not su
 Removing the `postgres_data` volume permanently deletes the local database. Database files of
 earlier versions are neither read nor migrated; export what you need before switching.
 
-## Project layout
-
-```text
-architecture/   LikeC4 model and decision records
-contract/       Domain rules shared by the Rust backend and the browser fallback
-docs/           Data model and further documentation
-drizzle/        Single Postgres migration applied by the Rust backend and Drizzle
-e2e/            Playwright tests
-src/            React application (app, components, db, features, lib, pages)
-src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, window_state)
-```
+## Logs
 
 Errors of the backend and of the user interface are appended to
 `<app data directory>/logs/work-time-tracker.log`, redacted and rotated at 512 KiB.
@@ -69,7 +59,7 @@ toolchain of the workflow, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Documentation
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, and the UI design principles
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, project layout, application icon, and the UI design principles
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
 - [`docs/data-model.md`](docs/data-model.md) — logical data model of the persistence layer in C4 style
 - [`docs/e2e-test-cases.md`](docs/e2e-test-cases.md) — end-to-end test cases in Given/When/Then form

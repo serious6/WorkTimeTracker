@@ -261,6 +261,15 @@ describe('tauriRepository – absences', () => {
     invokedWith('list_absence_audits', {})
     expect(result[0].action).toBe('created')
   })
+
+  test('listAbsenceAudits passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { from: '2026-08-01', to: '2026-09-01', limit: 5000 }
+
+    await tauriRepository.listAbsenceAudits(range)
+
+    invokedWith('list_absence_audits', { range })
+  })
 })
 
 describe('tauriRepository – overtime', () => {
@@ -316,6 +325,15 @@ describe('tauriRepository – overtime', () => {
     const result = await tauriRepository.listOvertimeAudits()
     invokedWith('list_overtime_audits', {})
     expect(result[0].overtimeEntryId).toBe(1)
+  })
+
+  test('listOvertimeAudits passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { from: '2026-08-01', to: '2026-09-01', limit: 5000 }
+
+    await tauriRepository.listOvertimeAudits(range)
+
+    invokedWith('list_overtime_audits', { range })
   })
 })
 

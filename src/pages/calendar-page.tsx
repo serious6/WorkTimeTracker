@@ -68,7 +68,7 @@ export function CalendarPage() {
                   key={toDateKey(day)}
                   onClick={() => {
                     setSelectedDate(toDateKey(day))
-                    navigate('dashboard')
+                    navigate('time-entries', { dateFilter: day })
                   }}
                   variant="ghost"
                 >

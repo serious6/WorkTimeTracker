@@ -7,6 +7,7 @@ import {
   Hourglass,
   LayoutDashboard,
   ListChecks,
+  ScrollText,
   Settings,
   ShieldCheck,
   Timer,
@@ -53,11 +54,16 @@ const groups: {
       { view: 'overtime', label: 'Overtime', icon: Hourglass },
     ],
   },
+  {
+    label: 'Audit',
+    items: [{ view: 'audit-trails', label: 'Audit Trails', icon: ScrollText }],
+  },
   { items: [{ view: 'settings', label: 'Settings', icon: Settings }] },
 ]
 
 export function AppSidebar() {
   const view = useNavigationStore((state) => state.view)
+  const projectFilter = useNavigationStore((state) => state.projectFilter)
   const navigate = useNavigationStore((state) => state.navigate)
   const sidebarExpanded = useNavigationStore((state) => state.sidebarExpanded)
   const toggleSidebar = useNavigationStore((state) => state.toggleSidebar)
@@ -119,10 +125,18 @@ export function AppSidebar() {
                   <Button
                     aria-current={view === item.view ? 'page' : undefined}
                     className={cn(
-                      'flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+                      'flex min-h-10 w-full items-center gap-3 rounded-md py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+                      sidebarExpanded ? 'justify-start px-3' : 'justify-center px-0',
                       view === item.view && 'bg-primary/15 text-primary',
                     )}
-                    onClick={() => navigate(item.view)}
+                    onClick={() =>
+                      navigate(
+                        item.view,
+                        item.view === 'reports' && projectFilter
+                          ? { projectFilter }
+                          : undefined,
+                      )
+                    }
                     variant="ghost"
                   >
                     <item.icon aria-hidden className="size-4 shrink-0" />

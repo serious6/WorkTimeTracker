@@ -109,6 +109,46 @@ export function limitDescending<T>(rows: T[], limit: number): T[] {
   return rows.slice(0, limit)
 }
 
+/** The exclusive bound just after an instant, `undefined` for a broken value. */
+function afterInstant(value: string): string | undefined {
+  const time = Date.parse(value)
+  return Number.isNaN(time) ? undefined : new Date(time + 1).toISOString()
+}
+
+/**
+ * Reads a complete descending audit trail in bounded pages. Unlike
+ * {@link listAllPages} the bound of a row is not unique: several records may
+ * carry the same `recordedAt`. The next page therefore asks for everything up
+ * to one millisecond after the oldest row read, which keeps the neighbours of
+ * that timestamp instead of skipping them, and the rows read twice are dropped
+ * by their id.
+ */
+export async function listAllAuditPages<T extends { id: number; recordedAt: string }>(
+  page: (range: ListRange) => Promise<T[]>,
+): Promise<T[]> {
+  const rows: T[] = []
+  const seen = new Set<number>()
+  let to: string | undefined
+  for (;;) {
+    const batch = await page({ to, limit: MAX_LIST_LIMIT })
+    for (const row of batch) {
+      if (seen.has(row.id)) continue
+      seen.add(row.id)
+      rows.push(row)
+    }
+    const oldest = batch.reduce<string | undefined>(
+      (bound, row) => (bound === undefined || row.recordedAt < bound ? row.recordedAt : bound),
+      undefined,
+    )
+    // A short page is the last one, and a bound that does not move backwards
+    // would repeat the page it just read.
+    if (batch.length < MAX_LIST_LIMIT || oldest === undefined) return rows
+    const next = afterInstant(oldest)
+    if (next === undefined || (to !== undefined && next >= to)) return rows
+    to = next
+  }
+}
+
 /**
  * Reads a complete ascending history in bounded pages instead of a single
  * truncated page. Each call asks for the newest {@link MAX_LIST_LIMIT} rows

@@ -60,6 +60,34 @@ podman rm worktimetracker-release
 `./release` then holds the `.deb`, `.rpm`, and `.AppImage` files; `--build-arg TAURI_BUNDLES=deb`
 restricts the formats. Windows and macOS installers are built by the `Release` workflow.
 
+## Project layout
+
+```text
+architecture/   LikeC4 model and decision records
+contract/       Domain rules shared by the Rust backend and the browser fallback
+docs/           Data model and further documentation
+drizzle/        Single Postgres migration applied by the Rust backend and Drizzle
+e2e/            Playwright tests
+scripts/        Repository tooling, for example the icon generator
+src/            React application (app, components, db, features, lib, pages)
+src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, window_state)
+```
+
+## Application icon
+
+`src-tauri/icons/app-icon.svg` is the source artwork; `public/favicon.svg` is the same mark for the
+web build, and both repeat the paths of the in-app `AppLogo` component. Regenerate the bundled icon
+set (`icon.ico`, `icon.icns`, and every PNG size) after changing the source:
+
+```sh
+npm run icons:generate
+```
+
+The command runs `tauri icon`, copies the desktop icons back into `src-tauri/icons` and records the
+checksums of the artwork and of every generated file in `src-tauri/icons/icons.lock.json`. The unit
+tests compare the committed files against that lock, so editing the artwork without regenerating
+fails the test suite.
+
 ## Conventions
 
 - Only add dependencies with an OSI-approved open-source license.
