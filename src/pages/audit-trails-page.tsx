@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox, Field, Select } from '@/components/ui/input'
 import { useAbsenceAudits } from '@/features/absences/absence-queries'
 import { formatMoment } from '@/features/audit/audit-changes'
-import { useTimeEntryAudits } from '@/features/audit/audit-queries'
+import { useSecurityAudits, useTimeEntryAudits } from '@/features/audit/audit-queries'
 import {
   absenceAuditRecords,
   auditListRange,
@@ -14,6 +14,7 @@ import {
   DEFAULT_AUDIT_RANGE,
   mergeAuditRecords,
   overtimeAuditRecords,
+  securityAuditRecords,
   timeEntryAuditRecords,
   type AuditRangeId,
   type AuditTrailType,
@@ -34,6 +35,7 @@ export function AuditTrailsPage() {
   const timeEntryAudits = useTimeEntryAudits(range)
   const absenceAudits = useAbsenceAudits(range)
   const overtimeAudits = useOvertimeAudits(range)
+  const securityAudits = useSecurityAudits(range)
   const projectQuery = useProjects()
   const projects = projectQuery.data ?? []
 
@@ -42,13 +44,14 @@ export function AuditTrailsPage() {
 
   // The project names label the time entry records, so a failed or pending
   // project query would present every project as deleted.
-  const queries = [timeEntryAudits, absenceAudits, overtimeAudits, projectQuery]
+  const queries = [timeEntryAudits, absenceAudits, overtimeAudits, securityAudits, projectQuery]
   const isError = queries.some((query) => query.isError)
   const isPending = queries.some((query) => query.isPending)
   const records = mergeAuditRecords([
     timeEntryAuditRecords(timeEntryAudits.data ?? [], projectName),
     absenceAuditRecords(absenceAudits.data ?? []),
     overtimeAuditRecords(overtimeAudits.data ?? []),
+    securityAuditRecords(securityAudits.data ?? [], projectName),
   ])
   // No selection reads as "all types", so the list is never silently empty.
   const visible = records.filter(

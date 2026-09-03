@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { z } from 'zod'
 import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
+import { securityAuditSchema } from '@/features/audit/security-audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import {
@@ -112,6 +113,8 @@ export const tauriRepository: Repository = {
   deleteOvertimeEntry: async (id) => {
     await run('delete_overtime_entry', { id })
   },
+  listSecurityAudits: (range) =>
+    call('list_security_audits', { range }, securityAuditSchema.array()),
   listOvertimeAudits: (range) =>
     call('list_overtime_audits', { range }, overtimeAuditSchema.array()),
   getWorkSettings: () => call('get_work_settings', {}, workSettingsSchema),

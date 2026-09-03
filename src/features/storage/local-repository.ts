@@ -16,6 +16,14 @@ import {
   type TimeEntryAudit,
 } from '@/features/audit/audit-schema'
 import {
+  authAuditExpiry,
+  fieldDiff,
+  securityAuditSchema,
+  AUTH_AUDIT_ENTITY,
+  type SecurityAudit,
+  type SecurityAuditAction,
+} from '@/features/audit/security-audit-schema'
+import {
   DUPLICATE_EMAIL_MESSAGE,
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
@@ -53,6 +61,7 @@ import {
 } from '@/features/settings/work-settings-schema'
 import {
   LOCKED_OUT_MESSAGE,
+  LOGIN_LOCKOUT_MINUTES,
   LoginAttempts,
   PBKDF2_ITERATIONS,
   SESSION_TIMEOUT_MINUTES,
@@ -88,6 +97,7 @@ const SCOPED_KEYS = [
   'audit-log',
   'absence-state',
   'overtime-state',
+  'security-audits',
 ] as const
 
 type ScopedKey = (typeof SCOPED_KEYS)[number]
@@ -138,6 +148,25 @@ function read<Value>(key: string, fallback: Value, parse: (value: unknown) => Va
 
 function write(key: string, value: unknown): void {
   globalThis.localStorage?.setItem(key, JSON.stringify(value))
+}
+
+/**
+ * Browser storage knows no transaction, so a change and its trail are written
+ * one key after the other. When one of the writes fails — an exhausted quota,
+ * for example — the keys the operation touched are restored, so a change is
+ * never committed without its record and a record never without its change.
+ */
+function atomically(keys: string[], apply: () => void): void {
+  const restore = keys.map((key) => [key, globalThis.localStorage?.getItem(key) ?? null] as const)
+  try {
+    apply()
+  } catch (error) {
+    for (const [key, value] of restore) {
+      if (value === null) globalThis.localStorage?.removeItem(key)
+      else globalThis.localStorage?.setItem(key, value)
+    }
+    throw error
+  }
 }
 
 function expiresAt(): number {
@@ -286,6 +315,116 @@ function appendAudit(
       recordedAt: new Date().toISOString(),
     }),
   ]
+}
+
+/**
+ * The shared trail of the identity and configuration changes, stored below the
+ * key of its owner like every other record. The user id is named explicitly,
+ * because a failed login is recorded without a session.
+ */
+function securityAuditsKey(userId: number): string {
+  return `work-time-tracker.${userId}.security-audits`
+}
+
+function readSecurityAudits(userId: number): SecurityAudit[] {
+  return read(securityAuditsKey(userId), [], (value) => securityAuditSchema.array().parse(value))
+}
+
+type AuditPayload = Record<string, unknown> | null
+
+/**
+ * Appends to the shared trail; recorded values are never modified or removed.
+ * An update carries the changed fields only and writes nothing when no field
+ * changed, so repeated saves cannot flood the trail. Credentials are never
+ * part of a payload.
+ */
+function appendSecurityAudit(
+  userId: number,
+  actor: string,
+  entity: string,
+  entityId: number | null,
+  action: SecurityAuditAction,
+  oldValue: AuditPayload,
+  newValue: AuditPayload,
+): void {
+  let oldText = oldValue ? JSON.stringify(oldValue) : null
+  let newText = newValue ? JSON.stringify(newValue) : null
+  if (oldValue && newValue) {
+    const diff = fieldDiff(oldValue, newValue)
+    if (!diff) return
+    oldText = JSON.stringify(diff.oldValue)
+    newText = JSON.stringify(diff.newValue)
+  }
+  // The retention deletes the auth events only; the configuration records are
+  // kept like the domain trails.
+  const expiry = authAuditExpiry()
+  const audits = readSecurityAudits(userId).filter(
+    (audit) => audit.entity !== AUTH_AUDIT_ENTITY || audit.recordedAt >= expiry,
+  )
+  write(securityAuditsKey(userId), [
+    ...audits,
+    securityAuditSchema.parse({
+      id: nextId(audits),
+      entity,
+      entityId,
+      action,
+      actor,
+      oldValue: oldText,
+      newValue: newText,
+      recordedAt: new Date().toISOString(),
+    }),
+  ])
+}
+
+/** The audited fields of a project; the identifiers and timestamps are not. */
+function projectPayload(project: Project): AuditPayload {
+  return {
+    name: project.name,
+    description: project.description,
+    color: project.color,
+    active: project.active,
+  }
+}
+
+function budgetPayload(budget: ProjectBudget): AuditPayload {
+  return {
+    projectId: budget.projectId,
+    budgetMinutes: budget.budgetMinutes,
+    dueDate: budget.dueDate,
+  }
+}
+
+/** The limits are flattened, so a changed limit reads as one changed field. */
+function settingsPayload(settings: WorkSettings): AuditPayload {
+  return {
+    weeklyTargetMinutes: settings.weeklyTargetMinutes,
+    workingDays: settings.workingDays,
+    weekStartsOn: settings.weekStartsOn,
+    ...settings.complianceLimits,
+  }
+}
+
+/**
+ * Records a failed login or a lockout. An attempt on an unknown email belongs
+ * to no account and is not stored: the browser fallback keeps every record
+ * below the key of its owner and is never a security boundary. Every attempt
+ * during a lockout is rejected, so only the first one is recorded: one record
+ * per lockout instead of one per attempt.
+ */
+function recordAuthEvent(email: string, action: SecurityAuditAction): void {
+  const user = readUsers().find((stored) => stored.email === email)
+  if (!user) return
+  if (action === 'auth.locked_out' && lockedOutRecently(user.id, email)) return
+  appendSecurityAudit(user.id, email, AUTH_AUDIT_ENTITY, user.id, action, null, null)
+}
+
+/** Whether the running lockout of this email is already recorded. */
+function lockedOutRecently(userId: number, email: string): boolean {
+  const since = new Date(Date.now() - LOGIN_LOCKOUT_MINUTES * 60_000).toISOString()
+  return readSecurityAudits(userId).some(
+    (audit) =>
+      audit.action === 'auth.locked_out' && audit.actor === email && audit.recordedAt > since,
+  )
 }
 
 function absenceStateKey(): string {
@@ -458,19 +597,31 @@ const fallbackRepository: Repository = {
       createdAt: new Date().toISOString(),
       passwordHash: await hashPassword(password),
     }
-    write(USERS_KEY, [...users, user])
+    atomically([USERS_KEY, securityAuditsKey(user.id)], () => {
+      write(USERS_KEY, [...users, user])
+      // The email identifies the account; the password and its hash are never
+      // part of an audit record.
+      appendSecurityAudit(user.id, email, 'user', user.id, 'user.registered', null, { email })
+    })
     startSession(user.id)
     if (users.length === 0) claimLegacyData(user.id)
     return toAuthUser(user)
   },
   login: async (credentials: Credentials) => {
     const { email, password } = validate(credentialsSchema, credentials)
-    if (!loginAttempts.allows(email)) throw new AppError('rateLimited', LOCKED_OUT_MESSAGE)
+    if (!loginAttempts.allows(email)) {
+      recordAuthEvent(email, 'auth.locked_out')
+      throw new AppError('rateLimited', LOCKED_OUT_MESSAGE)
+    }
     const user = readUsers().find((stored) => stored.email === email)
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       loginAttempts.recordFailure(email)
+      // Durable evidence: the counter of the lockout expires, this does not.
+      recordAuthEvent(email, 'auth.login_failed')
       throw new AppError('validation', INVALID_CREDENTIALS_MESSAGE)
     }
+    // A successful login and a logout are routine session events and are
+    // deliberately not recorded.
     loginAttempts.recordSuccess(email)
     startSession(user.id)
     return toAuthUser(user)
@@ -489,7 +640,20 @@ const fallbackRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(scopedKey('projects'), [...projects, project])
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('projects'), securityAuditsKey(userId)], () => {
+      write(scopedKey('projects'), [...projects, project])
+      appendSecurityAudit(
+        userId,
+        actor,
+        'project',
+        project.id,
+        'project.created',
+        null,
+        projectPayload(project),
+      )
+    })
     return project
   },
   updateProject: async (id, input) => {
@@ -498,21 +662,34 @@ const fallbackRepository: Repository = {
     const current = projects.find((project) => project.id === id)
     if (!current) throw new AppError('notFound', 'Project not found')
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
-    write(
-      scopedKey('projects'),
-      projects.map((project) => (project.id === id ? updated : project)),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('projects'), securityAuditsKey(userId)], () => {
+      write(
+        scopedKey('projects'),
+        projects.map((project) => (project.id === id ? updated : project)),
+      )
+      appendSecurityAudit(
+        userId,
+        actor,
+        'project',
+        id,
+        'project.updated',
+        projectPayload(current),
+        projectPayload(updated),
+      )
+    })
     return updated
   },
   deleteProject: async (id) => {
-    write(
-      scopedKey('projects'),
-      readProjects().filter((project) => project.id !== id),
-    )
-    write(
-      scopedKey('project-budgets'),
-      readBudgets().filter((budget) => budget.projectId !== id),
-    )
+    const projects = readProjects()
+    const deleted = projects.find((project) => project.id === id)
+    const budgets = readBudgets()
+    // Deleting a project deletes the budget attached to it, which is a
+    // configuration deletion of its own and is recorded as one.
+    const attachedBudgets = budgets.filter((budget) => budget.projectId === id)
+    const userId = requireUserId()
+    const actor = currentActor()
     const { entries, audits } = readEntryState()
     const updatedAt = new Date().toISOString()
     const updatedEntries = entries.map((entry) =>
@@ -525,7 +702,48 @@ const fallbackRepository: Repository = {
           : all,
       audits,
     )
-    writeEntryState(updatedEntries, updatedAudits)
+    atomically(
+      [
+        scopedKey('projects'),
+        scopedKey('project-budgets'),
+        entryStateKey(),
+        securityAuditsKey(userId),
+      ],
+      () => {
+        write(
+          scopedKey('projects'),
+          projects.filter((project) => project.id !== id),
+        )
+        // The trail keeps the name, so a deleted project stays readable.
+        if (deleted) {
+          appendSecurityAudit(
+            userId,
+            actor,
+            'project',
+            id,
+            'project.deleted',
+            projectPayload(deleted),
+            null,
+          )
+        }
+        write(
+          scopedKey('project-budgets'),
+          budgets.filter((budget) => budget.projectId !== id),
+        )
+        for (const budget of attachedBudgets) {
+          appendSecurityAudit(
+            userId,
+            actor,
+            'budget',
+            budget.id,
+            'budget.deleted',
+            budgetPayload(budget),
+            null,
+          )
+        }
+        writeEntryState(updatedEntries, updatedAudits)
+      },
+    )
   },
   listTimeEntries: async (range) => {
     const window = validateListRange(range)
@@ -671,7 +889,20 @@ const fallbackRepository: Repository = {
       createdAt: now,
       updatedAt: now,
     })
-    write(scopedKey('project-budgets'), [...budgets, budget])
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
+      write(scopedKey('project-budgets'), [...budgets, budget])
+      appendSecurityAudit(
+        userId,
+        actor,
+        'budget',
+        budget.id,
+        'budget.created',
+        null,
+        budgetPayload(budget),
+      )
+    })
     return budget
   },
   updateProjectBudget: async (id, input) => {
@@ -683,17 +914,47 @@ const fallbackRepository: Repository = {
       throw new AppError('conflict', DUPLICATE_BUDGET_MESSAGE)
     }
     const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
-    write(
-      scopedKey('project-budgets'),
-      budgets.map((budget) => (budget.id === id ? updated : budget)),
-    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
+      write(
+        scopedKey('project-budgets'),
+        budgets.map((budget) => (budget.id === id ? updated : budget)),
+      )
+      appendSecurityAudit(
+        userId,
+        actor,
+        'budget',
+        id,
+        'budget.updated',
+        budgetPayload(current),
+        budgetPayload(updated),
+      )
+    })
     return updated
   },
   deleteProjectBudget: async (id) => {
-    write(
-      scopedKey('project-budgets'),
-      readBudgets().filter((budget) => budget.id !== id),
-    )
+    const budgets = readBudgets()
+    const deleted = budgets.find((budget) => budget.id === id)
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('project-budgets'), securityAuditsKey(userId)], () => {
+      write(
+        scopedKey('project-budgets'),
+        budgets.filter((budget) => budget.id !== id),
+      )
+      if (deleted) {
+        appendSecurityAudit(
+          userId,
+          actor,
+          'budget',
+          id,
+          'budget.deleted',
+          budgetPayload(deleted),
+          null,
+        )
+      }
+    })
   },
   listAbsences: async (range) => {
     const window = validateListRange(range)
@@ -872,13 +1133,43 @@ const fallbackRepository: Repository = {
       listLimit(window),
     )
   },
+  listSecurityAudits: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(
+        readSecurityAudits(requireUserId()).sort(
+          (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+        ),
+        window,
+        (audit) => audit.recordedAt,
+      ),
+      listLimit(window),
+    )
+  },
   getWorkSettings: async () =>
     read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
       workSettingsSchema.parse(value),
     ),
   updateWorkSettings: async (settings) => {
     const parsed: WorkSettings = validate(workSettingsSchema, settings)
-    write(scopedKey('work-settings'), parsed)
+    const current = read(scopedKey('work-settings'), DEFAULT_WORK_SETTINGS, (value) =>
+      workSettingsSchema.parse(value),
+    )
+    const userId = requireUserId()
+    const actor = currentActor()
+    atomically([scopedKey('work-settings'), securityAuditsKey(userId)], () => {
+      write(scopedKey('work-settings'), parsed)
+      // Saving without changing a value records nothing.
+      appendSecurityAudit(
+        userId,
+        actor,
+        'workSettings',
+        null,
+        'work_settings.updated',
+        settingsPayload(current),
+        settingsPayload(parsed),
+      )
+    })
     return parsed
   },
   getAppVersion: async () => null,

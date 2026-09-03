@@ -314,6 +314,40 @@ pub struct AuditLogEntry {
     pub created_at: String,
 }
 
+/// Append-only trail of the identity and configuration changes that carry no
+/// trail of their own: account creation, failed logins and lockouts, and the
+/// create, update and delete of projects, budgets and the work settings.
+/// `entity_id` is `None` for the records that name no row. Credentials are
+/// never part of `old_value`/`new_value`.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityAudit {
+    pub id: i64,
+    pub entity: String,
+    pub entity_id: Option<i64>,
+    pub action: String,
+    pub actor: String,
+    pub old_value: Option<String>,
+    pub new_value: Option<String>,
+    pub recorded_at: String,
+}
+
+/// The entities of the shared trail above.
+pub const AUTH_AUDIT_ENTITY: &str = "auth";
+pub const USER_AUDIT_ENTITY: &str = "user";
+pub const PROJECT_AUDIT_ENTITY: &str = "project";
+pub const BUDGET_AUDIT_ENTITY: &str = "budget";
+pub const WORK_SETTINGS_AUDIT_ENTITY: &str = "workSettings";
+
+/// Auth events are evidence of an attack, not of working time: they are
+/// deleted once they served this retention. Every other trail is kept.
+pub const AUTH_AUDIT_RETENTION_DAYS: i64 = 90;
+
+/// The recorded auth events. A successful login and a logout are routine
+/// session events without evidential value and are deliberately not recorded.
+pub const LOGIN_FAILED_ACTION: &str = "auth.login_failed";
+pub const LOCKED_OUT_ACTION: &str = "auth.locked_out";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveProjectBudget {

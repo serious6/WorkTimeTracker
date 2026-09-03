@@ -15,7 +15,7 @@ use crate::{
     models::{
         adjusted_daily_target, Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Credentials,
         ListRange, OvertimeAudit, OvertimeEntry, Project, ProjectBudget, SaveAbsence,
-        SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, TimeEntry,
+        SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry,
         TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_LIST_LIMIT,
         GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
     },
@@ -351,7 +351,20 @@ fn serializes_the_models_of_the_entity_contract() {
             actor: "user@example.com".into(),
             old_value: None,
             new_value: None,
-            recorded_at: moment,
+            recorded_at: moment.clone(),
+        }),
+    );
+    assert_entity(
+        "securityAudit",
+        json(&SecurityAudit {
+            id: 1,
+            entity: "project".into(),
+            entity_id: None,
+            action: "project.created".into(),
+            actor: "user@example.com".into(),
+            old_value: None,
+            new_value: None,
+            recorded_at: moment.clone(),
         }),
     );
     assert_entity(

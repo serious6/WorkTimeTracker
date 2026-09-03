@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { errorToast } from '@/components/ui/toast-store'
+import { securityAuditKeys } from '@/features/audit/audit-queries'
 import { getRepository } from '@/features/storage'
 import { errorMessage } from '@/lib/errors'
 import { DEFAULT_WORK_SETTINGS, type SaveWorkSettings, type WorkSettings } from './work-settings-schema'
@@ -39,6 +40,8 @@ export function useUpdateWorkSettings() {
     mutationFn: (settings: SaveWorkSettings) => getRepository().updateWorkSettings(settings),
     onSuccess: (settings) => {
       queryClient.setQueryData(workSettingsKeys.all, settings)
+      // A changed setting appends to the audit trail, an unchanged save does not.
+      void queryClient.invalidateQueries({ queryKey: securityAuditKeys.all })
     },
   })
 }

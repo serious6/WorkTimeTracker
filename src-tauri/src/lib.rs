@@ -71,6 +71,7 @@ pub fn run() {
             commands::delete_time_entry,
             commands::list_time_entry_audits,
             commands::list_audit_log,
+            commands::list_security_audits,
             commands::list_project_budgets,
             commands::create_project_budget,
             commands::update_project_budget,

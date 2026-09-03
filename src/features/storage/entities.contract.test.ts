@@ -3,6 +3,7 @@ import { z } from 'zod'
 import entities from '../../../contract/entities.json'
 import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
+import { securityAuditSchema } from '@/features/audit/security-audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
 import { overtimeAuditSchema, overtimeEntrySchema } from '@/features/overtime/overtime-schema'
@@ -43,6 +44,7 @@ const schemas: Record<string, z.ZodObject> = {
   absenceAudit: absenceAuditSchema,
   overtimeEntry: overtimeEntrySchema,
   overtimeAudit: overtimeAuditSchema,
+  securityAudit: securityAuditSchema,
   workSettings: workSettingsSchema,
   complianceLimits: complianceLimitsSchema,
 }

@@ -86,6 +86,7 @@ timer on it.
 |----|-------------------------------|-------|------|------|
 | P1 | `P1: projects page supports CRUD with confirm flow and project total` | A project with tracked time exists | The user edits the project, cancels deletion once, then confirms deletion | Name/description/color update, total duration is shown, cancel keeps the project, confirm removes it |
 | P2 | `P2: deleted project entries stay usable and project links open filtered entries` | A project has a time entry | The user opens Time Entries from the project link and later deletes the project | Time Entries opens pre-filtered to that project; after deletion the entry still exists and is shown as "Deleted project" |
+| P3 | `P3: audit trails list the registration and every project change` | The user registered and created a project | The user renames and deletes the project, then opens Audit Trails | The registration appears once as an Identity record, the create/edit/delete of the project appear as Configuration records with the changed name, the trail of the deleted project stays readable, no successful sign in is recorded, and the Identity filter narrows the list to the registration |
 
 ## Absences
 
@@ -104,13 +105,13 @@ timer on it.
 | #   | Test (`e2e/audit-trails.spec.ts`) | Given | When | Then |
 |-----|-----------------------------------|-------|------|------|
 | AT1 | `AT1: Audit group opens Audit Trails with the current page marker` | The dashboard sidebar is visible | The user checks the Manage/Audit/Settings order and opens Audit Trails | The Audit group is between Manage and Settings, the Audit Trails heading appears and its navigation item has `aria-current="page"` |
-| AT2 | `AT2: merged trails list time entries, absences and overtime newest first` | The clock is fixed and the user creates a time entry, an absence and an overtime record | The user opens Audit Trails | One combined list shows all three Created rows newest first, including type, actor and timestamp |
-| AT3 | `AT3: type filters support single, combined and all-type selections` | All three audit trail types have a record | The user selects one type, several types and then clears the selection | Single selections show only that type, combined selections include both selected types and no selection shows all types |
+| AT2 | `AT2: merged trails list time entries, absences, overtime and configuration newest first` | The clock is fixed and the user creates a project, a time entry, an absence and an overtime record | The user opens Audit Trails | One combined list shows all four Created rows newest first, including type, actor and timestamp |
+| AT3 | `AT3: type filters support single, combined and all-type selections` | Every audit trail type has a record | The user selects one type, several types and then clears the selection | Single selections show only that type, combined selections include both selected types and no selection shows all types |
 | AT4 | `AT4: period filters evaluate aged records without waiting for real time` | A record is created under a fixed clock and then aged by moving the Playwright clock forward ten days | The user switches between Today, Last 3/7/14 days, Last month and Always | The default Last 7 days and shorter periods hide the record, while Last 14 days, Last month and Always show it |
 | AT5 | `AT5: editing and deleting a record creates action rows with changed fields` | A time entry exists | The user edits its end time, deletes it and opens Audit Trails | Edited and Deleted rows appear, and the Edited row lists the changed End field |
 | AT6 | `AT6: unmatched filter combinations show the empty callout` | Only a time-entry audit record exists | The user filters to Absence | The empty callout says no audit records match the selected filters |
 | AT7 | `AT7: Audit Trails is read-only and exposes no write controls` | Audit records exist for each trail type | The user opens Audit Trails | The main page exposes no create, add, edit, delete or save button |
-| AT8 | `AT8: audit records stay isolated after switching users` | User A has audit records | The user switches to and registers User B | User B's Audit Trails page is empty and does not show User A's records |
+| AT8 | `AT8: audit records stay isolated after switching users` | User A has audit records | The user switches to and registers User B | User B's Audit Trails page shows only User B's registration and does not show User A's records |
 
 ## Reports and Settings
 

@@ -788,3 +788,225 @@ describe('local repository error kinds', () => {
     ).rejects.toMatchObject({ kind: 'rateLimited', message: LOCKED_OUT_MESSAGE })
   })
 })
+
+describe('local repository identity and configuration trail', () => {
+  async function records() {
+    return createLocalRepository().listSecurityAudits()
+  }
+
+  it('records the registration without any credential material', async () => {
+    await register('first@example.com')
+
+    const audits = await records()
+
+    expect(audits).toHaveLength(1)
+    expect(audits[0]).toMatchObject({
+      entity: 'user',
+      action: 'user.registered',
+      actor: 'first@example.com',
+      oldValue: null,
+    })
+    expect(JSON.stringify(audits)).not.toContain(PASSWORD)
+    expect(JSON.stringify(audits)).not.toContain('pbkdf2')
+  })
+
+  it('records a failed login and a lockout but no successful login or logout', async () => {
+    await register('first@example.com')
+    await createLocalRepository().logout()
+
+    await expect(
+      createLocalRepository().login({ email: 'first@example.com', password: OTHER_PASSWORD }),
+    ).rejects.toThrow(INVALID_CREDENTIALS_MESSAGE)
+    await createLocalRepository().login({ email: 'first@example.com', password: PASSWORD })
+    await createLocalRepository().logout()
+    await createLocalRepository().login({ email: 'first@example.com', password: PASSWORD })
+
+    const actions = (await records()).map((audit) => audit.action)
+
+    expect(actions).toEqual(['auth.login_failed', 'user.registered'])
+  })
+
+  it('records a lockout once the limit is reached', async () => {
+    const user = await register('lockout-trail@example.com')
+    await createLocalRepository().logout()
+
+    for (let attempt = 0; attempt < MAX_LOGIN_ATTEMPTS; attempt += 1) {
+      await expect(
+        createLocalRepository().login({
+          email: 'lockout-trail@example.com',
+          password: OTHER_PASSWORD,
+        }),
+      ).rejects.toThrow(INVALID_CREDENTIALS_MESSAGE)
+    }
+    // Every further attempt is rejected as locked out, and none of them adds
+    // another record: an unauthenticated caller cannot flood the trail.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        createLocalRepository().login({ email: 'lockout-trail@example.com', password: PASSWORD }),
+      ).rejects.toThrow(LOCKED_OUT_MESSAGE)
+    }
+
+    // The locked out account cannot sign in, so the trail of the account is
+    // read from its own key: the records outlive the evicted lockout counter.
+    const stored: { action: string }[] = JSON.parse(
+      globalThis.localStorage?.getItem(`work-time-tracker.${user.id}.security-audits`) ?? '[]',
+    )
+    const actions = stored.map((audit) => audit.action)
+
+    expect(actions.filter((action) => action === 'auth.locked_out')).toHaveLength(1)
+    expect(actions.filter((action) => action === 'auth.login_failed')).toHaveLength(
+      MAX_LOGIN_ATTEMPTS,
+    )
+  })
+
+  it('records the create, update and delete of a project with its changed fields', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    await createLocalRepository().updateProject(project.id, {
+      ...projectInput('Website Relaunch'),
+    })
+    await createLocalRepository().deleteProject(project.id)
+
+    const audits = await records()
+
+    expect(audits.map((audit) => audit.action)).toEqual([
+      'project.deleted',
+      'project.updated',
+      'project.created',
+      'user.registered',
+    ])
+    const updated = audits[1]
+    expect(JSON.parse(updated.oldValue ?? '{}')).toEqual({ name: 'Website Redesign' })
+    expect(JSON.parse(updated.newValue ?? '{}')).toEqual({ name: 'Website Relaunch' })
+    // The trail keeps the name after the project row is gone.
+    expect(JSON.parse(audits[0].oldValue ?? '{}')).toMatchObject({ name: 'Website Relaunch' })
+  })
+
+  it('records budget writes and work settings with a field level diff', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    const budget = await createLocalRepository().createProjectBudget({
+      projectId: project.id,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+    await createLocalRepository().updateProjectBudget(budget.id, {
+      projectId: project.id,
+      budgetMinutes: 900,
+      dueDate: '2026-12-31',
+    })
+    await createLocalRepository().deleteProjectBudget(budget.id)
+    await createLocalRepository().updateWorkSettings({
+      ...DEFAULT_WORK_SETTINGS,
+      weeklyTargetMinutes: 1_800,
+    })
+
+    const audits = await records()
+
+    expect(audits.map((audit) => audit.action)).toEqual([
+      'work_settings.updated',
+      'budget.deleted',
+      'budget.updated',
+      'budget.created',
+      'project.created',
+      'user.registered',
+    ])
+    expect(JSON.parse(audits[0].newValue ?? '{}')).toEqual({ weeklyTargetMinutes: 1_800 })
+    expect(JSON.parse(audits[2].newValue ?? '{}')).toEqual({ budgetMinutes: 900 })
+  })
+
+  it('records the deletion of the budget a deleted project takes with it', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    const budget = await createLocalRepository().createProjectBudget({
+      projectId: project.id,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+    await createLocalRepository().deleteProject(project.id)
+
+    const audits = await records()
+
+    expect(audits.map((audit) => audit.action)).toEqual([
+      'budget.deleted',
+      'project.deleted',
+      'budget.created',
+      'project.created',
+      'user.registered',
+    ])
+    expect(audits[0]).toMatchObject({ entity: 'budget', entityId: budget.id })
+    expect(JSON.parse(audits[0].oldValue ?? '{}')).toMatchObject({ budgetMinutes: 600 })
+  })
+
+  it('keeps a change and its record together when the trail cannot be written', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    const real = globalThis.localStorage
+    // A full storage rejects the write of the trail; the change must not stay
+    // behind without its record.
+    const failing: Storage = {
+      get length() {
+        return real.length
+      },
+      key: (index) => real.key(index),
+      getItem: (key) => real.getItem(key),
+      setItem: (key, value) => {
+        if (key.endsWith('security-audits')) throw new Error('quota exceeded')
+        real.setItem(key, value)
+      },
+      removeItem: (key) => real.removeItem(key),
+      clear: () => real.clear(),
+    }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: failing })
+
+    await expect(
+      createLocalRepository().updateProject(project.id, projectInput('Website Relaunch')),
+    ).rejects.toThrow('quota exceeded')
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: real })
+
+    expect((await createLocalRepository().listProjects())[0].name).toBe('Website Redesign')
+    expect((await records()).map((audit) => audit.action)).toEqual([
+      'project.created',
+      'user.registered',
+    ])
+  })
+
+  it('records nothing when a save changes no value', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    await createLocalRepository().updateProject(project.id, projectInput('Website Redesign'))
+    await createLocalRepository().updateWorkSettings(DEFAULT_WORK_SETTINGS)
+    await createLocalRepository().updateWorkSettings(DEFAULT_WORK_SETTINGS)
+
+    expect((await records()).map((audit) => audit.action)).toEqual([
+      'project.created',
+      'user.registered',
+    ])
+  })
+
+  it('never lets one account read the trail of another', async () => {
+    await register('first@example.com')
+    await createProject('Website Redesign')
+    await createLocalRepository().logout()
+    await register('second@example.com')
+
+    expect((await records()).map((audit) => audit.actor)).toEqual(['second@example.com'])
+  })
+
+  it('keeps the trail append-only and free of running timer records', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    await createLocalRepository().createTimeEntry({
+      projectId: project.id,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: null,
+      note: null,
+    })
+
+    const before = await records()
+    await createLocalRepository().listSecurityAudits()
+    await createLocalRepository().listProjects()
+
+    expect(await records()).toEqual(before)
+  })
+})

@@ -62,3 +62,38 @@ test('P2: deleted project entries stay usable and project links open filtered en
   await expect(page.getByText('Deleted project', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('Total: 1h 00m')).toBeVisible()
 })
+
+// P3 in docs/e2e-test-cases.md
+test('P3: audit trails list the registration and every project change', async ({ page }) => {
+  await createProject(page, 'Trail Project')
+  await gotoPage(page, 'Projects')
+  await page.getByRole('button', { name: 'Edit Trail Project' }).click()
+  await dialog(page).getByLabel('Name').fill('Trail Project v2')
+  await dialog(page).getByRole('button', { name: 'Save project' }).click()
+  await expect(page.getByText('Project updated')).toBeVisible()
+  await page.getByRole('button', { name: 'Delete Trail Project v2' }).click()
+  await dialog(page).getByRole('button', { name: 'Delete project' }).click()
+  await expect(page.getByText('Project deleted')).toBeVisible()
+
+  await gotoPage(page, 'Audit Trails')
+  const records = page.getByTestId('audit-records').getByRole('listitem')
+
+  const registration = records.filter({ hasText: 'Account created' })
+  await expect(registration).toHaveCount(1)
+  await expect(registration).toContainText('Identity')
+  await expect(registration).toContainText('first@example.com')
+
+  // The project row is gone, yet its trail still names the project.
+  await expect(records.filter({ hasText: 'Project Trail Project v2' })).toHaveCount(2)
+  await expect(records.filter({ hasText: 'Project Trail Project' }).first()).toContainText(
+    'Deleted',
+  )
+  await expect(page.getByText('Name: Trail Project → Trail Project v2')).toHaveCount(1)
+
+  // A successful sign in is deliberately not recorded.
+  await expect(records.filter({ hasText: 'Sign in' })).toHaveCount(0)
+
+  await page.getByRole('checkbox', { name: 'Identity' }).check()
+  await expect(records).toHaveCount(1)
+  await expect(records.first()).toContainText('Registered')
+})

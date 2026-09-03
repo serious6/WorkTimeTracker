@@ -11,12 +11,15 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_postgres::PostgresConnectionManager;
 
 use crate::{
+    auth::LOGIN_LOCKOUT_MINUTES,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, OvertimeAudit,
         OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject,
-        SaveProjectBudget, SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
-        AUDIT_LOG_LIMIT, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
-        OVERTIME_ORIGIN_MANUAL,
+        SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User,
+        WorkSettings, AUDIT_LOG_LIMIT, AUTH_AUDIT_ENTITY, AUTH_AUDIT_RETENTION_DAYS,
+        BUDGET_AUDIT_ENTITY, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
+        LOCKED_OUT_ACTION, OVERTIME_ORIGIN_MANUAL, PROJECT_AUDIT_ENTITY, USER_AUDIT_ENTITY,
+        WORK_SETTINGS_AUDIT_ENTITY,
     },
     store::{
         LoginAttempt, LoginAttemptStore, OvertimeWriteError, Store, StoreError, SwitchEntryError,
@@ -48,6 +51,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0003_overtime",
         include_str!("../../drizzle/0003_overtime.sql"),
+    ),
+    (
+        "0004_security_audits",
+        include_str!("../../drizzle/0004_security_audits.sql"),
     ),
 ];
 
@@ -105,7 +112,11 @@ impl std::error::Error for LocalEndpointError {}
 
 /// Timestamp string in the ISO 8601 UTC/millisecond format expected by the frontend.
 fn now_iso() -> String {
-    Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+    iso(Utc::now())
+}
+
+fn iso(moment: chrono::DateTime<Utc>) -> String {
+    moment.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 impl From<postgres::Error> for StoreError {
@@ -447,6 +458,186 @@ fn entry_snapshot(entry: &TimeEntry) -> Option<String> {
     serde_json::to_string(entry).ok()
 }
 
+const SECURITY_AUDIT_COLUMNS: &str =
+    "id, entity, entity_id, action, actor, old_value, new_value, recorded_at";
+
+fn security_audit_from_row(row: &postgres::Row) -> SecurityAudit {
+    SecurityAudit {
+        id: row.get(0),
+        entity: row.get(1),
+        entity_id: row.get(2),
+        action: row.get(3),
+        actor: row.get(4),
+        old_value: row.get(5),
+        new_value: row.get(6),
+        recorded_at: row.get(7),
+    }
+}
+
+/// The audited fields of a project. `id` and the timestamps are left out: the
+/// trail records what the user changed, not the bookkeeping of the row.
+fn project_payload(project: &Project) -> serde_json::Value {
+    serde_json::json!({
+        "name": project.name,
+        "description": project.description,
+        "color": project.color,
+        "active": project.active,
+    })
+}
+
+fn budget_payload(budget: &ProjectBudget) -> serde_json::Value {
+    serde_json::json!({
+        "projectId": budget.project_id,
+        "budgetMinutes": budget.budget_minutes,
+        "dueDate": budget.due_date,
+    })
+}
+
+fn settings_payload(settings: &WorkSettings) -> serde_json::Value {
+    let limits = settings.compliance_limits;
+    serde_json::json!({
+        "weeklyTargetMinutes": settings.weekly_target_minutes,
+        "workingDays": settings.working_days,
+        "weekStartsOn": settings.week_starts_on,
+        "breakThresholdMinutes": limits.break_threshold_minutes,
+        "requiredBreakMinutes": limits.required_break_minutes,
+        "longBreakThresholdMinutes": limits.long_break_threshold_minutes,
+        "requiredLongBreakMinutes": limits.required_long_break_minutes,
+        "minBreakBlockMinutes": limits.min_break_block_minutes,
+        "maxContinuousWorkMinutes": limits.max_continuous_work_minutes,
+        "maxDailyWorkMinutes": limits.max_daily_work_minutes,
+        "minRestMinutes": limits.min_rest_minutes,
+    })
+}
+
+/// The fields that differ between two payloads, so a wide record is stored as
+/// its changed fields instead of two full snapshots. `None` means nothing
+/// changed, which suppresses the record: saving without an edit writes no row.
+fn field_diff(old: &serde_json::Value, new: &serde_json::Value) -> Option<(String, String)> {
+    let empty = serde_json::Map::new();
+    let old = old.as_object().unwrap_or(&empty);
+    let new = new.as_object().unwrap_or(&empty);
+    let mut changed_old = serde_json::Map::new();
+    let mut changed_new = serde_json::Map::new();
+    for field in old.keys().chain(new.keys()) {
+        let before = old.get(field).unwrap_or(&serde_json::Value::Null);
+        let after = new.get(field).unwrap_or(&serde_json::Value::Null);
+        if before != after {
+            changed_old.insert(field.clone(), before.clone());
+            changed_new.insert(field.clone(), after.clone());
+        }
+    }
+    if changed_new.is_empty() {
+        return None;
+    }
+    Some((
+        serde_json::Value::Object(changed_old).to_string(),
+        serde_json::Value::Object(changed_new).to_string(),
+    ))
+}
+
+/// One record of the shared trail, before it is appended.
+struct SecurityAuditRecord<'a> {
+    /// `None` for an event that belongs to no account, such as a failed login
+    /// of an unknown e-mail.
+    user_id: Option<i64>,
+    actor: &'a str,
+    entity: &'a str,
+    /// `None` where the action names no row, such as the work settings.
+    entity_id: Option<i64>,
+    action: &'a str,
+    old_value: Option<&'a str>,
+    new_value: Option<&'a str>,
+}
+
+/// Appends to the shared trail of identity and configuration changes. Every
+/// write path goes through this one place, so the recorded shape cannot drift.
+/// The values carry the audited fields only and never a password or a hash.
+fn record_security_audit(
+    client: &mut impl postgres::GenericClient,
+    record: SecurityAuditRecord<'_>,
+) -> Result<(), StoreError> {
+    client.execute(
+        "INSERT INTO security_audits (user_id, entity, entity_id, action, actor, old_value, new_value, recorded_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        &[
+            &record.user_id,
+            &record.entity,
+            &record.entity_id,
+            &record.action,
+            &record.actor,
+            &record.old_value,
+            &record.new_value,
+            &now_iso(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// Records the change of a configuration record of the signed in user, with
+/// the changed fields only. An update without a change writes nothing.
+fn record_config_audit(
+    client: &mut impl postgres::GenericClient,
+    user_id: i64,
+    entity: &str,
+    entity_id: Option<i64>,
+    action: &str,
+    old_value: Option<serde_json::Value>,
+    new_value: Option<serde_json::Value>,
+) -> Result<(), StoreError> {
+    let (old_text, new_text) = match (&old_value, &new_value) {
+        (Some(old), Some(new)) => match field_diff(old, new) {
+            None => return Ok(()),
+            Some((old, new)) => (Some(old), Some(new)),
+        },
+        (old, new) => (
+            old.as_ref().map(ToString::to_string),
+            new.as_ref().map(ToString::to_string),
+        ),
+    };
+    let actor = actor(client, user_id)?;
+    record_security_audit(
+        client,
+        SecurityAuditRecord {
+            user_id: Some(user_id),
+            actor: &actor,
+            entity,
+            entity_id,
+            action,
+            old_value: old_text.as_deref(),
+            new_value: new_text.as_deref(),
+        },
+    )
+}
+
+/// Answers whether the running lockout of this email is already recorded, so
+/// the repeated attempts it rejects add no further record.
+fn locked_out_recently(
+    client: &mut impl postgres::GenericClient,
+    email: &str,
+) -> Result<bool, StoreError> {
+    let since = iso(Utc::now() - chrono::Duration::minutes(LOGIN_LOCKOUT_MINUTES as i64));
+    let row = client.query_one(
+        "SELECT EXISTS (
+           SELECT 1 FROM security_audits
+           WHERE entity = $1 AND action = $2 AND actor = $3 AND recorded_at > $4
+         )",
+        &[&AUTH_AUDIT_ENTITY, &LOCKED_OUT_ACTION, &email, &since],
+    )?;
+    Ok(row.get(0))
+}
+
+/// Deletes the auth events that served their retention. It never touches the
+/// records of another entity, so the compliance trails are out of its reach.
+fn prune_auth_audits(client: &mut impl postgres::GenericClient) -> Result<(), StoreError> {
+    let expiry = iso(Utc::now() - chrono::Duration::days(AUTH_AUDIT_RETENTION_DAYS));
+    client.execute(
+        "DELETE FROM security_audits WHERE entity = $1 AND recorded_at < $2",
+        &[&AUTH_AUDIT_ENTITY, &expiry],
+    )?;
+    Ok(())
+}
+
 /// The email of the signed in user identifies the actor of a change.
 fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<String, StoreError> {
     let email: Option<String> = client
@@ -525,6 +716,65 @@ fn record_audit(
         ],
     )?;
     Ok(())
+}
+
+/// Reads the row an update or a delete is about to change and locks it until
+/// the transaction ends. Without the lock two concurrent updates could read the
+/// same original value, and the trail would record a transition that never
+/// happened.
+fn find_budget(
+    client: &mut impl postgres::GenericClient,
+    id: i64,
+    user_id: i64,
+) -> Result<Option<ProjectBudget>, StoreError> {
+    Ok(client
+        .query_opt(
+            &format!(
+                "SELECT {BUDGET_COLUMNS} FROM project_budgets
+                 WHERE id = $1 AND user_id = $2 FOR UPDATE"
+            ),
+            &[&id, &user_id],
+        )?
+        .as_ref()
+        .map(budget_from_row))
+}
+
+/// Locks the project for the rest of the transaction, like [`find_budget`].
+fn find_project(
+    client: &mut impl postgres::GenericClient,
+    id: i64,
+    user_id: i64,
+) -> Result<Option<Project>, StoreError> {
+    Ok(client
+        .query_opt(
+            &format!(
+                "SELECT {PROJECT_COLUMNS} FROM projects
+                 WHERE id = $1 AND user_id = $2 FOR UPDATE"
+            ),
+            &[&id, &user_id],
+        )?
+        .as_ref()
+        .map(project_from_row))
+}
+
+/// The budgets a project delete takes with it, locked so the cascade cannot
+/// remove a row this transaction has not recorded.
+fn budgets_of_project(
+    client: &mut impl postgres::GenericClient,
+    project_id: i64,
+    user_id: i64,
+) -> Result<Vec<ProjectBudget>, StoreError> {
+    Ok(client
+        .query(
+            &format!(
+                "SELECT {BUDGET_COLUMNS} FROM project_budgets
+                 WHERE project_id = $1 AND user_id = $2 FOR UPDATE"
+            ),
+            &[&project_id, &user_id],
+        )?
+        .iter()
+        .map(budget_from_row)
+        .collect())
 }
 
 fn read_entry(
@@ -630,6 +880,60 @@ impl LoginAttemptStore for PostgresStore {
     }
 }
 
+fn read_settings_of(
+    client: &mut impl postgres::GenericClient,
+    user_id: i64,
+) -> Result<WorkSettings, StoreError> {
+    let row = client.query_opt(
+        "SELECT weekly_target_minutes, working_days, week_starts_on,
+                break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
+                required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
+                max_daily_work_minutes, min_rest_minutes
+         FROM work_settings WHERE user_id = $1",
+        &[&user_id],
+    )?;
+    let Some(row) = row else {
+        return Ok(WorkSettings {
+            weekly_target_minutes: 2_400,
+            working_days: DEFAULT_WORKING_DAYS
+                .iter()
+                .map(|day| (*day).to_owned())
+                .collect(),
+            week_starts_on: "monday".into(),
+            compliance_limits: GERMAN_COMPLIANCE_LIMITS,
+        });
+    };
+    let working_days_text: String = row.get(1);
+    let working_days: Vec<String> = working_days_text
+        .split(',')
+        .map(str::trim)
+        .filter(|day| !day.is_empty())
+        .map(str::to_owned)
+        .collect();
+    Ok(WorkSettings {
+        weekly_target_minutes: row.get(0),
+        working_days: if working_days.is_empty() {
+            DEFAULT_WORKING_DAYS
+                .iter()
+                .map(|day| (*day).to_owned())
+                .collect()
+        } else {
+            working_days
+        },
+        week_starts_on: row.get(2),
+        compliance_limits: ComplianceLimits {
+            break_threshold_minutes: row.get(3),
+            required_break_minutes: row.get(4),
+            long_break_threshold_minutes: row.get(5),
+            required_long_break_minutes: row.get(6),
+            min_break_block_minutes: row.get(7),
+            max_continuous_work_minutes: row.get(8),
+            max_daily_work_minutes: row.get(9),
+            min_rest_minutes: row.get(10),
+        },
+    })
+}
+
 impl Store for PostgresStore {
     fn list_projects(&self, user_id: i64) -> Result<Vec<Project>, StoreError> {
         let mut client = self.conn()?;
@@ -642,8 +946,9 @@ impl Store for PostgresStore {
 
     fn insert_project(&self, user_id: i64, input: &SaveProject) -> Result<Project, StoreError> {
         let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
         let now = now_iso();
-        let row = client.query_one(
+        let row = transaction.query_one(
             &format!(
                 "INSERT INTO projects (user_id, name, description, color, active, created_at, updated_at)
                  VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING {PROJECT_COLUMNS}"
@@ -657,7 +962,20 @@ impl Store for PostgresStore {
                 &now,
             ],
         )?;
-        Ok(project_from_row(&row))
+        let project = project_from_row(&row);
+        // The audit is written in the same transaction as the change, so a
+        // committed change can never be missing from the trail.
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            PROJECT_AUDIT_ENTITY,
+            Some(project.id),
+            "project.created",
+            None,
+            Some(project_payload(&project)),
+        )?;
+        transaction.commit()?;
+        Ok(project)
     }
 
     fn update_project(
@@ -667,7 +985,9 @@ impl Store for PostgresStore {
         input: &SaveProject,
     ) -> Result<Project, StoreError> {
         let mut client = self.conn()?;
-        let row = client
+        let mut transaction = client.transaction()?;
+        let current = find_project(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
+        let row = transaction
             .query_opt(
                 &format!(
                     "UPDATE projects SET name = $3, description = $4, color = $5, active = $6, updated_at = $7
@@ -684,7 +1004,18 @@ impl Store for PostgresStore {
                 ],
             )?
             .ok_or(StoreError::NotFound)?;
-        Ok(project_from_row(&row))
+        let updated = project_from_row(&row);
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            PROJECT_AUDIT_ENTITY,
+            Some(updated.id),
+            "project.updated",
+            Some(project_payload(&current)),
+            Some(project_payload(&updated)),
+        )?;
+        transaction.commit()?;
+        Ok(updated)
     }
 
     fn delete_project(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
@@ -700,10 +1031,40 @@ impl Store for PostgresStore {
             .iter()
             .map(entry_from_row)
             .collect();
+        let deleted = find_project(&mut transaction, id, user_id)?;
+        // The delete cascades to the budget of the project, so it is read
+        // before the cascade and recorded as the deletion it is.
+        let budgets = budgets_of_project(&mut transaction, id, user_id)?;
         transaction.execute(
             "DELETE FROM projects WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
         )?;
+        // The trail keeps the name of the project, so it stays readable after
+        // the row is gone and the entries show as belonging to no project. A
+        // delete of a row that is already gone changes nothing and records
+        // nothing.
+        if let Some(deleted) = deleted {
+            record_config_audit(
+                &mut transaction,
+                user_id,
+                PROJECT_AUDIT_ENTITY,
+                Some(id),
+                "project.deleted",
+                Some(project_payload(&deleted)),
+                None,
+            )?;
+            for budget in &budgets {
+                record_config_audit(
+                    &mut transaction,
+                    user_id,
+                    BUDGET_AUDIT_ENTITY,
+                    Some(budget.id),
+                    "budget.deleted",
+                    Some(budget_payload(budget)),
+                    None,
+                )?;
+            }
+        }
         for current in affected {
             let updated = read_entry(&mut transaction, current.id, user_id)?;
             record_audit(
@@ -1069,8 +1430,18 @@ impl Store for PostgresStore {
             ),
             &[&user_id, &input.project_id, &input.budget_minutes, &input.due_date, &now],
         )?;
+        let budget = budget_from_row(&row);
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            BUDGET_AUDIT_ENTITY,
+            Some(budget.id),
+            "budget.created",
+            None,
+            Some(budget_payload(&budget)),
+        )?;
         transaction.commit()?;
-        Ok(budget_from_row(&row))
+        Ok(budget)
     }
 
     fn update_project_budget(
@@ -1082,6 +1453,7 @@ impl Store for PostgresStore {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
         PostgresStore::assert_owns_project(&mut transaction, user_id, Some(input.project_id))?;
+        let current = find_budget(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
         let row = transaction
             .query_opt(
                 &format!(
@@ -1098,16 +1470,40 @@ impl Store for PostgresStore {
                 ],
             )?
             .ok_or(StoreError::NotFound)?;
+        let updated = budget_from_row(&row);
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            BUDGET_AUDIT_ENTITY,
+            Some(updated.id),
+            "budget.updated",
+            Some(budget_payload(&current)),
+            Some(budget_payload(&updated)),
+        )?;
         transaction.commit()?;
-        Ok(budget_from_row(&row))
+        Ok(updated)
     }
 
     fn delete_project_budget(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
-        client.execute(
+        let mut transaction = client.transaction()?;
+        let deleted = find_budget(&mut transaction, id, user_id)?;
+        transaction.execute(
             "DELETE FROM project_budgets WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
         )?;
+        if let Some(deleted) = deleted {
+            record_config_audit(
+                &mut transaction,
+                user_id,
+                BUDGET_AUDIT_ENTITY,
+                Some(id),
+                "budget.deleted",
+                Some(budget_payload(&deleted)),
+                None,
+            )?;
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -1459,54 +1855,7 @@ impl Store for PostgresStore {
 
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError> {
         let mut client = self.conn()?;
-        let row = client.query_opt(
-            "SELECT weekly_target_minutes, working_days, week_starts_on,
-                    break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
-                    required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
-                    max_daily_work_minutes, min_rest_minutes
-             FROM work_settings WHERE user_id = $1",
-            &[&user_id],
-        )?;
-        let Some(row) = row else {
-            return Ok(WorkSettings {
-                weekly_target_minutes: 2_400,
-                working_days: DEFAULT_WORKING_DAYS
-                    .iter()
-                    .map(|day| (*day).to_owned())
-                    .collect(),
-                week_starts_on: "monday".into(),
-                compliance_limits: GERMAN_COMPLIANCE_LIMITS,
-            });
-        };
-        let working_days_text: String = row.get(1);
-        let working_days: Vec<String> = working_days_text
-            .split(',')
-            .map(str::trim)
-            .filter(|day| !day.is_empty())
-            .map(str::to_owned)
-            .collect();
-        Ok(WorkSettings {
-            weekly_target_minutes: row.get(0),
-            working_days: if working_days.is_empty() {
-                DEFAULT_WORKING_DAYS
-                    .iter()
-                    .map(|day| (*day).to_owned())
-                    .collect()
-            } else {
-                working_days
-            },
-            week_starts_on: row.get(2),
-            compliance_limits: ComplianceLimits {
-                break_threshold_minutes: row.get(3),
-                required_break_minutes: row.get(4),
-                long_break_threshold_minutes: row.get(5),
-                required_long_break_minutes: row.get(6),
-                min_break_block_minutes: row.get(7),
-                max_continuous_work_minutes: row.get(8),
-                max_daily_work_minutes: row.get(9),
-                min_rest_minutes: row.get(10),
-            },
-        })
+        read_settings_of(&mut *client, user_id)
     }
 
     fn write_settings(
@@ -1515,8 +1864,10 @@ impl Store for PostgresStore {
         settings: &WorkSettings,
     ) -> Result<WorkSettings, StoreError> {
         let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        let current = read_settings_of(&mut transaction, user_id)?;
         let limits = settings.compliance_limits;
-        client.execute(
+        transaction.execute(
             "INSERT INTO work_settings (user_id, weekly_target_minutes, working_days, week_starts_on,
                break_threshold_minutes, required_break_minutes, long_break_threshold_minutes,
                required_long_break_minutes, min_break_block_minutes, max_continuous_work_minutes,
@@ -1543,8 +1894,20 @@ impl Store for PostgresStore {
                 &limits.min_rest_minutes,
             ],
         )?;
-        drop(client);
-        self.read_settings(user_id)
+        let updated = read_settings_of(&mut transaction, user_id)?;
+        // Saving the settings without changing a value records nothing, so a
+        // repeated save cannot flood the trail.
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            WORK_SETTINGS_AUDIT_ENTITY,
+            None,
+            "work_settings.updated",
+            Some(settings_payload(&current)),
+            Some(settings_payload(&updated)),
+        )?;
+        transaction.commit()?;
+        Ok(updated)
     }
 
     fn read_app_version(&self) -> Result<Option<String>, StoreError> {
@@ -1581,6 +1944,56 @@ impl Store for PostgresStore {
             .map(|row| (row.get(0), row.get(1))))
     }
 
+    fn list_security_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<SecurityAudit>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let filter = recorded_at_filter(range, &mut params);
+        let mut client = self.conn()?;
+        let rows = client.query(
+            &format!(
+                "SELECT {SECURITY_AUDIT_COLUMNS} FROM security_audits
+                 WHERE user_id = $1{filter} ORDER BY recorded_at DESC, id DESC LIMIT $2"
+            ),
+            params.as_slice(),
+        )?;
+        Ok(rows.iter().map(security_audit_from_row).collect())
+    }
+
+    fn record_auth_event(&self, email: &str, action: &str) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        // Evidence of a failed sign in stays after the counter of the lockout
+        // is evicted, and it is kept for the retention of the auth events.
+        prune_auth_audits(&mut transaction)?;
+        // Every attempt during a lockout is rejected as rate limited, so only
+        // the first one is recorded: one record per lockout, instead of one
+        // per request of an unauthenticated caller.
+        if action == LOCKED_OUT_ACTION && locked_out_recently(&mut transaction, email)? {
+            return Ok(());
+        }
+        let user_id: Option<i64> = transaction
+            .query_opt("SELECT id FROM users WHERE email = $1", &[&email])?
+            .map(|row| row.get(0));
+        record_security_audit(
+            &mut transaction,
+            SecurityAuditRecord {
+                user_id,
+                actor: email,
+                entity: AUTH_AUDIT_ENTITY,
+                entity_id: user_id,
+                action,
+                old_value: None,
+                new_value: None,
+            },
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     fn register_user(&self, email: &str, password_hash: &str) -> Result<User, StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
@@ -1598,6 +2011,21 @@ impl Store for PostgresStore {
             email: row.get(1),
             created_at: row.get(2),
         };
+        // The email identifies the account; the password and its hash are
+        // never part of an audit record.
+        let registered = serde_json::json!({ "email": user.email }).to_string();
+        record_security_audit(
+            &mut transaction,
+            SecurityAuditRecord {
+                user_id: Some(user.id),
+                actor: &user.email,
+                entity: USER_AUDIT_ENTITY,
+                entity_id: Some(user.id),
+                action: "user.registered",
+                old_value: None,
+                new_value: Some(&registered),
+            },
+        )?;
         if first_user == 0 {
             for table in [
                 "projects",
@@ -1620,7 +2048,10 @@ impl Store for PostgresStore {
 mod tests {
     use super::*;
     use crate::{
-        models::{SaveOvertimeEntry, SaveProject, SaveTimeEntry},
+        models::{
+            SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, LOCKED_OUT_ACTION,
+            LOGIN_FAILED_ACTION,
+        },
         test_support::{fresh_database, test_store, unique_email},
     };
 
@@ -2015,5 +2446,210 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, TimeEntryWriteError::Overlap));
+    }
+    fn a_project(name: &str) -> SaveProject {
+        SaveProject {
+            name: name.into(),
+            description: None,
+            color: "#112233".into(),
+            active: true,
+        }
+    }
+
+    fn audit_actions(store: &PostgresStore, user_id: i64) -> Vec<String> {
+        store
+            .list_security_audits(user_id, &ListRange::default())
+            .unwrap()
+            .into_iter()
+            .map(|audit| audit.action)
+            .collect()
+    }
+
+    /// The registration is evidence of how an account came to be, so it has to
+    /// be recorded - but never with the credential it was created with.
+    #[test]
+    fn records_a_registration_without_any_credential() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let user = store
+            .register_user(&email, "argon2-hash-of-a-secret")
+            .unwrap();
+
+        let audits = store
+            .list_security_audits(user.id, &ListRange::default())
+            .unwrap();
+        assert_eq!(audits.len(), 1, "{audits:?}");
+        assert_eq!(audits[0].action, "user.registered");
+        assert_eq!(audits[0].actor, email);
+        assert_eq!(audits[0].entity_id, Some(user.id));
+        let payload = format!("{:?}{:?}", audits[0].old_value, audits[0].new_value);
+        assert!(!payload.contains("argon2"), "{payload}");
+        assert!(!payload.contains("hash"), "{payload}");
+    }
+
+    /// The lockout counter is evicted once it is served, so the failed sign in
+    /// has to leave a record of its own.
+    #[test]
+    fn records_the_auth_events_of_an_account() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let email = unique_email();
+        let user = store.register_user(&email, "hash").unwrap();
+
+        store
+            .record_auth_event(&email, LOGIN_FAILED_ACTION)
+            .unwrap();
+        store.record_auth_event(&email, LOCKED_OUT_ACTION).unwrap();
+        // Every further attempt is rejected as locked out; recording each of
+        // them would let an unauthenticated caller flood the trail.
+        store.record_auth_event(&email, LOCKED_OUT_ACTION).unwrap();
+        store.record_auth_event(&email, LOCKED_OUT_ACTION).unwrap();
+        // An unknown email must not be attributed to any account.
+        store
+            .record_auth_event(&unique_email(), LOGIN_FAILED_ACTION)
+            .unwrap();
+
+        assert_eq!(
+            audit_actions(&store, user.id),
+            vec![
+                LOCKED_OUT_ACTION.to_owned(),
+                LOGIN_FAILED_ACTION.to_owned(),
+                "user.registered".to_owned(),
+            ]
+        );
+    }
+
+    /// Every configuration change is one record, and the trail of a deleted
+    /// project stays readable after its row is gone.
+    #[test]
+    fn records_the_life_cycle_of_a_project_and_its_budget() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let project = store.insert_project(user.id, &a_project("Trail")).unwrap();
+        store
+            .update_project(project.id, user.id, &a_project("Renamed"))
+            .unwrap();
+        let budget = store
+            .insert_project_budget(
+                user.id,
+                &SaveProjectBudget {
+                    project_id: project.id,
+                    budget_minutes: 600,
+                    due_date: "2026-12-31".into(),
+                },
+            )
+            .unwrap();
+        store
+            .update_project_budget(
+                budget.id,
+                user.id,
+                &SaveProjectBudget {
+                    project_id: project.id,
+                    budget_minutes: 900,
+                    due_date: "2026-12-31".into(),
+                },
+            )
+            .unwrap();
+        store.delete_project(project.id, user.id).unwrap();
+
+        let audits = store
+            .list_security_audits(user.id, &ListRange::default())
+            .unwrap();
+        let actions: Vec<&str> = audits.iter().map(|audit| audit.action.as_str()).collect();
+        assert_eq!(
+            actions,
+            vec![
+                // Deleting the project deletes its budget, which is recorded
+                // as the configuration deletion it is.
+                "budget.deleted",
+                "project.deleted",
+                "budget.updated",
+                "budget.created",
+                "project.updated",
+                "project.created",
+                "user.registered",
+            ],
+            "{audits:?}"
+        );
+        assert_eq!(audits[0].entity_id, Some(budget.id));
+        assert!(
+            audits[0].old_value.as_deref().unwrap().contains("900"),
+            "{:?}",
+            audits[0]
+        );
+
+        let update = audits
+            .iter()
+            .find(|audit| audit.action == "project.updated")
+            .unwrap();
+        // A change records the changed field only, not a full snapshot.
+        assert_eq!(update.old_value.as_deref(), Some(r#"{"name":"Trail"}"#));
+        assert_eq!(update.new_value.as_deref(), Some(r#"{"name":"Renamed"}"#));
+
+        let deleted = &audits[1];
+        assert!(
+            deleted.old_value.as_deref().unwrap().contains("Renamed"),
+            "{deleted:?}"
+        );
+    }
+
+    /// Saving the settings unchanged is a no-op, so it must not flood the
+    /// trail; a real change records the changed field only.
+    #[test]
+    fn records_only_the_settings_that_actually_changed() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let settings = store.read_settings(user.id).unwrap();
+
+        store.write_settings(user.id, &settings).unwrap();
+        store.write_settings(user.id, &settings).unwrap();
+        assert_eq!(audit_actions(&store, user.id), vec!["user.registered"]);
+
+        let changed = WorkSettings {
+            weekly_target_minutes: settings.weekly_target_minutes + 60,
+            working_days: settings.working_days.clone(),
+            week_starts_on: settings.week_starts_on.clone(),
+            compliance_limits: settings.compliance_limits,
+        };
+        store.write_settings(user.id, &changed).unwrap();
+        store.write_settings(user.id, &changed).unwrap();
+
+        let audits = store
+            .list_security_audits(user.id, &ListRange::default())
+            .unwrap();
+        assert_eq!(audits[0].action, "work_settings.updated");
+        assert_eq!(audits.len(), 2, "{audits:?}");
+        assert_eq!(
+            audits[0].new_value.as_deref(),
+            Some(
+                format!(
+                    r#"{{"weeklyTargetMinutes":{}}}"#,
+                    changed.weekly_target_minutes
+                )
+                .as_str()
+            )
+        );
+    }
+
+    /// The trails of two accounts never mix.
+    #[test]
+    fn keeps_the_trail_scoped_to_its_user() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let first = store.register_user(&unique_email(), "hash").unwrap();
+        let second = store.register_user(&unique_email(), "hash").unwrap();
+        store
+            .insert_project(second.id, &a_project("Other"))
+            .unwrap();
+
+        assert_eq!(audit_actions(&store, first.id), vec!["user.registered"]);
     }
 }

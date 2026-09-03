@@ -5,7 +5,7 @@ use crate::{
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ListRange, OvertimeAudit, OvertimeEntry, Project,
         ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User, WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -234,6 +234,17 @@ pub trait Store: LoginAttemptStore {
         user_id: i64,
         settings: &WorkSettings,
     ) -> Result<WorkSettings, StoreError>;
+
+    /// The identity and configuration records of the signed in user. The trail
+    /// is append-only: no method of this trait updates or deletes a record.
+    fn list_security_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<SecurityAudit>, StoreError>;
+    /// Records a failed login or a lockout of `email`. Runs without a session,
+    /// because a rejected login has none, and never stores credentials.
+    fn record_auth_event(&self, email: &str, action: &str) -> Result<(), StoreError>;
 
     fn read_app_version(&self) -> Result<Option<String>, StoreError>;
 

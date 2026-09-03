@@ -15,6 +15,7 @@ import {
 
 const USER = 'first@example.com'
 const AUDIT_DAY = '2026-03-15'
+const TRAIL_TYPES = ['Time Entry', 'Absence', 'Overtime', 'Identity', 'Configuration'] as const
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -22,8 +23,8 @@ test.beforeEach(async ({ page }) => {
   await expectHeading(page, 'Dashboard')
 })
 
-function auditRows(page: Page) {
-  return page.getByRole('listitem').filter({ hasText: USER })
+function auditRows(page: Page, actor = USER) {
+  return page.getByRole('listitem').filter({ hasText: actor })
 }
 
 function auditRecord(page: Page, ...texts: string[]) {
@@ -45,7 +46,7 @@ async function seedEveryTrail(page: Page, project = 'Audit Project') {
 }
 
 async function expectOnlyTypes(page: Page, visibleTypes: string[]) {
-  for (const type of ['Time Entry', 'Absence', 'Overtime']) {
+  for (const type of TRAIL_TYPES) {
     await expect(auditRecord(page, type)).toHaveCount(visibleTypes.includes(type) ? 1 : 0)
   }
 }
@@ -75,7 +76,7 @@ test('AT1: Audit group opens Audit Trails with the current page marker', async (
 })
 
 // AT2 in docs/e2e-test-cases.md
-test('AT2: merged trails list time entries, absences and overtime newest first', async ({
+test('AT2: merged trails list time entries, absences, overtime and configuration newest first', async ({
   page,
 }) => {
   await page.clock.install({ time: new Date(`${AUDIT_DAY}T09:00:00`) })
@@ -91,13 +92,14 @@ test('AT2: merged trails list time entries, absences and overtime newest first',
   await addOvertime(page, { kind: 'adjustment', overtime: '30m', effectiveDate: AUDIT_DAY })
 
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('3 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('4 records in the selected period.')).toBeVisible()
 
   const rows = await auditRows(page).allTextContents()
-  expect(rows).toHaveLength(3)
+  expect(rows).toHaveLength(4)
   expect(rows[0]).toContain('Overtime')
   expect(rows[1]).toContain('Absence')
   expect(rows[2]).toContain('Time Entry')
+  expect(rows[3]).toContain('Configuration')
   for (const row of rows) {
     expect(row).toContain('Created')
     expect(row).toContain(USER)
@@ -109,9 +111,9 @@ test('AT2: merged trails list time entries, absences and overtime newest first',
 test('AT3: type filters support single, combined and all-type selections', async ({ page }) => {
   await seedEveryTrail(page)
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('3 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('5 records in the selected period.')).toBeVisible()
 
-  for (const type of ['Time Entry', 'Absence', 'Overtime']) {
+  for (const type of TRAIL_TYPES) {
     await page.getByRole('checkbox', { name: type }).check()
     await expect(page.getByText('1 record in the selected period.')).toBeVisible()
     await expectOnlyTypes(page, [type])
@@ -125,7 +127,7 @@ test('AT3: type filters support single, combined and all-type selections', async
 
   await page.getByRole('checkbox', { name: 'Absence' }).uncheck()
   await page.getByRole('checkbox', { name: 'Overtime' }).uncheck()
-  await expect(page.getByText('3 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('5 records in the selected period.')).toBeVisible()
 })
 
 // AT4 in docs/e2e-test-cases.md
@@ -213,6 +215,11 @@ test('AT8: audit records stay isolated after switching users', async ({ page }) 
   await expectHeading(page, 'Dashboard')
 
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('No audit records for the selected filters.')).toBeVisible()
+  await expect(page.getByText('1 record in the selected period.')).toBeVisible()
   await expect(auditRows(page)).toHaveCount(0)
+  await expect(
+    auditRows(page, 'second@example.com')
+      .filter({ hasText: 'Identity' })
+      .filter({ hasText: 'Registered' }),
+  ).toHaveCount(1)
 })

@@ -1,6 +1,7 @@
 import type { Absence, AbsenceAudit, SaveAbsence } from '@/features/absences/absence-schema'
 import type { AuthUser, Credentials } from '@/features/auth/auth-schema'
 import type { AuditLogEntry, TimeEntryAudit } from '@/features/audit/audit-schema'
+import type { SecurityAudit } from '@/features/audit/security-audit-schema'
 import type { ProjectBudget, SaveProjectBudget } from '@/features/budgets/budget-schema'
 import type {
   OvertimeAudit,
@@ -29,6 +30,8 @@ export type Repository = {
   deleteTimeEntry: (id: number) => Promise<void>
   listTimeEntryAudits: (range?: ListRange) => Promise<TimeEntryAudit[]>
   listAuditLog: (range?: ListRange) => Promise<AuditLogEntry[]>
+  /** Identity and configuration records, append-only like every other trail. */
+  listSecurityAudits: (range?: ListRange) => Promise<SecurityAudit[]>
   listProjectBudgets: () => Promise<ProjectBudget[]>
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>

@@ -7,7 +7,8 @@ use crate::{
     models::{
         Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, OvertimeAudit, OvertimeEntry,
         Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
     },
     store::{Database, OvertimeWriteError, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
@@ -114,14 +115,26 @@ pub fn login(
             .map_err(|_| AppError::validation(INVALID_CREDENTIALS))?;
         // The attempt is counted before the password is verified, so parallel
         // logins cannot verify more passwords together than the limit allows.
-        attempts.begin(&credentials.email)?;
+        // A rejected attempt is recorded as durable evidence: the counter of
+        // the lockout is evicted once it expires, the audit record stays.
+        if let Err(error) = attempts.begin(&credentials.email) {
+            if matches!(error, AppError::RateLimited(_)) {
+                database
+                    .0
+                    .record_auth_event(&credentials.email, LOCKED_OUT_ACTION)?;
+            }
+            return Err(error);
+        }
         let record = database.0.read_password_hash(&credentials.email)?;
         let user = verify_credentials(record, &credentials.password)
-            .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
-        let user = database
-            .0
-            .read_user(user)?
-            .ok_or_else(|| AppError::validation(INVALID_CREDENTIALS))?;
+            .and_then(|id| database.0.read_user(id).transpose())
+            .transpose()?;
+        let Some(user) = user else {
+            database
+                .0
+                .record_auth_event(&credentials.email, LOGIN_FAILED_ACTION)?;
+            return Err(AppError::validation(INVALID_CREDENTIALS));
+        };
         attempts.record_success(&credentials.email)?;
         let session_id = sessions.start(user.id)?;
         Ok(SignedIn { user, session_id })
@@ -297,6 +310,15 @@ authed_command!(
     |db, user| {
         let range = list_range(range)?;
         Ok(db.0.list_audit_log(user, &range)?)
+    }
+);
+
+authed_command!(
+    /// The identity and configuration records of the signed in user.
+    fn list_security_audits(range: Option<ListRange>) -> Vec<SecurityAudit>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_security_audits(user, &range)?)
     }
 );
 
