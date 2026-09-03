@@ -220,3 +220,35 @@ keeps a direct `zod` import from slipping back in.
 bundle with it and fails on any `securitypolicyviolation`, so a change that needs inline code is
 noticed in CI instead of in the packaged application. The policy is not applied by the dev server:
 `tauri dev` loads `devUrl` directly, where Vite injects its stylesheets and its HMR client inline.
+
+## 14. The web inspector belongs to a debug build only
+
+An open web inspector reads the running application: the session id in `sessionStorage`, the
+arguments and answers of every IPC command, and the data of the signed in account. A shipped build
+therefore carries no devtools, while `tauri dev` keeps them.
+
+Tauri already draws that line. Everything that opens the inspector is compiled under
+`cfg(any(debug_assertions, feature = "devtools"))`: the `with_devtools` call that turns the
+developer extras of the webview and its "Inspect Element" entry on, the `toggle-devtools.js` that
+tauri injects for the keyboard shortcut, the `internal_toggle_devtools` command behind it and
+`WebviewWindow::open_devtools`. `devtools` is not one of the default features of the `tauri` crate,
+so `tauri dev` compiles the dev profile and keeps them while `npm run tauri build` compiles the
+release profile and drops them — as long as no cargo feature switches them back on and the bundle
+is not built with `--debug`.
+
+Tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
+manifest next: `devtools_stay_out_of_a_release_build` fails when a feature of `src-tauri/Cargo.toml`
+enables `tauri/devtools` or a profile turns `debug-assertions` back on for the release build, and
+`a_devtools_call_carries_a_debug_assertions_guard` fails when a backend source reaches the devtools
+without a condition that governs the call. That scan reads the `cfg` attribute of the item or the
+statement, the attributes of the enclosing items and blocks and a `cfg!` around the block, and it
+evaluates the predicate with `debug_assertions` off and every other flag on, so
+`any(debug_assertions, windows)` and `not(debug_assertions)` count as no guard at all. Comments and
+string literals are stripped before the scan. `a_guard_that_governs_the_call_is_accepted` and
+`a_guard_that_governs_nothing_is_rejected` pin that behaviour on fixtures. What the tests cannot see
+is a `debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS`
+or a `.cargo/config.toml`; the release workflow sets neither.
+
+The window in `tauri.conf.json` names no `devtools` field on purpose. `false` would remove the
+inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has
+already compiled out.
