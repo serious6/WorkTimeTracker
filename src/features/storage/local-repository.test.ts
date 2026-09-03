@@ -126,6 +126,84 @@ describe('local repository authentication', () => {
     expect((await createLocalRepository().getWorkSettings()).weeklyTargetMinutes).toBe(2_100)
   })
 
+  /**
+   * The browser storage is keyed per user, so a record of another account is
+   * unreachable by its id. The Rust backend answers the same way, because every
+   * statement carries `AND user_id = $n`.
+   */
+  it('refuses to change or delete a record of another user', async () => {
+    await register('first@example.com')
+    const project = await createProject('Website Redesign')
+    const entry = await createLocalRepository().createTimeEntry({
+      projectId: project.id,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T09:00:00.000Z',
+      note: null,
+    })
+    const budget = await createLocalRepository().createProjectBudget({
+      projectId: project.id,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+    const absence = await createLocalRepository().createAbsence({
+      type: 'vacation',
+      date: '2026-08-28',
+    })
+    const overtime = await createLocalRepository().createOvertimeEntry({
+      effectiveDate: '2026-08-29',
+      minutes: 30,
+      kind: 'adjustment',
+      origin: 'manual',
+      note: null,
+    })
+
+    await register('second@example.com', OTHER_PASSWORD)
+    const notFound = { kind: 'notFound' }
+
+    await expect(
+      createLocalRepository().updateProject(project.id, projectInput('Taken')),
+    ).rejects.toMatchObject(notFound)
+    await expect(createLocalRepository().deleteProject(project.id)).rejects.toMatchObject(notFound)
+    await expect(
+      createLocalRepository().updateTimeEntryNote(entry.id, 'taken'),
+    ).rejects.toMatchObject(notFound)
+    await expect(createLocalRepository().deleteTimeEntry(entry.id)).rejects.toMatchObject(notFound)
+    await expect(
+      createLocalRepository().updateProjectBudget(budget.id, {
+        projectId: project.id,
+        budgetMinutes: 60,
+        dueDate: '2026-11-30',
+      }),
+    ).rejects.toMatchObject(notFound)
+    await expect(createLocalRepository().deleteProjectBudget(budget.id)).rejects.toMatchObject(
+      notFound,
+    )
+    await expect(
+      createLocalRepository().updateAbsence(absence.id, { type: 'sick', date: '2026-08-28' }),
+    ).rejects.toMatchObject(notFound)
+    await expect(createLocalRepository().deleteAbsence(absence.id)).rejects.toMatchObject(notFound)
+    await expect(
+      createLocalRepository().updateOvertimeEntry(overtime.id, {
+        effectiveDate: '2026-08-29',
+        minutes: 120,
+        kind: 'adjustment',
+        origin: 'manual',
+        note: null,
+      }),
+    ).rejects.toMatchObject(notFound)
+    await expect(createLocalRepository().deleteOvertimeEntry(overtime.id)).rejects.toMatchObject(
+      notFound,
+    )
+
+    await createLocalRepository().login({ email: 'first@example.com', password: PASSWORD })
+
+    expect(await createLocalRepository().listProjects()).toHaveLength(1)
+    expect(await createLocalRepository().listTimeEntries()).toHaveLength(1)
+    expect(await createLocalRepository().listProjectBudgets()).toHaveLength(1)
+    expect(await createLocalRepository().listAbsences()).toHaveLength(1)
+    expect(await createLocalRepository().listOvertimeEntries()).toHaveLength(1)
+  })
+
   it('hands data of the former single-user storage to the first user', async () => {
     globalThis.localStorage?.setItem(
       'work-time-tracker.projects',
@@ -450,11 +528,15 @@ describe('local repository time entries', () => {
     ).rejects.toThrow('Invalid timer switch')
   })
 
-  it('deletes an entry and ignores an unknown id', async () => {
+  it('deletes an entry and rejects an unknown id', async () => {
     const entry = await createEntry('2026-08-27T08:00:00.000Z', '2026-08-27T09:00:00.000Z')
 
     await createLocalRepository().deleteTimeEntry(entry.id)
-    await createLocalRepository().deleteTimeEntry(404)
+    // A delete that removes nothing reports it, so a record of another account
+    // cannot be told apart from one that never existed.
+    await expect(createLocalRepository().deleteTimeEntry(404)).rejects.toMatchObject({
+      kind: 'notFound',
+    })
 
     expect(await createLocalRepository().listTimeEntries()).toEqual([])
   })

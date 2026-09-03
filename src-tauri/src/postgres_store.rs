@@ -2,6 +2,31 @@
 //! database with the synchronous `postgres` crate through a small `r2d2`
 //! connection pool (see `Cargo.toml` for why this crate was chosen over
 //! `sqlx`/`tokio-postgres`+`deadpool`).
+//!
+//! # User scoping
+//!
+//! Every statement that names a record by its caller supplied id carries
+//! `AND user_id = $n`, so the ownership check is part of the query instead of a
+//! test applied to an already fetched row. A record of another account is
+//! therefore not read, not changed and not deleted, and the operation answers
+//! [`StoreError::NotFound`] - the same answer an unknown id gets, so the id
+//! space of another account stays indistinguishable from an empty one. A write
+//! that references a foreign key supplied by the caller checks that reference
+//! the same way ([`PostgresStore::assert_owns_project`]).
+//!
+//! The statements that carry no `user_id` are these, and each is safe for the
+//! reason given:
+//!
+//! - `users` is read by the id of the live session (`read_user`, `actor`) or by
+//!   the email of a sign in (`read_password_hash`, `record_auth_event`), never
+//!   by an id a signed in caller supplies.
+//! - `login_attempts` is keyed by email and holds no user data; the lockout has
+//!   to work before an account is known.
+//! - `security_audits` of the `auth` entity are written and pruned without a
+//!   session, because a rejected sign in has none. Reading the trail
+//!   (`list_security_audits`) is scoped to the user.
+//! - `app_metadata` and `schema_migrations` hold the application version and
+//!   the migration state, which belong to the installation and to no user.
 
 use std::{net::IpAddr, time::Duration};
 
@@ -1001,6 +1026,10 @@ impl Store for PostgresStore {
     fn delete_project(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
+        // The delete is refused before anything is read when the id names no
+        // project of this user, so a foreign id cannot be told apart from an
+        // unknown one.
+        let deleted = find_project(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
         let affected: Vec<TimeEntry> = transaction
             .query(
                 &format!(
@@ -1011,7 +1040,6 @@ impl Store for PostgresStore {
             .iter()
             .map(entry_from_row)
             .collect();
-        let deleted = find_project(&mut transaction, id, user_id)?;
         // The delete cascades to the budget of the project, so it is read
         // before the cascade and recorded as the deletion it is.
         let budgets = budgets_of_project(&mut transaction, id, user_id)?;
@@ -1020,30 +1048,26 @@ impl Store for PostgresStore {
             &[&id, &user_id],
         )?;
         // The trail keeps the name of the project, so it stays readable after
-        // the row is gone and the entries show as belonging to no project. A
-        // delete of a row that is already gone changes nothing and records
-        // nothing.
-        if let Some(deleted) = deleted {
+        // the row is gone and the entries show as belonging to no project.
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            PROJECT_AUDIT_ENTITY,
+            Some(id),
+            "project.deleted",
+            Some(project_payload(&deleted)),
+            None,
+        )?;
+        for budget in &budgets {
             record_config_audit(
                 &mut transaction,
                 user_id,
-                PROJECT_AUDIT_ENTITY,
-                Some(id),
-                "project.deleted",
-                Some(project_payload(&deleted)),
+                BUDGET_AUDIT_ENTITY,
+                Some(budget.id),
+                "budget.deleted",
+                Some(budget_payload(budget)),
                 None,
             )?;
-            for budget in &budgets {
-                record_config_audit(
-                    &mut transaction,
-                    user_id,
-                    BUDGET_AUDIT_ENTITY,
-                    Some(budget.id),
-                    "budget.deleted",
-                    Some(budget_payload(budget)),
-                    None,
-                )?;
-            }
         }
         for current in affected {
             let updated = read_entry(&mut transaction, current.id, user_id)?;
@@ -1316,25 +1340,19 @@ impl Store for PostgresStore {
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = match read_entry(&mut transaction, id, user_id) {
-            Ok(entry) => Some(entry),
-            Err(StoreError::NotFound) => None,
-            Err(error) => return Err(error),
-        };
+        let current = read_entry(&mut transaction, id, user_id)?;
         transaction.execute(
             "DELETE FROM time_entries WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
         )?;
-        if let Some(current) = current {
-            record_audit(
-                &mut transaction,
-                user_id,
-                id,
-                "deleted",
-                Some(&current),
-                None,
-            )?;
-        }
+        record_audit(
+            &mut transaction,
+            user_id,
+            id,
+            "deleted",
+            Some(&current),
+            None,
+        )?;
         transaction.commit()?;
         Ok(())
     }
@@ -1467,22 +1485,20 @@ impl Store for PostgresStore {
     fn delete_project_budget(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let deleted = find_budget(&mut transaction, id, user_id)?;
+        let deleted = find_budget(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
         transaction.execute(
             "DELETE FROM project_budgets WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
         )?;
-        if let Some(deleted) = deleted {
-            record_config_audit(
-                &mut transaction,
-                user_id,
-                BUDGET_AUDIT_ENTITY,
-                Some(id),
-                "budget.deleted",
-                Some(budget_payload(&deleted)),
-                None,
-            )?;
-        }
+        record_config_audit(
+            &mut transaction,
+            user_id,
+            BUDGET_AUDIT_ENTITY,
+            Some(id),
+            "budget.deleted",
+            Some(budget_payload(&deleted)),
+            None,
+        )?;
         transaction.commit()?;
         Ok(())
     }
@@ -1647,25 +1663,19 @@ impl Store for PostgresStore {
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = match read_absence(&mut transaction, id, user_id) {
-            Ok(absence) => Some(absence),
-            Err(StoreError::NotFound) => None,
-            Err(error) => return Err(error),
-        };
+        let current = read_absence(&mut transaction, id, user_id)?;
         transaction.execute(
             "DELETE FROM absences WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
         )?;
-        if let Some(current) = current {
-            record_absence_audit(
-                &mut transaction,
-                user_id,
-                id,
-                "deleted",
-                Some(&current),
-                None,
-            )?;
-        }
+        record_absence_audit(
+            &mut transaction,
+            user_id,
+            id,
+            "deleted",
+            Some(&current),
+            None,
+        )?;
         transaction.commit()?;
         Ok(())
     }
@@ -1791,25 +1801,19 @@ impl Store for PostgresStore {
     fn delete_overtime_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
         let mut client = self.conn()?;
         let mut transaction = client.transaction()?;
-        let current = match read_overtime_entry(&mut transaction, id, user_id) {
-            Ok(entry) => Some(entry),
-            Err(StoreError::NotFound) => None,
-            Err(error) => return Err(error),
-        };
+        let current = read_overtime_entry(&mut transaction, id, user_id)?;
         transaction.execute(
             "DELETE FROM overtime_entries WHERE id = $1 AND user_id = $2",
             &[&id, &user_id],
         )?;
-        if let Some(current) = current {
-            record_overtime_audit(
-                &mut transaction,
-                user_id,
-                id,
-                "deleted",
-                Some(&current),
-                None,
-            )?;
-        }
+        record_overtime_audit(
+            &mut transaction,
+            user_id,
+            id,
+            "deleted",
+            Some(&current),
+            None,
+        )?;
         transaction.commit()?;
         Ok(())
     }
@@ -2029,8 +2033,8 @@ mod tests {
     use super::*;
     use crate::{
         models::{
-            SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, LOCKED_OUT_ACTION,
-            LOGIN_FAILED_ACTION,
+            SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry,
+            LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
         },
         test_support::{fresh_database, test_store, unique_email},
     };
@@ -2643,5 +2647,443 @@ mod tests {
             .unwrap();
 
         assert_eq!(audit_actions(&store, first.id), vec!["user.registered"]);
+    }
+
+    /// One account holding a record of every entity, so the tests below can try
+    /// to reach them from another account.
+    struct Records {
+        user_id: i64,
+        project: Project,
+        entry: TimeEntry,
+        budget: ProjectBudget,
+        absence: Absence,
+        overtime: OvertimeEntry,
+    }
+
+    fn an_entry(project_id: i64, day: u32) -> SaveTimeEntry {
+        SaveTimeEntry {
+            project_id: Some(project_id),
+            start_time: format!("2026-05-{day:02}T08:00:00.000Z"),
+            end_time: Some(format!("2026-05-{day:02}T09:00:00.000Z")),
+            entry_type: None,
+            note: None,
+        }
+    }
+
+    /// A new account with one record per entity. The days are apart per
+    /// account, so a rejected cross-account write cannot be mistaken for the
+    /// overlap or the uniqueness of the caller's own records.
+    fn records_of_a_new_user(store: &PostgresStore, day: u32) -> Records {
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let project = store
+            .insert_project(user.id, &a_project(&format!("Scoped {day}")))
+            .unwrap();
+        let entry = store
+            .create_time_entry(user.id, &an_entry(project.id, day))
+            .unwrap();
+        let budget = store
+            .insert_project_budget(
+                user.id,
+                &SaveProjectBudget {
+                    project_id: project.id,
+                    budget_minutes: 600,
+                    due_date: "2026-12-31".into(),
+                },
+            )
+            .unwrap();
+        let absence = store
+            .insert_absence(
+                user.id,
+                &SaveAbsence {
+                    absence_type: "vacation".into(),
+                    date: format!("2026-05-{:02}", day + 1),
+                },
+            )
+            .unwrap();
+        let overtime = store
+            .insert_overtime_entry(
+                user.id,
+                &SaveOvertimeEntry {
+                    effective_date: format!("2026-05-{:02}", day + 2),
+                    minutes: 30,
+                    kind: "adjustment".into(),
+                    origin: None,
+                    note: None,
+                },
+            )
+            .unwrap();
+        Records {
+            user_id: user.id,
+            project,
+            entry,
+            budget,
+            absence,
+            overtime,
+        }
+    }
+
+    /// Every list answers the records of its caller only, so the rows of
+    /// another account are invisible instead of merely unwritable.
+    #[test]
+    fn reads_the_records_of_the_calling_user_only() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let owner = records_of_a_new_user(&store, 4);
+        let other = records_of_a_new_user(&store, 14);
+        let window = ListRange::default();
+
+        assert_eq!(
+            store
+                .list_projects(other.user_id)
+                .unwrap()
+                .iter()
+                .map(|project| project.id)
+                .collect::<Vec<i64>>(),
+            vec![other.project.id]
+        );
+        assert_eq!(
+            store
+                .list_time_entries(other.user_id, &window)
+                .unwrap()
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<i64>>(),
+            vec![other.entry.id]
+        );
+        assert_eq!(
+            store
+                .list_project_budgets(other.user_id)
+                .unwrap()
+                .iter()
+                .map(|budget| budget.id)
+                .collect::<Vec<i64>>(),
+            vec![other.budget.id]
+        );
+        assert_eq!(
+            store
+                .list_absences(other.user_id, &window)
+                .unwrap()
+                .iter()
+                .map(|absence| absence.id)
+                .collect::<Vec<i64>>(),
+            vec![other.absence.id]
+        );
+        assert_eq!(
+            store
+                .list_overtime_entries(other.user_id)
+                .unwrap()
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<i64>>(),
+            vec![other.overtime.id]
+        );
+
+        // The trails are read the same way, so a record of another account
+        // cannot be read through its audit either.
+        for entry_id in store
+            .list_time_entry_audits(other.user_id, &window)
+            .unwrap()
+            .iter()
+            .map(|audit| audit.time_entry_id)
+        {
+            assert_ne!(entry_id, owner.entry.id);
+        }
+        for absence_id in store
+            .list_absence_audits(other.user_id, &window)
+            .unwrap()
+            .iter()
+            .map(|audit| audit.absence_id)
+        {
+            assert_ne!(absence_id, owner.absence.id);
+        }
+        for overtime_id in store
+            .list_overtime_audits(other.user_id, &window)
+            .unwrap()
+            .iter()
+            .map(|audit| audit.overtime_entry_id)
+        {
+            assert_ne!(overtime_id, owner.overtime.id);
+        }
+        for entity_id in store
+            .list_security_audits(other.user_id, &window)
+            .unwrap()
+            .iter()
+            .filter_map(|audit| audit.entity_id)
+        {
+            assert_ne!(entity_id, owner.project.id);
+            assert_ne!(entity_id, owner.budget.id);
+        }
+        assert!(store
+            .list_audit_log(other.user_id, &window)
+            .unwrap()
+            .iter()
+            .all(|audit| audit.entity_id != owner.entry.id));
+
+        // The settings are one row per account, so the account without its own
+        // row reads the defaults instead of the row of the other one.
+        let changed = WorkSettings {
+            weekly_target_minutes: 1_800,
+            ..store.read_settings(owner.user_id).unwrap()
+        };
+        store.write_settings(owner.user_id, &changed).unwrap();
+        assert_eq!(
+            store
+                .read_settings(other.user_id)
+                .unwrap()
+                .weekly_target_minutes,
+            2_400
+        );
+    }
+
+    /// An update names a record by an id the caller supplies, so a foreign id
+    /// has to answer like an unknown one and leave the record untouched.
+    #[test]
+    fn answers_not_found_when_another_user_updates_a_record() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let owner = records_of_a_new_user(&store, 4);
+        let other = records_of_a_new_user(&store, 14);
+        let user = other.user_id;
+
+        assert!(matches!(
+            store
+                .update_project(owner.project.id, user, &a_project("Taken"))
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .update_time_entry(owner.entry.id, user, &an_entry(other.project.id, 24))
+                .unwrap_err(),
+            TimeEntryWriteError::Store(StoreError::NotFound)
+        ));
+        assert!(matches!(
+            store
+                .update_time_entry_note(owner.entry.id, user, Some("taken"))
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .switch_running_time_entry(owner.entry.id, user, &an_entry(other.project.id, 24))
+                .unwrap_err(),
+            SwitchEntryError::Store(StoreError::NotFound)
+        ));
+        assert!(matches!(
+            store
+                .update_project_budget(
+                    owner.budget.id,
+                    user,
+                    &SaveProjectBudget {
+                        project_id: other.project.id,
+                        budget_minutes: 60,
+                        due_date: "2026-11-30".into(),
+                    },
+                )
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        let absence = || SaveAbsence {
+            absence_type: "sick".into(),
+            date: "2026-05-25".into(),
+        };
+        assert!(matches!(
+            store
+                .update_absence(owner.absence.id, user, &absence())
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        // The replaced and the updated absence are named by id as well.
+        assert!(matches!(
+            store
+                .save_absences(user, &[absence()], &[owner.absence.id], None)
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .save_absences(user, &[absence()], &[], Some(owner.absence.id))
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .update_overtime_entry(
+                    owner.overtime.id,
+                    user,
+                    &SaveOvertimeEntry {
+                        effective_date: "2026-05-26".into(),
+                        minutes: 120,
+                        kind: "adjustment".into(),
+                        origin: None,
+                        note: None,
+                    },
+                )
+                .unwrap_err(),
+            OvertimeWriteError::Store(StoreError::NotFound)
+        ));
+
+        assert_eq!(store.list_projects(owner.user_id).unwrap(), [owner.project]);
+        assert_eq!(
+            store
+                .list_time_entries(owner.user_id, &ListRange::default())
+                .unwrap(),
+            [owner.entry]
+        );
+        assert_eq!(
+            store.list_project_budgets(owner.user_id).unwrap(),
+            [owner.budget]
+        );
+        assert_eq!(
+            store
+                .list_absences(owner.user_id, &ListRange::default())
+                .unwrap(),
+            [owner.absence]
+        );
+        assert_eq!(
+            store.list_overtime_entries(owner.user_id).unwrap(),
+            [owner.overtime]
+        );
+    }
+
+    /// A delete is refused the same way, and it removes nothing on the way.
+    #[test]
+    fn answers_not_found_when_another_user_deletes_a_record() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let owner = records_of_a_new_user(&store, 4);
+        let other = records_of_a_new_user(&store, 14);
+        let user = other.user_id;
+
+        assert!(matches!(
+            store.delete_project(owner.project.id, user).unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store.delete_time_entry(owner.entry.id, user).unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .delete_project_budget(owner.budget.id, user)
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store.delete_absence(owner.absence.id, user).unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .delete_overtime_entry(owner.overtime.id, user)
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+
+        assert_eq!(store.list_projects(owner.user_id).unwrap(), [owner.project]);
+        assert_eq!(
+            store
+                .list_time_entries(owner.user_id, &ListRange::default())
+                .unwrap(),
+            [owner.entry]
+        );
+        assert_eq!(
+            store.list_project_budgets(owner.user_id).unwrap(),
+            [owner.budget]
+        );
+        assert_eq!(
+            store
+                .list_absences(owner.user_id, &ListRange::default())
+                .unwrap(),
+            [owner.absence]
+        );
+        assert_eq!(
+            store.list_overtime_entries(owner.user_id).unwrap(),
+            [owner.overtime]
+        );
+    }
+
+    /// An unknown id is refused like a foreign one, so a delete never reports a
+    /// success that removed nothing.
+    #[test]
+    fn answers_not_found_when_a_delete_names_an_unknown_id() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let user = store.register_user(&unique_email(), "hash").unwrap().id;
+
+        for error in [
+            store.delete_project(404, user).unwrap_err(),
+            store.delete_time_entry(404, user).unwrap_err(),
+            store.delete_project_budget(404, user).unwrap_err(),
+            store.delete_absence(404, user).unwrap_err(),
+            store.delete_overtime_entry(404, user).unwrap_err(),
+        ] {
+            assert!(matches!(error, StoreError::NotFound), "{error:?}");
+        }
+    }
+
+    /// A write that names a project is scoped as well, so a record cannot be
+    /// attached to the project of another account.
+    #[test]
+    fn refuses_to_attach_a_record_to_a_project_of_another_user() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let owner = records_of_a_new_user(&store, 4);
+        let other = records_of_a_new_user(&store, 14);
+        let user = other.user_id;
+
+        assert!(matches!(
+            store
+                .create_time_entry(user, &an_entry(owner.project.id, 24))
+                .unwrap_err(),
+            TimeEntryWriteError::Store(StoreError::NotFound)
+        ));
+        assert!(matches!(
+            store
+                .update_time_entry(other.entry.id, user, &an_entry(owner.project.id, 14))
+                .unwrap_err(),
+            TimeEntryWriteError::Store(StoreError::NotFound)
+        ));
+        assert!(matches!(
+            store
+                .insert_project_budget(
+                    user,
+                    &SaveProjectBudget {
+                        project_id: owner.project.id,
+                        budget_minutes: 60,
+                        due_date: "2026-11-30".into(),
+                    },
+                )
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+        assert!(matches!(
+            store
+                .update_project_budget(
+                    other.budget.id,
+                    user,
+                    &SaveProjectBudget {
+                        project_id: owner.project.id,
+                        budget_minutes: 60,
+                        due_date: "2026-11-30".into(),
+                    },
+                )
+                .unwrap_err(),
+            StoreError::NotFound
+        ));
+
+        assert_eq!(
+            store
+                .list_time_entries(user, &ListRange::default())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(store.list_project_budgets(user).unwrap(), [other.budget]);
     }
 }

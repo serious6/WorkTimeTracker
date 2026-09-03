@@ -172,3 +172,21 @@ path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, a
 `PostgresStore` registers that single migration.
 
 This makes a fresh installation reproducible without retaining pre-release migration history.
+
+## 12. Ownership is part of the query, and a write that changes nothing is refused
+
+Every statement in `src-tauri/src/postgres_store.rs` that names a record by an id the caller
+supplied carries `AND user_id = $n`, and a write that names a project (`create_time_entry`,
+`update_time_entry`, `switch_running_time_entry`, the budget writers) checks that reference the same
+way. The ownership test is therefore part of the query instead of a check on an already fetched row,
+which cannot be skipped in a new code path and cannot read a foreign row on the way. The module
+documentation of `postgres_store.rs` lists the few statements that carry no `user_id` - the account
+lookups of a sign in, the lockout counters, the auth trail and the installation metadata - with the
+reason each is safe.
+
+A read, an update and a delete of a record of another account therefore answer `notFound`, the same
+answer an unknown id gets, so the id space of another account stays indistinguishable from an empty
+one. A delete of an id that matches nothing used to report success in both backends; it now reports
+`notFound` as well, because a silent success cannot be told apart from a delete that was refused.
+`local-repository.ts` follows the same rule, so the browser fallback and the Rust backend answer
+alike.
