@@ -1,6 +1,7 @@
 mod auth;
 mod commands;
 mod config;
+mod connection;
 #[cfg(test)]
 mod contract;
 mod error;

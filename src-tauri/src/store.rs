@@ -272,9 +272,10 @@ impl Database {
     /// Opens Postgres and runs its migrations.
     pub fn open(config: &DbConfig) -> Result<Self, OpenError> {
         let url = config.database_url.as_str();
-        let store = PostgresStore::connect(url).map_err(|error| {
+        let store = PostgresStore::open(config).map_err(|error| {
             OpenError(format!(
-                "postgres: could not connect using DATABASE_URL ({}): {error}",
+                "postgres: could not connect to the {} database ({}): {error}",
+                config.mode,
                 crate::config::redact_database_url(url)
             ))
         })?;

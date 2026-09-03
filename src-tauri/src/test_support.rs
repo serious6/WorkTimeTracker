@@ -2,7 +2,11 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::postgres_store::PostgresStore;
+use crate::{
+    config::DeploymentMode,
+    connection::{self, ConnectionError},
+    postgres_store::PostgresStore,
+};
 
 /// Set in CI so an unreachable database fails the suite instead of silently
 /// skipping the Postgres coverage.
@@ -17,19 +21,42 @@ fn postgres_required() -> bool {
     })
 }
 
+/// The tests create and drop databases, so they must never reach a deployed
+/// server. A production mode or a non-local host is a misconfigured
+/// environment, not a reason to skip.
+fn disposable_database(url: &str) -> Result<(), String> {
+    let mode = DeploymentMode::from_env().map_err(|error| error.to_string())?;
+    if mode.is_production() {
+        return Err("the deployment mode is production".to_owned());
+    }
+    match connection::plan(url, mode, None) {
+        Err(ConnectionError::RemoteHost(host)) => Err(format!("the host {host:?} is not local")),
+        _ => Ok(()),
+    }
+}
+
+fn assert_disposable_database(url: &str) {
+    if let Err(reason) = disposable_database(url) {
+        panic!("the tests create and drop databases and must not run against a deployed server: {reason}");
+    }
+}
+
 /// Connects to `DATABASE_URL`. Without a reachable server the test is skipped
 /// locally (see README for how to start one via compose) and fails when
 /// `REQUIRE_POSTGRES_TESTS` is set, so CI always exercises the database.
 pub fn test_store() -> Option<PostgresStore> {
     let reason = match std::env::var("DATABASE_URL") {
         Err(_) => "DATABASE_URL is not set".to_owned(),
-        Ok(url) => match PostgresStore::connect(&url) {
-            Ok(store) => return Some(store),
-            Err(error) => format!(
-                "{} could not be opened: {error}",
-                crate::config::redact_database_url(&url)
-            ),
-        },
+        Ok(url) => {
+            assert_disposable_database(&url);
+            match PostgresStore::connect(&url) {
+                Ok(store) => return Some(store),
+                Err(error) => format!(
+                    "{} could not be opened: {error}",
+                    crate::config::redact_database_url(&url)
+                ),
+            }
+        }
     };
     assert!(
         !postgres_required(),
@@ -71,6 +98,9 @@ impl Drop for FreshDatabase {
         let Ok(url) = std::env::var("DATABASE_URL") else {
             return;
         };
+        if disposable_database(&url).is_err() {
+            return;
+        }
         if let Ok(mut client) = postgres::Client::connect(&url, postgres::NoTls) {
             let _ = client.batch_execute(&format!("DROP DATABASE IF EXISTS {} (FORCE)", self.name));
         }
@@ -83,6 +113,7 @@ pub fn fresh_database() -> Option<FreshDatabase> {
     // Proves the server is reachable and applies the required/skip policy.
     test_store()?;
     let url = std::env::var("DATABASE_URL").expect("test_store checked DATABASE_URL");
+    assert_disposable_database(&url);
     let mut client = postgres::Client::connect(&url, postgres::NoTls)
         .expect("test_store already connected to this server");
     let name = format!("wtt_test_{}", unique_tag().replace('-', "_"));

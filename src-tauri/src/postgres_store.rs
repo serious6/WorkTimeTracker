@@ -3,15 +3,18 @@
 //! connection pool (see `Cargo.toml` for why this crate was chosen over
 //! `sqlx`/`tokio-postgres`+`deadpool`).
 
-use std::{net::IpAddr, time::Duration};
+use std::time::Duration;
 
 use chrono::Utc;
-use postgres::{config::Host, error::SqlState, NoTls};
+use postgres::error::SqlState;
 use r2d2::{Pool, PooledConnection};
 use r2d2_postgres::PostgresConnectionManager;
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::{
     auth::LOGIN_LOCKOUT_MINUTES,
+    config::DbConfig,
+    connection,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, OvertimeAudit,
         OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject,
@@ -41,54 +44,11 @@ const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/
 /// Arbitrary but stable key for the advisory lock that serializes `migrate`.
 const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
 
-type Manager = PostgresConnectionManager<NoTls>;
+type Manager = PostgresConnectionManager<MakeRustlsConnect>;
 
 pub struct PostgresStore {
     pool: Pool<Manager>,
 }
-
-fn validate_local_database_hosts(
-    config: &postgres::Config,
-    compose_mode: bool,
-) -> Result<(), LocalEndpointError> {
-    for host in config.get_hosts() {
-        match host {
-            Host::Tcp(host) => {
-                let allowed = host.eq_ignore_ascii_case("localhost")
-                    || (compose_mode && host.eq_ignore_ascii_case("db"))
-                    || host
-                        .parse::<IpAddr>()
-                        .is_ok_and(|address| address.is_loopback());
-                if !allowed {
-                    return Err(LocalEndpointError(host.clone()));
-                }
-            }
-            #[cfg(unix)]
-            Host::Unix(_) => {}
-        }
-    }
-    for address in config.get_hostaddrs() {
-        if !address.is_loopback() {
-            return Err(LocalEndpointError(address.to_string()));
-        }
-    }
-    Ok(())
-}
-
-#[derive(Debug)]
-struct LocalEndpointError(String);
-
-impl std::fmt::Display for LocalEndpointError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "database host {:?} is not local; allowed TCP hosts are localhost and loopback addresses",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for LocalEndpointError {}
 
 /// Timestamp string in the ISO 8601 UTC/millisecond format expected by the frontend.
 fn now_iso() -> String {
@@ -119,12 +79,16 @@ impl From<r2d2::Error> for StoreError {
 }
 
 impl PostgresStore {
-    pub fn connect(database_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let config: postgres::Config = database_url.parse()?;
-        let compose_mode = std::env::var("WORK_TIME_TRACKER_COMPOSE")
-            .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
-        validate_local_database_hosts(&config, compose_mode)?;
-        let manager = PostgresConnectionManager::new(config, NoTls);
+    /// Opens the configured database. Development and the test suites reach a
+    /// local server without TLS; a production deployment reaches its remote
+    /// server only over a verified TLS connection (`connection::prepare`).
+    pub fn open(config: &DbConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        let (postgres_config, tls) = connection::prepare(
+            &config.database_url,
+            config.mode,
+            config.root_cert.as_deref(),
+        )?;
+        let manager = PostgresConnectionManager::new(postgres_config, tls);
         let pool = Pool::builder()
             .max_size(4)
             .connection_timeout(Duration::from_secs(5))
@@ -132,10 +96,25 @@ impl PostgresStore {
         let store = Self { pool };
         {
             let mut client = store.conn()?;
-            migrate(&mut client)?;
+            if config.run_migrations {
+                migrate(&mut client)?;
+            } else {
+                verify_migrations(&mut client)?;
+            }
             write_app_version(&mut *client, APP_VERSION)?;
         }
         Ok(store)
+    }
+
+    /// Opens a local development database, the only kind the tests use.
+    #[cfg(test)]
+    pub fn connect(database_url: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::open(&DbConfig {
+            mode: crate::config::DeploymentMode::Development,
+            database_url: database_url.to_owned(),
+            root_cert: None,
+            run_migrations: true,
+        })
     }
 
     fn conn(&self) -> Result<PooledConnection<Manager>, StoreError> {
@@ -659,6 +638,37 @@ fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
     }
     transaction.commit()?;
     Ok(())
+}
+
+/// The production database is migrated by a deliberate, separately approved
+/// step, so a starting client only checks that the schema it expects is
+/// already there instead of changing a shared database on its own.
+fn verify_migrations(client: &mut postgres::Client) -> Result<(), StoreError> {
+    let recorded: bool = client
+        .query_one("SELECT to_regclass('schema_migrations') IS NOT NULL", &[])?
+        .get(0);
+    let missing: Vec<&str> = if recorded {
+        let applied: Vec<String> = client
+            .query("SELECT version FROM schema_migrations", &[])?
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        MIGRATIONS
+            .iter()
+            .map(|(version, _)| *version)
+            .filter(|version| !applied.iter().any(|entry| entry == version))
+            .collect()
+    } else {
+        MIGRATIONS.iter().map(|(version, _)| *version).collect()
+    };
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(StoreError::Backend(format!(
+            "the database is missing the migrations {}; apply them with the migration role before starting the application",
+            missing.join(", ")
+        )))
+    }
 }
 
 fn write_app_version(
@@ -2027,7 +2037,10 @@ impl Store for PostgresStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use postgres::NoTls;
+
     use crate::{
+        config::DeploymentMode,
         models::{
             SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, LOCKED_OUT_ACTION,
             LOGIN_FAILED_ACTION,
@@ -2035,55 +2048,15 @@ mod tests {
         test_support::{fresh_database, test_store, unique_email},
     };
 
-    fn parsed_config(url: &str) -> postgres::Config {
-        url.parse().expect("test database URL should parse")
-    }
-
+    /// A remote host is rejected by `connection::plan`, whose own tests cover
+    /// the rules; this one keeps the store honest about using it.
     #[test]
-    fn accepts_supported_local_database_hosts() {
-        for url in [
-            "postgresql://user@localhost/database",
-            "postgresql://user@LOCALHOST/database",
-            "postgresql://user@127.0.0.1/database",
-            "postgresql://user@127.42.0.9/database",
-            "postgresql://user@[::1]/database",
-            "host=localhost hostaddr=127.0.0.1 dbname=database",
-        ] {
-            assert!(
-                validate_local_database_hosts(&parsed_config(url), false).is_ok(),
-                "expected {url} to be accepted"
-            );
-        }
-    }
+    fn refuses_to_open_a_remote_database_outside_production() {
+        let error = PostgresStore::connect("postgresql://user@db.example.net/database")
+            .err()
+            .expect("a remote host must be rejected before connecting");
 
-    #[test]
-    fn accepts_the_compose_database_host_only_in_compose_mode() {
-        let config = parsed_config("postgresql://user@db/database");
-
-        assert!(validate_local_database_hosts(&config, true).is_ok());
-        assert!(validate_local_database_hosts(&config, false).is_err());
-    }
-
-    #[test]
-    fn rejects_remote_database_hosts_before_connecting() {
-        for url in [
-            "postgresql://user@example.com/database",
-            "postgresql://user@192.168.1.20/database",
-            "postgresql://user@10.0.0.5/database",
-            "postgresql://user@[2001:db8::1]/database",
-            "host=localhost hostaddr=203.0.113.8 dbname=database",
-        ] {
-            let error = validate_local_database_hosts(&parsed_config(url), false)
-                .expect_err("remote host should be rejected");
-            assert!(error.to_string().contains("is not local"));
-        }
-    }
-
-    #[test]
-    fn rejects_a_remote_database_host_in_a_multi_host_configuration() {
-        let config = parsed_config("host=localhost,example.com dbname=database");
-
-        assert!(validate_local_database_hosts(&config, false).is_err());
+        assert!(error.to_string().contains("is not local"), "{error}");
     }
 
     /// No DATABASE_URL/live server needed: guards the exact ISO 8601 format
@@ -2362,6 +2335,32 @@ mod tests {
             .map(|row| row.get(0))
             .collect();
         assert_eq!(versions, ["0000_init"]);
+    }
+
+    /// A production client never migrates a shared database on its own: it
+    /// refuses to start until the deliberate migration step has run.
+    #[test]
+    fn refuses_an_unmigrated_database_when_it_may_not_migrate() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let config = DbConfig {
+            mode: DeploymentMode::Development,
+            database_url: database.url().to_owned(),
+            root_cert: None,
+            run_migrations: false,
+        };
+
+        let error = PostgresStore::open(&config)
+            .err()
+            .expect("an empty database is refused");
+        assert!(
+            error.to_string().contains("0000_init"),
+            "{error} should name the missing migration"
+        );
+
+        PostgresStore::connect(database.url()).expect("the migration step applies the schema");
+        PostgresStore::open(&config).expect("the migrated database is accepted");
     }
 
     #[test]
