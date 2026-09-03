@@ -76,8 +76,9 @@ src-tauri/src/      Rust backend: auth, commands, config, connection, contract, 
   messages must redact credentials, hashes, emails, tokens, and file paths.
 - Documentation and comments stay concise and function-oriented: explain why, invariants, error
   cases, or domain rules, not what the code already says.
-- Commit messages and pull request titles follow the Conventional Commits rules in
-  [`CONTRIBUTING.md`](CONTRIBUTING.md), with a lower-case, imperative summary.
+- Commit messages and pull request titles follow Conventional Commits with a lower-case,
+  imperative summary. Use `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `build`,
+  `ci`, `style`, `revert`; mark breaking changes with `!` and a `BREAKING CHANGE:` footer.
 - New dependencies must be OSI-approved open source and require `npm run licenses:generate` to
   update `src/data/licenses.json`.
 - Do not commit secrets, `.env` files, credentials, `dist/`, `target/`, or `node_modules/`.

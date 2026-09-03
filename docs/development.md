@@ -53,7 +53,7 @@ Production uses a remote database only with `sslmode=verify-full` and `SUPABASE_
 | `npm test` | Run Vitest once |
 | `npm run test:coverage` | Run Vitest with the 80 percent coverage gate |
 | `npm run test:watch` | Run Vitest in watch mode |
-| `npm run test:e2e` | Run Playwright end-to-end tests |
+| `npm run test:e2e` | Run Playwright end-to-end tests after installing Chromium |
 | `npm run typecheck` | Run TypeScript project references |
 | `npm run preview` | Serve the built browser bundle with Vite preview |
 | `npm run tauri` | Run the Tauri CLI |

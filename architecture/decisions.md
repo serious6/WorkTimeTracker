@@ -13,7 +13,8 @@ UI and Playwright tests. Without a shared contract the two storage paths can dri
 
 **Decision:** Domain rules live in `contract/domain-rules.json`, entity shapes in
 `contract/entities.json`. Rust contract tests and TypeScript contract tests execute those files.
-Frontend data access goes through `src/features/storage/`.
+Frontend application data access goes through the `Repository` type in `src/features/storage/`.
+The explicit infrastructure exception is `log_client_error`, which may invoke the backend directly.
 
 **Consequences:** Validation, overlap, limit, and entity changes start in `contract/` and update both
 backends. A capability used by the frontend needs a Rust command, command registration, repository
@@ -61,7 +62,7 @@ local compose database; production may use a managed database.
 **Decision:** `src-tauri/src/postgres_store.rs` is the native store. The current pre-release baseline
 is `drizzle/0000_init.sql`, registered in `MIGRATIONS`. Production processes verify migrations.
 Only the separate migration entry point `DbConfig::for_migration` may apply them, and only when
-`WORK_TIME_TRACKER_DB_MIGRATE=true`.
+`WORK_TIME_TRACKER_DB_MIGRATE=true`; `DbConfig::from_env` keeps application startup verify-only.
 
 **Consequences:** Schema changes keep `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
 queries, models, and `docs/data-model.md` aligned. A production app start never mutates the shared
