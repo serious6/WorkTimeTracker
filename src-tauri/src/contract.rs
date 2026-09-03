@@ -571,7 +571,9 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .unwrap();
     store.delete_absence(updated.id, first_user.id).unwrap();
 
-    let audits = store.list_absence_audits(first_user.id).unwrap();
+    let audits = store
+        .list_absence_audits(first_user.id, &ListRange::default())
+        .unwrap();
     assert_eq!(
         audits
             .iter()
@@ -592,7 +594,7 @@ fn round_trips_absence_changes_and_audits_in_postgres() {
         .unwrap()
         .is_empty());
     assert!(store
-        .list_absence_audits(second_user.id)
+        .list_absence_audits(second_user.id, &ListRange::default())
         .unwrap()
         .is_empty());
 }
@@ -671,7 +673,9 @@ fn round_trips_overtime_changes_and_audits_in_postgres() {
         .delete_overtime_entry(updated.id, first_user.id)
         .unwrap();
 
-    let audits = store.list_overtime_audits(first_user.id).unwrap();
+    let audits = store
+        .list_overtime_audits(first_user.id, &ListRange::default())
+        .unwrap();
     assert_eq!(
         audits
             .iter()
@@ -692,7 +696,7 @@ fn round_trips_overtime_changes_and_audits_in_postgres() {
         .unwrap()
         .is_empty());
     assert!(store
-        .list_overtime_audits(second_user.id)
+        .list_overtime_audits(second_user.id, &ListRange::default())
         .unwrap()
         .is_empty());
 }

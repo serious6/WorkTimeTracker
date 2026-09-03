@@ -21,6 +21,7 @@ describe('AppSidebar', () => {
     'Budgets',
     'Absences',
     'Overtime',
+    'Audit Trails',
     'Settings',
   ])('renders %s by accessible name when expanded', (label) => {
     renderWithProviders(<AppSidebar />)
@@ -39,6 +40,7 @@ describe('AppSidebar', () => {
     'Budgets',
     'Absences',
     'Overtime',
+    'Audit Trails',
     'Settings',
   ])('renders %s by accessible name when collapsed', (label) => {
     useNavigationStore.setState({ sidebarExpanded: false })
@@ -48,7 +50,7 @@ describe('AppSidebar', () => {
 
   test('groups the navigation destinations in a list', () => {
     renderWithProviders(<AppSidebar />)
-    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(12)
+    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(13)
   })
 
   test('marks the active view with aria-current=page', () => {
@@ -62,6 +64,26 @@ describe('AppSidebar', () => {
     renderWithProviders(<AppSidebar />)
     fireEvent.click(screen.getByRole('button', { name: 'Reports' }))
     expect(useNavigationStore.getState().view).toBe('reports')
+  })
+
+  test('groups Audit Trails under Audit, between Manage and Settings', () => {
+    renderWithProviders(<AppSidebar />)
+    const labels = [...screen.getByRole('list').children].map((item) => item.textContent)
+
+    expect(screen.getByRole('heading', { name: 'Audit' })).toBeInTheDocument()
+    expect(labels.indexOf('Audit')).toBeGreaterThan(labels.indexOf('Manage'))
+    expect(labels.indexOf('Audit Trails')).toBe(labels.indexOf('Audit') + 1)
+    expect(labels.indexOf('Settings')).toBe(labels.indexOf('Audit Trails') + 1)
+  })
+
+  test('navigates to the audit trails view', () => {
+    renderWithProviders(<AppSidebar />)
+    fireEvent.click(screen.getByRole('button', { name: 'Audit Trails' }))
+    expect(useNavigationStore.getState().view).toBe('audit-trails')
+    expect(screen.getByRole('button', { name: 'Audit Trails' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   })
 
   test('keeps navigation labels available to assistive technology when collapsed', () => {

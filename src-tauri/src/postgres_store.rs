@@ -245,6 +245,18 @@ impl<'a> Params<'a> {
     }
 }
 
+/// The window of an audit trail, appended to a `WHERE user_id = $1` clause.
+fn recorded_at_filter<'a>(range: &'a ListRange, params: &mut Params<'a>) -> String {
+    let mut filter = String::new();
+    if let Some(from) = &range.from {
+        filter.push_str(&format!(" AND recorded_at >= ${}", params.push(from)));
+    }
+    if let Some(to) = &range.to {
+        filter.push_str(&format!(" AND recorded_at < ${}", params.push(to)));
+    }
+    filter
+}
+
 const PROJECT_COLUMNS: &str = "id, name, description, color, active, created_at, updated_at";
 const ENTRY_COLUMNS: &str =
     "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
@@ -993,13 +1005,7 @@ impl Store for PostgresStore {
     ) -> Result<Vec<TimeEntryAudit>, StoreError> {
         let limit = range.limit();
         let mut params = Params::new(&user_id, &limit);
-        let mut filter = String::new();
-        if let Some(from) = &range.from {
-            filter.push_str(&format!(" AND recorded_at >= ${}", params.push(from)));
-        }
-        if let Some(to) = &range.to {
-            filter.push_str(&format!(" AND recorded_at < ${}", params.push(to)));
-        }
+        let filter = recorded_at_filter(range, &mut params);
         let mut client = self.conn()?;
         let rows = client.query(
             &format!(
@@ -1288,14 +1294,21 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_absence_audits(&self, user_id: i64) -> Result<Vec<AbsenceAudit>, StoreError> {
+    fn list_absence_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<AbsenceAudit>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let filter = recorded_at_filter(range, &mut params);
         let mut client = self.conn()?;
         let rows = client.query(
             &format!(
-                "SELECT {ABSENCE_AUDIT_COLUMNS} FROM absence_audits WHERE user_id = $1
-                 ORDER BY recorded_at DESC, id DESC"
+                "SELECT {ABSENCE_AUDIT_COLUMNS} FROM absence_audits WHERE user_id = $1{filter}
+                 ORDER BY recorded_at DESC, id DESC LIMIT $2"
             ),
-            &[&user_id],
+            params.as_slice(),
         )?;
         Ok(rows.iter().map(absence_audit_from_row).collect())
     }
@@ -1425,14 +1438,21 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_overtime_audits(&self, user_id: i64) -> Result<Vec<OvertimeAudit>, StoreError> {
+    fn list_overtime_audits(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<OvertimeAudit>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let filter = recorded_at_filter(range, &mut params);
         let mut client = self.conn()?;
         let rows = client.query(
             &format!(
-                "SELECT {OVERTIME_AUDIT_COLUMNS} FROM overtime_audits WHERE user_id = $1
-                 ORDER BY recorded_at DESC, id DESC"
+                "SELECT {OVERTIME_AUDIT_COLUMNS} FROM overtime_audits WHERE user_id = $1{filter}
+                 ORDER BY recorded_at DESC, id DESC LIMIT $2"
             ),
-            &[&user_id],
+            params.as_slice(),
         )?;
         Ok(rows.iter().map(overtime_audit_from_row).collect())
     }

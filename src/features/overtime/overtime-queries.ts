@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
+import type { ListRange } from '@/features/storage/list-range'
 import type { SaveOvertimeEntry } from './overtime-schema'
 
 export const overtimeKeys = {
   all: ['overtime-entries'] as const,
   audits: ['overtime-audits'] as const,
+  /** One cache entry per audit window, invalidating `audits` refreshes them all. */
+  auditRange: (range?: ListRange) => ['overtime-audits', range ?? null] as const,
 }
 
 /** Every write of an overtime record also appends to the audit trail. */
@@ -23,10 +26,10 @@ export function useOvertimeEntries() {
   })
 }
 
-export function useOvertimeAudits() {
+export function useOvertimeAudits(range?: ListRange) {
   return useQuery({
-    queryKey: overtimeKeys.audits,
-    queryFn: () => getRepository().listOvertimeAudits(),
+    queryKey: overtimeKeys.auditRange(range),
+    queryFn: () => getRepository().listOvertimeAudits(range),
   })
 }
 

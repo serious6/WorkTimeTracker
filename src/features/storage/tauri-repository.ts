@@ -104,7 +104,7 @@ export const tauriRepository: Repository = {
   deleteAbsence: async (id) => {
     await run('delete_absence', { id })
   },
-  listAbsenceAudits: () => call('list_absence_audits', {}, absenceAuditSchema.array()),
+  listAbsenceAudits: (range) => call('list_absence_audits', { range }, absenceAuditSchema.array()),
   listOvertimeEntries: () => call('list_overtime_entries', {}, overtimeEntrySchema.array()),
   createOvertimeEntry: (input) => call('create_overtime_entry', { input }, overtimeEntrySchema),
   updateOvertimeEntry: (id, input) =>
@@ -112,7 +112,8 @@ export const tauriRepository: Repository = {
   deleteOvertimeEntry: async (id) => {
     await run('delete_overtime_entry', { id })
   },
-  listOvertimeAudits: () => call('list_overtime_audits', {}, overtimeAuditSchema.array()),
+  listOvertimeAudits: (range) =>
+    call('list_overtime_audits', { range }, overtimeAuditSchema.array()),
   getWorkSettings: () => call('get_work_settings', {}, workSettingsSchema),
   updateWorkSettings: (settings) => call('update_work_settings', { settings }, workSettingsSchema),
   getAppVersion: () => call('get_app_version', {}, appVersionSchema),

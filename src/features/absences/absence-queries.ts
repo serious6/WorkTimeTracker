@@ -9,6 +9,8 @@ export const absenceKeys = {
   /** One cache entry per window, invalidating `all` still refreshes them all. */
   range: (range?: ListRange) => ['absences', range ?? null] as const,
   audits: ['absence-audits'] as const,
+  /** One cache entry per audit window, invalidating `audits` refreshes them all. */
+  auditRange: (range?: ListRange) => ['absence-audits', range ?? null] as const,
 }
 
 /** Every write of an absence also appends to the audit trail. */
@@ -43,8 +45,11 @@ export function useAbsenceIndex(range?: ListRange): AbsenceIndex {
   return data ? absenceIndex(data) : NO_ABSENCES
 }
 
-export function useAbsenceAudits() {
-  return useQuery({ queryKey: absenceKeys.audits, queryFn: () => getRepository().listAbsenceAudits() })
+export function useAbsenceAudits(range?: ListRange) {
+  return useQuery({
+    queryKey: absenceKeys.auditRange(range),
+    queryFn: () => getRepository().listAbsenceAudits(range),
+  })
 }
 
 export function useCreateAbsence() {
