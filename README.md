@@ -37,8 +37,9 @@ npm run tauri dev         # desktop application
 npm run dev               # browser-only UI at http://localhost:1420
 ```
 
-Prerequisites and the contribution workflow are described in
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+Prerequisites and the contribution workflow are described in [`CONTRIBUTING.md`](CONTRIBUTING.md);
+coding agents follow [`AGENTS.md`](AGENTS.md). Every change needs unit and end-to-end tests, and
+every commit and pull request title follows Conventional Commits.
 
 The development container runs the browser UI with `docker compose up --build` or
 `podman compose up --build`. Native Tauri windows need a desktop display server and should be run
@@ -120,9 +121,11 @@ verifies it is current. Development-only npm tools are excluded because they are
 
 ## Documentation
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, and the UI design principles
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, commit conventions, and the pull request checklist
+- [`AGENTS.md`](AGENTS.md) — detailed instructions for coding agents and automation
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
 - [`docs/data-model.md`](docs/data-model.md) — logical data model of the persistence layer in C4 style
 - [`docs/e2e-test-cases.md`](docs/e2e-test-cases.md) — end-to-end test cases in Given/When/Then form
 - [`docs/security-advisories.md`](docs/security-advisories.md) — accepted dependency advisories and why
+- [`docs/ui-principles.md`](docs/ui-principles.md) — binding UI and design principles, including the Laws of UX
 - [`docs/ui-audit.md`](docs/ui-audit.md) — audit of every view against the UI design principles
