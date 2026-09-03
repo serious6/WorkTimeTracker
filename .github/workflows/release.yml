@@ -12,6 +12,11 @@ on:
         required: false
         default: false
         type: boolean
+      migrate_production_database:
+        description: 'Apply the schema migrations to the production database'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -82,6 +87,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
       - run: npm ci --prefer-offline
+      # The tests must never reach a deployed database.
+      - run: node scripts/assert-local-database.mjs
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - run: npm run licenses:check
@@ -150,8 +157,59 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The only job that reaches the production database. Its secrets live in the
+  # protected `production` environment, so no other job of this workflow or of
+  # any other can read them, and it is opt-in: a shared database is migrated
+  # deliberately, never by an installation that starts. The values are never
+  # printed, and the bundles built above contain none of them - a deployment
+  # provides them to the application at run time.
+  migrate-production-database:
+    if: ${{ inputs.migrate_production_database }}
+    needs: [version, web, rust, end-to-end]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
+      - name: Write the pinned certificate authority
+        env:
+          ROOT_CERT: ${{ secrets.SUPABASE_DB_ROOT_CERT }}
+        run: |
+          if [ -z "$ROOT_CERT" ]; then
+            echo "::error::The secret SUPABASE_DB_ROOT_CERT is empty; a remote database is only reachable with the certificate authority to verify it against."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$ROOT_CERT" > "$RUNNER_TEMP/database-ca.pem"
+      - name: Apply the migrations
+        env:
+          WORK_TIME_TRACKER_ENV: production
+          WORK_TIME_TRACKER_DB_MIGRATE: 'true'
+          # A complete connection string wins; otherwise the parts below are
+          # assembled into one, always with sslmode=verify-full.
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_DB_NAME: ${{ secrets.SUPABASE_DB_NAME }}
+          SUPABASE_DB_ROOT_CERT: ${{ runner.temp }}/database-ca.pem
+        run: cargo run --manifest-path src-tauri/Cargo.toml --example migrate
+
   release:
-    needs: bundle
+    needs: [bundle, migrate-production-database]
+    # `bundle` must have succeeded; the migration is skipped unless it was
+    # asked for, but a failed one must not be followed by a release.
+    if: ${{ !cancelled() && needs.bundle.result == 'success' && needs['migrate-production-database'].result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

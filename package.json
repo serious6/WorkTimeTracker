@@ -8,6 +8,7 @@
     "icons:generate": "node scripts/generate-icons.mjs",
     "licenses:generate": "node scripts/generate-licenses.mjs",
     "licenses:check": "node scripts/generate-licenses.mjs --check",
+    "db:assert-local": "node scripts/assert-local-database.mjs",
     "prebuild": "npm run licenses:check",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

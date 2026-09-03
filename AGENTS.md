@@ -172,11 +172,24 @@ The summary is lower case, imperative and without a trailing period.
 
 ## Persistence and IPC
 
-The native backend talks to Postgres only (`src-tauri/src/postgres_store.rs`, connection from
-`DATABASE_URL`, local hosts only). The complete pre-release migration baseline in `drizzle/` is
+The native backend talks to Postgres only (`src-tauri/src/postgres_store.rs`, connection resolved by
+`src-tauri/src/config.rs` and validated by `src-tauri/src/connection.rs`). The complete pre-release
+migration baseline in `drizzle/` is
 applied once in a transaction by `MIGRATIONS` in `postgres_store.rs` and recorded in `schema_migrations`; the
 Drizzle schema in `src/db/schema.ts` and [`docs/data-model.md`](docs/data-model.md) describe the
 same tables. In the browser the same data lives in `localStorage`, scoped per user.
+
+`WORK_TIME_TRACKER_ENV` decides which database may be reached and defaults to `development`:
+`DATABASE_URL` then has to name `localhost`, a loopback address or the compose host `db`, and the
+connection carries no TLS. Development, `npm test`, `cargo test`, the Playwright suite and every CI
+job stay in that mode — a workflow must never receive a remote connection string, and
+`test_support.rs` refuses to create or drop a database outside it. Only `production` may name a
+remote host, only with `sslmode=verify-full` and the certificate authority pinned through
+`SUPABASE_DB_ROOT_CERT`, and it verifies the migrations instead of applying them (applying is the
+opt-in `WORK_TIME_TRACKER_DB_MIGRATE=true` step of the release workflow). There is no switch that
+weakens the verification, no host or credential belongs in the repository, and every message naming
+a connection string goes through `config::redact_database_url` first. See decision 12 in
+[`architecture/decisions.md`](architecture/decisions.md).
 
 The complete IPC command inventory is the `invoke_handler` list in `src-tauri/src/lib.rs`,
 implemented in `src-tauri/src/commands.rs`. For application data the frontend never calls `invoke`
@@ -193,7 +206,9 @@ version. The `Release` workflow is dispatched manually, verifies that the versio
 `npm run lint`, `npm run typecheck`, `npm test` (without the coverage gate),
 `npm run architecture:check`, `npm run build`, `cargo fmt --check`, `cargo test` (without a
 database, so the Postgres tests skip), `npm run licenses:check` and the e2e suite, bundles the
-installers for Windows and macOS and publishes them as the GitHub release `v<version>`.
+installers for Windows and macOS and publishes them as the GitHub release `v<version>`. Its
+`migrate-production-database` job runs in the protected `production` environment and is the only
+job that receives the `SUPABASE_*` secrets; the values are masked and never printed.
 
 ## Definition of Done
 

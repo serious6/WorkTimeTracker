@@ -31,6 +31,23 @@ fn log_panics() {
     }));
 }
 
+/// Applies the schema migrations to the configured database. A deployed
+/// database is shared, so it is migrated by this deliberate step instead of by
+/// every client that starts; see `examples/migrate.rs` and decision 12.
+pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
+    let db_config = DbConfig::from_env()?;
+    if !db_config.run_migrations {
+        return Err(format!(
+            "the {} database may only be migrated with {}=true",
+            db_config.mode,
+            config::MIGRATE_ENV
+        )
+        .into());
+    }
+    Database::open(&db_config)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
