@@ -28,7 +28,7 @@ Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and 
 
 Install Node.js and Rust, copy `.env.example` to `.env`, start the bundled Postgres service, then
 run `npm run tauri dev` for the desktop application or `npm run dev` for the browser-only UI at
-<http://localhost:1420>. Commands, prerequisites, and the contribution workflow are in
+<http://127.0.0.1:1420>. Commands, prerequisites, and the contribution workflow are in
 [`CONTRIBUTING.md`](CONTRIBUTING.md); coding agents follow [`AGENTS.md`](AGENTS.md).
 
 ## Database

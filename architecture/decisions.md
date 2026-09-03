@@ -173,7 +173,19 @@ path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, a
 
 This makes a fresh installation reproducible without retaining pre-release migration history.
 
-## 12. Ownership is part of the query, and a write that changes nothing is refused
+## 12. The dev server is loopback only, LAN access is an opt-in
+
+The dev server used to start with `--host 0.0.0.0` from `beforeDevCommand`, which offered the
+unauthenticated UI and the source maps to every host on the network for the whole development
+session. `vite.config.ts` now resolves the bind address in `resolveDevServerHost` and defaults to
+`127.0.0.1`.
+
+Testing on a physical device is the one case that needs more, and it uses the variable the Tauri CLI
+already sets for `tauri android dev --host`: `TAURI_DEV_HOST=<address>` binds the dev server to that
+address. Nothing else in the repository binds a wildcard address, apart from the container image,
+whose port `compose.yaml` publishes on `127.0.0.1` only.
+
+## 13. Ownership is part of the query, and a write that changes nothing is refused
 
 Every statement in `src-tauri/src/postgres_store.rs` that names a record by an id the caller
 supplied carries `AND user_id = $n`, and a write that names a project (`create_time_entry`,

@@ -80,6 +80,11 @@ podman compose up -d db         # or: docker compose up -d db
 The browser-only UI needs Node.js alone; it stores its data in `localStorage` and is what the
 Playwright suite runs against.
 
+The dev server binds `127.0.0.1` (`resolveDevServerHost` in `vite.config.ts`), so it is not
+reachable from the network. Only testing on a physical device justifies the opt-in
+`TAURI_DEV_HOST=<address>`, which the Tauri CLI also sets for `tauri android dev --host`: the
+unauthenticated UI is then served to the whole network.
+
 ## Common commands
 
 | Purpose | Command |
