@@ -33,7 +33,7 @@ fn log_panics() {
 
 /// Applies the schema migrations to the configured database. A deployed
 /// database is shared, so it is migrated by this deliberate step instead of by
-/// every client that starts; see `examples/migrate.rs` and decision 16.
+/// every client that starts; see `examples/migrate.rs` and the production database decision.
 pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
     let db_config = DbConfig::for_migration()?;
     if !db_config.run_migrations {

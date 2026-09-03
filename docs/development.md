@@ -32,7 +32,7 @@ testing, because it serves the unauthenticated UI to the network.
 `WORK_TIME_TRACKER_ENV` defaults to `development`: `DATABASE_URL` must name `localhost`, another
 loopback address, or the compose host `db`. Production uses a remote database only with
 `sslmode=verify-full` and `SUPABASE_DB_ROOT_CERT`; see [`.env.example`](../.env.example) and
-[`architecture/decisions.md`](../architecture/decisions.md#16-local-postgres-for-development-a-remote-database-only-for-a-production-build).
+[`architecture/decisions.md`](../architecture/decisions.md#separate-local-development-databases-from-verified-production-databases).
 
 ## Npm scripts
 

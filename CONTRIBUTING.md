@@ -99,5 +99,4 @@ build, and both repeat the paths of the in-app `AppLogo`. After changing the sou
 - `drizzle/0000_init.sql` is the current baseline migration. Schema changes keep it,
   `MIGRATIONS` in `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and the queries in
   `src-tauri/src/postgres_store.rs` in sync.
-- UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md) and
-  update [`docs/ui-audit.md`](docs/ui-audit.md) when a view changes noticeably.
+- UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md).

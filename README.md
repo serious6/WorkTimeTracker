@@ -105,5 +105,3 @@ repository has to change for either.
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
 - [`docs/data-model.md`](docs/data-model.md) — logical data model of the persistence layer in C4 style
 - [`docs/e2e-test-cases.md`](docs/e2e-test-cases.md) — end-to-end test cases in Given/When/Then form
-- [`docs/security-advisories.md`](docs/security-advisories.md) — accepted dependency advisories and why
-- [`docs/ui-audit.md`](docs/ui-audit.md) — audit of every view against the UI design principles
