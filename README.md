@@ -28,8 +28,8 @@ Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and 
 
 Install Node.js and Rust, copy `.env.example` to `.env`, start the bundled Postgres service, then
 run `npm run tauri dev` for the desktop application or `npm run dev` for the browser-only UI at
-<http://localhost:1420>. The exact commands, prerequisites, and the contribution workflow are in
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
+<http://localhost:1420>. Commands, prerequisites, and the contribution workflow are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md); coding agents follow [`AGENTS.md`](AGENTS.md).
 
 ## Database
 
@@ -49,17 +49,17 @@ Errors of the backend and of the user interface are appended to
 
 The `Release` workflow runs on manual dispatch. It checks that `package.json`,
 `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs all checks,
-bundles the application on Linux, Windows, and macOS, and attaches the installers to a GitHub
-release tagged `v<version>`. `Containerfile.build` builds the same Linux bundle formats locally
-in a container, on its own pinned Debian and Rust base images rather than the runner image and
-toolchain of the workflow, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+bundles the application on Windows and macOS, and attaches those installers to a GitHub release
+tagged `v<version>`.
 
 `src/data/licenses.json` is the committed license notice for shipped dependencies. Run
 `npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.
 
 ## Documentation
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, project layout, application icon, and the UI design principles
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, local runs, quality checks, commit convention, and the pull request checklist
+- [`AGENTS.md`](AGENTS.md) — instructions for coding agents and automation
+- [`docs/ui-principles.md`](docs/ui-principles.md) — binding UI design principles and Laws of UX
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions
 - [`docs/data-model.md`](docs/data-model.md) — logical data model of the persistence layer in C4 style
 - [`docs/e2e-test-cases.md`](docs/e2e-test-cases.md) — end-to-end test cases in Given/When/Then form
