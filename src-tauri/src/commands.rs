@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{State, Webview};
 
 use crate::{
     auth::{self, LoginAttempts, SessionId, Sessions},
@@ -46,10 +46,12 @@ fn verify_credentials(record: Option<(i64, String)>, password: &str) -> Option<i
 
 /// Every command works on the data of the signed in user only. The session is
 /// named by the command instead of read from an ambient singleton, so a command
-/// without an identity cannot compile.
-fn current_user(sessions: &State<'_, Sessions>, session_id: &SessionId) -> AppResult<i64> {
+/// without an identity cannot compile. The label of the calling webview is
+/// checked as well: the id is a bearer token, and binding it to the window it
+/// was issued to keeps a leaked id useless everywhere else.
+fn current_user(sessions: &Sessions, session_id: &SessionId, window: &str) -> AppResult<i64> {
     sessions
-        .user_id(session_id)?
+        .user_id(session_id, window)?
         .ok_or_else(AppError::not_signed_in)
 }
 
@@ -86,6 +88,7 @@ pub struct SignedIn {
 
 #[tauri::command]
 pub fn register(
+    webview: Webview,
     database: State<'_, Database>,
     sessions: State<'_, Sessions>,
     mut credentials: Credentials,
@@ -97,13 +100,14 @@ pub fn register(
             .0
             .register_user(&credentials.email, &password_hash)
             .map_err(unique_error(DUPLICATE_EMAIL))?;
-        let session_id = sessions.start(user.id)?;
+        let session_id = sessions.start(user.id, webview.label())?;
         Ok(SignedIn { user, session_id })
     })
 }
 
 #[tauri::command]
 pub fn login(
+    webview: Webview,
     database: State<'_, Database>,
     sessions: State<'_, Sessions>,
     mut credentials: Credentials,
@@ -136,24 +140,31 @@ pub fn login(
             return Err(AppError::validation(INVALID_CREDENTIALS));
         };
         attempts.record_success(&credentials.email)?;
-        let session_id = sessions.start(user.id)?;
+        let session_id = sessions.start(user.id, webview.label())?;
         Ok(SignedIn { user, session_id })
     })
 }
 
 #[tauri::command]
-pub fn logout(sessions: State<'_, Sessions>, session_id: String) -> AppResult<()> {
-    logging::logged("logout", || sessions.end(&SessionId::from(session_id)))
+pub fn logout(
+    webview: Webview,
+    sessions: State<'_, Sessions>,
+    session_id: String,
+) -> AppResult<()> {
+    logging::logged("logout", || {
+        sessions.end(&SessionId::from(session_id), webview.label())
+    })
 }
 
 #[tauri::command]
 pub fn current_session(
+    webview: Webview,
     database: State<'_, Database>,
     sessions: State<'_, Sessions>,
     session_id: String,
 ) -> AppResult<Option<User>> {
     logging::logged("current_session", || {
-        let Some(user_id) = sessions.user_id(&SessionId::from(session_id))? else {
+        let Some(user_id) = sessions.user_id(&SessionId::from(session_id), webview.label())? else {
             return Ok(None);
         };
         Ok(database.0.read_user(user_id)?)
@@ -180,10 +191,12 @@ fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
     }
 }
 
-/// Wraps a command with the two things every command needs: the log frame and
-/// the lookup of the signed in user. The body only runs for a live session, so
-/// an authorisation check cannot be forgotten. A command that runs without a
-/// session has to be written by hand and named in [`PUBLIC_COMMANDS`].
+/// Wraps a command with the three things every command needs: the log frame,
+/// the lookup of the signed in user and the check that the call comes from the
+/// window that session belongs to. The body only runs for a live session of the
+/// calling webview, so an authorisation check cannot be forgotten. A command
+/// that runs without a session has to be written by hand and named in
+/// [`PUBLIC_COMMANDS`].
 macro_rules! authed_command {
     (
         $(#[$meta:meta])*
@@ -193,13 +206,18 @@ macro_rules! authed_command {
         $(#[$meta])*
         #[tauri::command]
         pub fn $name(
+            webview: Webview,
             database: State<'_, Database>,
             sessions: State<'_, Sessions>,
             session_id: String,
             $($params)*
         ) -> AppResult<$ret> {
             logging::logged(stringify!($name), || {
-                let $user = current_user(&sessions, &SessionId::from(session_id))?;
+                let $user = current_user(
+                    &sessions,
+                    &SessionId::from(session_id),
+                    webview.label(),
+                )?;
                 let $db = &database;
                 $body
             })
@@ -574,6 +592,43 @@ mod tests {
                 "{name} is registered but neither wrapped by authed_command! nor public"
             );
         }
+    }
+
+    /// Every command that knows about sessions has to take the calling webview
+    /// and pass its label on, so a session id cannot be used from a window it
+    /// was never issued to. The template of `authed_command!` is scanned too,
+    /// which covers every generated command at once.
+    #[test]
+    fn every_session_aware_command_binds_the_calling_window() {
+        let mut checked = 0;
+        for block in command_source().split("#[tauri::command]").skip(1) {
+            if !block.contains("sessions: State<'_, Sessions>") {
+                continue;
+            }
+            let name = declared_name(block).expect("a command attribute declares a function");
+            assert!(
+                block.contains("webview: Webview") && block.contains("webview.label()"),
+                "{name} works with a session without binding the calling window"
+            );
+            checked += 1;
+        }
+
+        assert!(
+            checked >= 5,
+            "the session aware commands were not found: {checked}"
+        );
+    }
+
+    #[test]
+    fn rejects_a_session_id_replayed_from_another_window() {
+        let sessions = Sessions::default();
+        let id = sessions.start(7, "main").unwrap();
+
+        assert_eq!(current_user(&sessions, &id, "main"), Ok(7));
+        assert_eq!(
+            current_user(&sessions, &id, "second"),
+            Err(AppError::not_signed_in())
+        );
     }
 
     #[test]
