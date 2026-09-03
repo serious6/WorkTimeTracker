@@ -244,26 +244,50 @@ struct SslOptions {
 /// implements on top of it.
 fn split_ssl_options(database_url: &str) -> (String, SslOptions) {
     let mut options = SslOptions::default();
-    if let Some((prefix, query)) = database_url.split_once('?') {
-        let kept: Vec<&str> = query
-            .split('&')
-            .filter(|parameter| !take_ssl_option(parameter, true, &mut options))
+    let Some(query) = query_start(database_url) else {
+        if url_body(database_url).is_some() {
+            return (database_url.to_owned(), options);
+        }
+        let kept: Vec<&str> = database_url
+            .split(' ')
+            .filter(|parameter| !take_ssl_option(parameter, false, &mut options))
             .collect();
-        let base = if kept.is_empty() {
-            prefix.to_owned()
-        } else {
-            format!("{prefix}?{}", kept.join("&"))
-        };
-        return (base, options);
-    }
-    if database_url.contains("://") {
-        return (database_url.to_owned(), options);
-    }
-    let kept: Vec<&str> = database_url
-        .split(' ')
-        .filter(|parameter| !take_ssl_option(parameter, false, &mut options))
+        return (kept.join(" "), options);
+    };
+    let prefix = &database_url[..query];
+    let kept: Vec<&str> = database_url[query + 1..]
+        .split('&')
+        .filter(|parameter| !take_ssl_option(parameter, true, &mut options))
         .collect();
-    (kept.join(" "), options)
+    let base = if kept.is_empty() {
+        prefix.to_owned()
+    } else {
+        format!("{prefix}?{}", kept.join("&"))
+    };
+    (base, options)
+}
+
+/// Everything behind the scheme of a connection URL. The driver decides by
+/// exactly these two prefixes and reads anything else as a `key=value`
+/// connection string, where `?` and `&` are ordinary characters.
+fn url_body(database_url: &str) -> Option<&str> {
+    database_url
+        .strip_prefix("postgresql://")
+        .or_else(|| database_url.strip_prefix("postgres://"))
+}
+
+/// The index of the `?` that opens the query of a connection URL. The driver
+/// reads everything up to the first `@` as the credentials, so a password
+/// containing a `?` does not start the query.
+fn query_start(database_url: &str) -> Option<usize> {
+    let body = url_body(database_url)?;
+    let offset = database_url.len() - body.len();
+    let credentials = body
+        .split_once('@')
+        .map_or(0, |(credentials, _)| credentials.len() + 1);
+    body[credentials..]
+        .find('?')
+        .map(|index| offset + credentials + index)
 }
 
 /// Answers whether the parameter is one of the two TLS options, and remembers
@@ -339,6 +363,16 @@ mod tests {
         plan(url, DeploymentMode::Production, Some(CERT))
     }
 
+    /// Appends a parameter in the spelling of the connection string it is
+    /// added to: the query of a URL, another pair of a keyword/value string.
+    fn with(url: &str, parameter: &str) -> String {
+        if url_body(url).is_some() {
+            format!("{url}?{parameter}")
+        } else {
+            format!("{url} {parameter}")
+        }
+    }
+
     #[test]
     fn accepts_supported_local_database_hosts() {
         for url in LOCAL_URLS {
@@ -374,7 +408,7 @@ mod tests {
     #[test]
     fn accepts_a_remote_host_with_a_verified_connection_in_production() {
         for url in REMOTE_URLS {
-            let url = format!("{url}?sslmode={VERIFY_FULL}");
+            let url = with(url, &format!("sslmode={VERIFY_FULL}"));
             let plan = production(&url).unwrap_or_else(|error| panic!("{url}: {error}"));
 
             assert_eq!(
@@ -478,6 +512,42 @@ mod tests {
             plan.tls,
             TlsPlan::Verified {
                 root_cert: "/tmp/ca.crt".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn reads_the_query_behind_a_password_that_contains_a_question_mark() {
+        let plan = production(
+            "postgresql://user:pa?ss@db.codehub.org/database?sslmode=verify-full&application_name=wtt",
+        )
+        .expect("the query of a URL starts behind the credentials");
+
+        assert_eq!(plan.config.get_password(), Some("pa?ss".as_bytes()));
+        assert_eq!(plan.config.get_application_name(), Some("wtt"));
+        assert_eq!(
+            plan.tls,
+            TlsPlan::Verified {
+                root_cert: CERT.to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn keeps_a_keyword_value_string_that_contains_a_question_mark() {
+        let plan = plan(
+            "host=db.codehub.org sslmode=verify-full dbname=database application_name=wtt?1",
+            DeploymentMode::Production,
+            Some(CERT),
+        )
+        .expect("a `?` is an ordinary character of a keyword/value string");
+
+        assert_eq!(plan.config.get_application_name(), Some("wtt?1"));
+        assert_eq!(plan.config.get_dbname(), Some("database"));
+        assert_eq!(
+            plan.tls,
+            TlsPlan::Verified {
+                root_cert: CERT.to_owned()
             }
         );
     }

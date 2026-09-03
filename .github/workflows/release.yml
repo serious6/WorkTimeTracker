@@ -208,8 +208,8 @@ jobs:
   release:
     needs: [bundle, migrate-production-database]
     # `bundle` must have succeeded; the migration is skipped unless it was
-    # asked for, but a failed one must not be followed by a release.
-    if: ${{ !cancelled() && needs.bundle.result == 'success' && needs['migrate-production-database'].result != 'failure' }}
+    # asked for, and only a successful or a skipped one may be released after.
+    if: ${{ !cancelled() && needs.bundle.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
