@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { addEntry, createProject, expectHeading, register } from './helpers'
+import { addEntry, createProject, expectHeading, gotoPage, register } from './helpers'
 
 declare global {
   interface Window {
@@ -17,8 +17,8 @@ const csp = config.app.security.csp
 // The preview server serves the same bundle the desktop application ships, but
 // without the policy Tauri injects into its own responses. Adding the header to
 // the document response reproduces the production webview in the browser.
-async function serveWithCsp(page: Page) {
-  await page.route('http://127.0.0.1:1420/', async (route) => {
+async function serveWithCsp(page: Page, baseURL: string | undefined) {
+  await page.route(new URL('/', baseURL).href, async (route) => {
     const response = await route.fetch()
     await route.fulfill({
       response,
@@ -55,8 +55,8 @@ test('SEC1: the shipped policy states the protective directives and allows no in
 })
 
 // SEC2 in docs/e2e-test-cases.md
-test('SEC2: the application renders under the production policy without a violation', async ({ page }) => {
-  await serveWithCsp(page)
+test('SEC2: the application renders under the production policy without a violation', async ({ page, baseURL }) => {
+  await serveWithCsp(page, baseURL)
   await page.goto('/')
   await register(page, 'first@example.com')
   await expectHeading(page, 'Dashboard')
@@ -72,12 +72,19 @@ test('SEC2: the application renders under the production policy without a violat
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   }
 
+  // The project colors are written through the CSSOM, which the policy leaves alone: without
+  // `style-src 'unsafe-inline'` the dynamic styles of the application still reach the element.
+  await gotoPage(page, 'Projects')
+  const swatch = page.locator('[style*="background-color"]').first()
+  await expect(swatch).toBeVisible()
+  await expect(swatch).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+
   expect(await violations(page)).toEqual([])
 })
 
 // SEC3 in docs/e2e-test-cases.md
-test('SEC3: the policy blocks an injected stylesheet and an injected script', async ({ page }) => {
-  await serveWithCsp(page)
+test('SEC3: the policy blocks an injected stylesheet and an injected script', async ({ page, baseURL }) => {
+  await serveWithCsp(page, baseURL)
   await page.goto('/')
   await register(page, 'first@example.com')
   await expectHeading(page, 'Dashboard')
