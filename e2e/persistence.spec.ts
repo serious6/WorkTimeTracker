@@ -5,6 +5,7 @@ import {
   createBudget,
   createProject,
   dateKey,
+  dialog,
   downloadText,
   expectHeading,
   gotoPage,
@@ -87,9 +88,19 @@ test('X2: absences, overtime, budgets and settings stay isolated per user', asyn
   await gotoPage(page, 'Settings')
   await expect(page.getByLabel('Weekly working time (hours)')).toHaveValue('40')
 
+  // The record ids of an account start over, so this project carries the id of
+  // user A's project: deleting it must not reach the other account.
+  await createProject(page, 'User B Project')
+  await gotoPage(page, 'Projects')
+  await page.getByRole('button', { name: 'Delete User B Project' }).click()
+  await dialog(page).getByRole('button', { name: 'Delete project' }).click()
+  await expect(page.getByText('Project deleted')).toBeVisible()
+
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Switch User' }).click()
   await login(page, 'first@example.com')
+  await gotoPage(page, 'Projects')
+  await expect(page.getByText('User A Project', { exact: true }).first()).toBeVisible()
   await gotoPage(page, 'Budgets')
   await expect(page.getByText('User A Project', { exact: true }).first()).toBeVisible()
   await gotoPage(page, 'Absences')
