@@ -1,5 +1,8 @@
 # Contributing
 
+Detailed rules for agents and automation are in [`AGENTS.md`](AGENTS.md); this page is the short
+version for humans.
+
 ## Prerequisites
 
 | Software | Version | Needed for | Notes |
@@ -26,6 +29,19 @@ podman compose up --build  # browser UI and Postgres in containers
 `podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
 Tauri windows need a desktop display server and belong on the host.
 
+## Branches
+
+Branch off `main` as `<type>/<short-topic>`, for example `feat/project-budgets` or
+`fix/overlapping-entries`.
+
+## Tests are required
+
+Every feature and every bugfix ships with **unit tests** (Vitest as `<name>.test.ts(x)` next to the
+code, `#[cfg(test)]` modules for Rust). Anything user-facing also ships with an **e2e test** in
+`e2e/` covering the happy path and one failure case, listed in
+[`docs/e2e-test-cases.md`](docs/e2e-test-cases.md). Tests mock the clock instead of reading it. A
+bugfix starts with a failing test.
+
 ## Quality checks
 
 Run before opening a pull request:
@@ -43,8 +59,46 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 `npm run test:coverage` fails below 80 percent statement, branch, function, or line coverage.
 `npm run test:e2e` runs against a `test-e2e` build served by `vite preview`, not the dev server.
+Run `npx playwright install --with-deps chromium` once before the first e2e run.
 Rust tests that need a database skip without a reachable `DATABASE_URL`; `REQUIRE_POSTGRES_TESTS=1`
 (as in CI) turns the skip into a failure.
+
+## Conventional Commits
+
+Commit messages and pull request titles follow
+[Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <summary>`, lower
+case and imperative. The repository squash-merges, so CI rejects a title that does not parse.
+
+| Type | Use for | Example |
+| --- | --- | --- |
+| `feat` | new user-facing functionality | `feat(timer): switch the running entry to another project` |
+| `fix` | bugfix | `fix(db): reject an entry that overlaps a running timer` |
+| `docs` | documentation only | `docs(contributing): add the commit cheat sheet` |
+| `test` | tests only | `test(overtime): cover the manual balance adjustment` |
+| `refactor` | behaviour-preserving change | `refactor(storage): extract the range helper` |
+| `perf` | performance | `perf(reports): memoise the weekly totals` |
+| `chore` | maintenance, dependencies | `chore(deps): update tauri to 2.11.4` |
+| `build` | build system, bundling | `build(tauri): bundle the generated icon set` |
+| `ci` | workflows and CI | `ci: run the e2e suite on pull requests` |
+
+Scopes: `ui`, `timer`, `entries`, `projects`, `budgets`, `absences`, `overtime`, `settings`, `auth`,
+`db`, `tauri`, `docs`, `ci`, `deps`. A breaking change adds `!` after the type or scope and a
+`BREAKING CHANGE:` footer:
+
+```text
+refactor(ui)!: replace the toast store with a provider
+
+BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
+```
+
+## Pull request checklist
+
+- [ ] One topic per pull request.
+- [ ] Unit tests added or updated; e2e test added for user-facing behaviour.
+- [ ] The quality checks above pass locally.
+- [ ] Documentation the change invalidates is updated.
+- [ ] A schema change ships with a new numbered migration in `drizzle/`.
+- [ ] The title follows Conventional Commits.
 
 ## Project layout
 
@@ -61,18 +115,10 @@ src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, wi
 
 ## Application icon
 
-`src-tauri/icons/app-icon.svg` is the source artwork; `public/favicon.svg` is the same mark for the
-web build, and both repeat the paths of the in-app `AppLogo` component. Regenerate the bundled icon
-set (`icon.ico`, `icon.icns`, and every PNG size) after changing the source:
-
-```sh
-npm run icons:generate
-```
-
-The command runs `tauri icon`, copies the desktop icons back into `src-tauri/icons` and records the
-checksums of the artwork and of every generated file in `src-tauri/icons/icons.lock.json`. The unit
-tests compare the committed files against that lock, so editing the artwork without regenerating
-fails the test suite.
+`src-tauri/icons/app-icon.svg` is the source artwork, `public/favicon.svg` the same mark for the web
+build, and both repeat the paths of the in-app `AppLogo`. After changing the source run
+`npm run icons:generate`: it regenerates every icon and the checksums in
+`src-tauri/icons/icons.lock.json`, which the unit tests verify.
 
 ## Conventions
 
@@ -84,70 +130,5 @@ fails the test suite.
   numbered file in `drizzle/`, appends it to `MIGRATIONS` in `src-tauri/src/postgres_store.rs`
   (applied once inside a transaction and recorded in `schema_migrations`), and updates
   `src/db/schema.ts` and the queries in `src-tauri/src/postgres_store.rs`.
-
-## UI and design principles
-
-Binding for every UI change. Record the resulting state in [`docs/ui-audit.md`](docs/ui-audit.md).
-
-Reuse before inventing: `Button`, `Card`, `Dialog`, `ConfirmDialog`, `Menu`, `Input`, `Select`,
-`Textarea`, `Checkbox`, `Progress` and `Toaster` in `src/components/ui/` are the only sanctioned
-patterns. Colours come from the tokens in `src/index.css`; spacing, radius and typography come from
-the Tailwind scale. Arbitrary values such as `p-[13px]` need a justification in the pull request.
-
-1. **Hierarchy** — one `<h1 className="text-2xl font-bold tracking-tight">` per view, no skipped
-   levels, card titles as `CardTitle`, primary metrics as `text-2xl`/`text-3xl font-semibold
-   tabular-nums` (`kpi-cards.tsx`). Never fake a heading with a styled `<p>`.
-2. **Progressive disclosure** — optional inputs stay behind a section or dialog, as the custom range
-   inputs in `time-by-project-card.tsx`. No flat forms holding every setting of a screen.
-3. **Consistency** — one pattern per job; a deviation needs a comment explaining why. No one-off
-   markup such as `<button className="rounded-md bg-blue-500 …">`.
-4. **Contrast** — `variant="destructive"` is reserved for deleting data (plus the timer stop
-   button); everything else uses `outline`, `ghost` or `subtle`. Never several emphasised actions
-   per card.
-5. **Accessibility** — WCAG 2.2 AA: 4.5:1 for body text, 3:1 for large text and interactive
-   boundaries; verify token changes with a contrast checker and record the numbers in
-   `docs/ui-audit.md`. Icon-only controls get an `aria-label`, decorative icons and colour dots get
-   `aria-hidden`, collapsed navigation labels stay in the accessibility tree via
-   `sr-only lg:not-sr-only`. State is readable without colour. Never hide a label with `hidden` or
-   remove the focus ring.
-6. **Proximity** — start, pause and stop form one control group (`currently-tracking-card.tsx`);
-   delete sits behind the row `Menu` or a separate icon slot guarded by `ConfirmDialog`, never next
-   to save.
-7. **Alignment** — `space-y-5` for page sections, `gap-4`/`gap-5` for card grids, `Card` for
-   grouping, `tabular-nums` for every number read in a column.
-
-### Laws of UX
-
-Adopted laws from [lawsofux.com](https://lawsofux.com) are binding; rejected ones must not be
-reintroduced.
-
-| Law | How it is applied |
-| --- | --- |
-| Jakob's Law | Sidebar navigation, start/stop at the top of the dashboard, reverse chronological entry list (`time-entry-list.tsx`). |
-| Fitts's Law | The primary start/stop control uses the largest `Button` size; every control keeps a 40×40 px hit area (`size="sm"` and `size="inline"` extend their box with a transparent pseudo element). |
-| Hick's Law | Options grouped into `Card` sections; ranges chosen from one `Select` instead of many toggles. |
-| Miller's Law | At most four KPI cards per row, further metrics chunked into labelled cards. |
-| Law of Proximity | See principle 6. |
-| Law of Common Region | `Card`/`CardHeader`/`CardContent` instead of ad-hoc spacing. |
-| Law of Similarity / Uniform Connectedness | A `Button` variant always means the same thing; row triggers always look like rows. |
-| Aesthetic-Usability Effect | One spacing scale, one radius (`--radius`), one type scale. |
-| Doherty Threshold | Timer and entry controls show a pending state immediately; mutations report through `toast`. |
-| Peak-End Rule | Stopping and saving confirm with a toast naming the tracked duration. |
-| Goal-Gradient Effect | `Progress` bars for the daily target, the weekly target and every budget. |
-| Postel's Law | Time fields accept `9`, `0900`, `09:00` and `9.5h`; invalid input is reported inline, never silently corrected. |
-| Von Restorff Effect | Only the active timer combines the `success` accent with a `success` card border. |
-| Serial Position Effect | Dashboard and Time Entries open the sidebar, Settings closes it, rare views sit in the middle (`app-sidebar.tsx`). |
-| Tesler's Law | Complexity lives in `contract/domain-rules.json` and the backend, not in user-facing options. |
-
-Considered, needing judgement: the dashboard shows the running timer permanently but sends no
-reminders or badges (Zeigarnik); charts stay plain (Prägnanz); chunking applies to settings and
-reports, small forms stay flat; hints avoid banner styling so they are not skipped as advertising;
-remove elements that do not earn their place, but never at the cost of discoverability (Occam).
-
-Rejected: variable reward and optimising for time spent in the app, skipping documentation because
-users will not read it, artificial delays, and persuasion through cognitive bias such as scarcity,
-social proof or anchoring.
-
-## Pull requests
-
-Describe the change and the checks you ran. Keep changes focused on one topic.
+- UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md) and
+  update [`docs/ui-audit.md`](docs/ui-audit.md) when a view changes noticeably.

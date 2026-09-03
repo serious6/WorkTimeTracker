@@ -18,7 +18,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 }
 
 /**
- * Deviation from the custom-styled kit (principle 3, CONTRIBUTING.md): `Select` renders a native
+ * Deviation from the custom-styled kit (principle 3, docs/ui-principles.md): `Select` renders a native
  * `<select>` instead of a hand-built listbox so it keeps the OS picker on mobile and free keyboard
  * navigation, at the cost of limited style control over the open menu.
  */
