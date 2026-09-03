@@ -45,7 +45,9 @@ Native sessions live in memory and end after 480 idle minutes; every command ext
 restart always returns to the login page. Next to the idle timeout every session carries the moment
 it started and ends 720 minutes after it, no matter how much it was used: a running timer polls the
 backend all day, so without that absolute lifetime an application left open on an unattended machine
-would stay signed in forever. `login` and `register` start a session and answer with its
+would stay signed in forever. That age is measured on the wall clock, because `Instant` does not
+count the hours a suspended machine spent asleep, with the monotonic age as its floor, so moving the
+system clock backwards cannot extend a session either. `login` and `register` start a session and answer with its
 opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
 map keyed by that id, and every command names the session it acts for instead of reading one ambient
 process-global session, so two windows can hold two identities and a session is distinguishable in
@@ -53,6 +55,11 @@ an audit. Expired sessions are dropped whenever the map is read, so it stays bou
 keeps the id in `sessionStorage` of the webview: reloading the window keeps the session, restarting
 the application starts at the login page because the backend map is empty again. Both storage paths lock an email out for 15 minutes after 5
 failed logins. The limits are part of the contract file, so both sides stay equal.
+
+An expiry costs as little context as possible: the resulting `notSignedIn` error returns the user
+interface to the login page but keeps the view it interrupted, and signing in again as the same user
+continues there. Another user starts on the dashboard, and either way the cached data of the ended
+session is dropped, so no account sees the records of another.
 
 The native counters live in the `login_attempts` table, not in the process: restarting the
 application no longer clears a lockout. A login counts its attempt before it verifies the password,

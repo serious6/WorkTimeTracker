@@ -541,16 +541,22 @@ test('returns to the login page when the session expires', async ({ page }) => {
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Budgets' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
 
+  // Signing in again continues on the view the expiry interrupted.
   await login(page, 'first@example.com')
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Budgets', level: 1 })).toBeVisible()
 
   // The session was used a moment ago, so only its absolute lifetime ends it.
+  // The dialog carries unsaved input, which the rejected submit does not store.
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Projects' }).click()
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
+  await page.getByRole('button', { name: 'Create project' }).click()
+  await dialog(page).getByLabel('Name').fill('Unsaved Project')
   await ageSession(page, 'lifetime')
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Budgets' }).click()
+  await dialog(page).getByRole('button', { name: 'Create project' }).click()
   await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
 
   await login(page, 'first@example.com')
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Projects' }).click()
-  await expect(page.getByText('Session Project')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Session Project', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unsaved Project', exact: true })).toBeHidden()
 })
