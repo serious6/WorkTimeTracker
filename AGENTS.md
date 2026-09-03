@@ -21,8 +21,10 @@ controls. The domain is personal work time:
   record.
 
 Known constraints: offline-first (no network calls other than the local database), cross-platform
-(Windows, macOS, Linux), and every timestamp is stored with its offset — never assume a fixed
-timezone or ignore DST when computing a duration or a day boundary.
+(Windows, macOS, Linux), and every timestamp is stored as canonical UTC ISO 8601 with milliseconds
+(`2026-08-27T08:00:00.000Z`, validated in `src-tauri/src/models.rs`). The original offset is not
+persisted, so a local day boundary or a duration is always derived in the current timezone — never
+assume a fixed timezone or ignore DST.
 
 ## Repository layout
 
@@ -177,17 +179,22 @@ Drizzle schema in `src/db/schema.ts` and [`docs/data-model.md`](docs/data-model.
 same tables. In the browser the same data lives in `localStorage`, scoped per user.
 
 The complete IPC command inventory is the `invoke_handler` list in `src-tauri/src/lib.rs`,
-implemented in `src-tauri/src/commands.rs`. The frontend never calls `invoke` directly: it goes
-through the `Repository` type in `src/features/storage/`, which resolves to `tauri-repository.ts`
-in the app and to `local-repository.ts` in the browser. A new command therefore needs the Rust
-command, its registration, the `Repository` method and both implementations.
+implemented in `src-tauri/src/commands.rs`. For application data the frontend never calls `invoke`
+directly: it goes through the `Repository` type in `src/features/storage/`, which resolves to
+`tauri-repository.ts` in the app and to `local-repository.ts` in the browser. A new data command
+therefore needs the Rust command, its registration, the `Repository` method and both
+implementations. Infrastructure commands are the exception: `src/lib/logger.ts` invokes
+`log_client_error` directly and falls back to the console in the browser.
 
 ## Release and versioning
 
 `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` must declare the same
-version. The `Release` workflow is dispatched manually, verifies that the versions match, runs all
-checks, bundles the installers for Linux, Windows and macOS and publishes them as the GitHub
-release `v<version>`. `Containerfile.build` produces the same Linux bundles locally, see
+version. The `Release` workflow is dispatched manually, verifies that the versions match, runs
+`npm run lint`, `npm run typecheck`, `npm test` (without the coverage gate),
+`npm run architecture:check`, `npm run build`, `cargo fmt --check`, `cargo test` (without a
+database, so the Postgres tests skip), `npm run licenses:check` and the e2e suite, bundles the
+installers for Linux, Windows and macOS and publishes them as the GitHub release `v<version>`.
+`Containerfile.build` produces the same Linux bundles locally, see
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Definition of Done
@@ -215,8 +222,10 @@ Do:
 
 Don't:
 
-- Commit secrets, `.env` files, credentials, build artifacts (`dist/`, `target/`, `node_modules/`)
-  or generated files that a command produces.
+- Commit secrets, `.env` files, credentials or build artifacts (`dist/`, `target/`,
+  `node_modules/`). Generated files that the repository tracks on purpose — `src/data/licenses.json`
+  and the icon set with `src-tauri/icons/icons.lock.json` — are regenerated with their command and
+  committed with the change.
 - Change the database schema without a migration, and never edit an applied migration —
   `drizzle/0000_init.sql` is the immutable baseline.
 - Log or display credentials, hashes, e-mail addresses or file system paths; the redaction rules in
