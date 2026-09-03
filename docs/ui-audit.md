@@ -1,7 +1,7 @@
 # UI audit
 
 Audit of the interface against the principles and Laws of UX documented in
-[`CONTRIBUTING.md`](../CONTRIBUTING.md). Findings marked **fixed** were addressed in the same change
+[`ui-principles.md`](ui-principles.md). Findings marked **fixed** were addressed in the same change
 as this document; findings marked **accepted** are conscious decisions and must not be "fixed"
 silently later.
 
@@ -40,7 +40,7 @@ its text role and `--input` for the boundary role. No hue changed, so the palett
 | `components/ui/input.tsx` | Accessibility | `Input`/`Select`/`Textarea`/`Checkbox` were bare `className` wrappers: no generated `id`, no `aria-invalid`/`aria-describedby`, so validation errors were never announced | **fixed**: added a `Field` wrapper (`label`/`hint`/`error`) that generates the id with `useId()`, links `htmlFor`/`aria-describedby` and announces the error with `role="alert"`; `Checkbox` gained an optional `label` that renders a 40 px hit-area row. See "Field pattern" below. |
 | `components/ui/input.tsx` | Consistency | `Select` is a native `<select>` while the rest of the kit is custom-styled, and the deviation was undocumented | **accepted**, now documented: native `<select>` keeps the OS picker on mobile and free keyboard behaviour; see the comment above `Select` in `input.tsx` |
 | `components/ui/toast.tsx` | Accessibility, Peak-End | toasts already render in an `aria-live="polite"` region with `role="status"` | no change |
-| All icons | Accessibility | most decorative `lucide` icons are not marked `aria-hidden` | **accepted**: they carry no accessible name, so assistive technology ignores them; new code follows the rule in `CONTRIBUTING.md` |
+| All icons | Accessibility | most decorative `lucide` icons are not marked `aria-hidden` | **accepted**: they carry no accessible name, so assistive technology ignores them; new code follows the rule in `docs/ui-principles.md` |
 | Row triggers | Consistency | clickable list rows and grid cells used one-off `<button>` markup | **fixed**: they use the shared `Button` ghost variant with a 40 px minimum target |
 | In-card range selects | Consistency, Fitts's Law | `time-by-project-card.tsx` and `weekly-summary-card.tsx` shrank the shared field to 32 px | **fixed**: they use the shared field height |
 | `recent-projects-card.tsx` | Consistency | hand-written link button in the card header | **fixed**: `Button variant="link" size="inline"` |
