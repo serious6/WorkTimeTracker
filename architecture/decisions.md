@@ -188,11 +188,17 @@ so `tauri dev` compiles the dev profile and keeps them while `npm run tauri buil
 release profile and drops them — as long as no cargo feature switches them back on and the bundle
 is not built with `--debug`.
 
-Two tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
+Tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
 manifest next: `devtools_stay_out_of_a_release_build` fails when a feature of `src-tauri/Cargo.toml`
 enables `tauri/devtools` or a profile turns `debug-assertions` back on for the release build, and
 `a_devtools_call_carries_a_debug_assertions_guard` fails when a backend source reaches the devtools
-without a `debug_assertions` condition in the same block of lines. What the tests cannot see is a
+without a condition that governs the call. That scan reads the `cfg` attribute of the item or the
+statement, the attributes of the enclosing items and blocks and a `cfg!` around the block, and it
+evaluates the predicate with `debug_assertions` off and every other flag on, so
+`any(debug_assertions, windows)` and `not(debug_assertions)` count as no guard at all. Comments and
+string literals are stripped before the scan.
+`a_guard_that_governs_the_call_is_accepted` and `a_guard_that_governs_nothing_is_rejected` pin that
+behaviour on fixtures. What the tests cannot see is a
 `debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS` or a
 `.cargo/config.toml`; the release workflow sets neither.
 

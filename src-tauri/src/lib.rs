@@ -161,17 +161,171 @@ mod tests {
             .expect("a source always has a first part")
     }
 
-    /// Whether a line reaches the devtools, that is code rather than a comment
-    /// or the attribute that guards the code.
-    fn reaches_the_devtools(line: &str) -> bool {
-        let code = line.trim();
-        code.contains("devtools") && !code.starts_with("//") && !code.starts_with('#')
+    /// A line without its comment and without the content of its string and
+    /// character literals, so that neither a comment that mentions the devtools
+    /// nor a brace inside a literal is read as code.
+    fn code_of(line: &str) -> String {
+        let mut code = String::new();
+        let mut characters = line.chars().peekable();
+        let mut literal: Option<char> = None;
+        while let Some(character) = characters.next() {
+            match literal {
+                Some(quote) => {
+                    if character == '\\' {
+                        characters.next();
+                    } else if character == quote {
+                        literal = None;
+                    }
+                }
+                None => match character {
+                    '/' if characters.peek() == Some(&'/') => break,
+                    '"' | '\'' => literal = Some(character),
+                    _ => code.push(character),
+                },
+            }
+        }
+        code
     }
 
-    /// Whether a line holds a condition that is true in a debug build only.
-    /// `not(debug_assertions)` names the opposite and guards nothing.
-    fn debug_build_only(line: &str) -> bool {
-        line.contains("debug_assertions") && !line.contains("not(debug_assertions)")
+    /// Whether a predicate of a `cfg` is true in a debug build only, that is
+    /// false as soon as `debug_assertions` is off. Every other flag counts as
+    /// on, so `any(debug_assertions, windows)` guards nothing while
+    /// `all(debug_assertions, windows)` does.
+    fn holds_only_in_a_debug_build(predicate: &str) -> bool {
+        !holds_without_debug_assertions(predicate)
+    }
+
+    /// Evaluates a `cfg` predicate with `debug_assertions` off and every other
+    /// flag on.
+    fn holds_without_debug_assertions(predicate: &str) -> bool {
+        let predicate = predicate.trim();
+        if let Some(inner) = argument_of(predicate, "not") {
+            return !holds_without_debug_assertions(inner);
+        }
+        if let Some(inner) = argument_of(predicate, "any") {
+            return terms_of(inner)
+                .iter()
+                .any(|term| holds_without_debug_assertions(term));
+        }
+        if let Some(inner) = argument_of(predicate, "all") {
+            return terms_of(inner)
+                .iter()
+                .all(|term| holds_without_debug_assertions(term));
+        }
+        predicate != "debug_assertions"
+    }
+
+    /// The argument of `name(...)`, if the predicate is that call.
+    fn argument_of<'a>(predicate: &'a str, name: &str) -> Option<&'a str> {
+        predicate
+            .strip_prefix(name)?
+            .strip_prefix('(')?
+            .strip_suffix(')')
+    }
+
+    /// The arguments of an `any` or `all`, split on the commas that stand
+    /// outside of a nested call.
+    fn terms_of(arguments: &str) -> Vec<&str> {
+        let mut terms = Vec::new();
+        let mut depth = 0usize;
+        let mut start = 0usize;
+        for (index, character) in arguments.char_indices() {
+            match character {
+                '(' => depth += 1,
+                ')' => depth = depth.saturating_sub(1),
+                ',' if depth == 0 => {
+                    terms.push(arguments[start..index].trim());
+                    start = index + 1;
+                }
+                _ => {}
+            }
+        }
+        terms.push(arguments[start..].trim());
+        terms
+    }
+
+    /// Whether a line of code carries a `cfg` or a `cfg!` whose predicate holds
+    /// in a debug build only.
+    fn guards_a_debug_build(code: &str) -> bool {
+        let mut rest = code;
+        while let Some(index) = rest.find("cfg") {
+            let after = &rest[index + "cfg".len()..];
+            let after = after.strip_prefix('!').unwrap_or(after);
+            rest = after;
+            let Some(predicate) = after.strip_prefix('(').and_then(balanced_argument) else {
+                continue;
+            };
+            if predicate.contains("debug_assertions") && holds_only_in_a_debug_build(predicate) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The text up to the parenthesis that closes the one already consumed.
+    fn balanced_argument(arguments: &str) -> Option<&str> {
+        let mut depth = 0usize;
+        for (index, character) in arguments.char_indices() {
+            match character {
+                '(' => depth += 1,
+                ')' if depth == 0 => return Some(&arguments[..index]),
+                ')' => depth -= 1,
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// The lines of a source that reach the devtools without a
+    /// `debug_assertions` condition that governs them: an attribute on the item
+    /// or the statement itself, an attribute on an enclosing item or block, or
+    /// a `cfg!` around the block the call stands in.
+    fn unguarded_devtools_lines(source: &str) -> Vec<usize> {
+        let mut findings = Vec::new();
+        // Whether the block opened by a `{` is compiled in a debug build only,
+        // one entry per open block.
+        let mut blocks: Vec<bool> = Vec::new();
+        // A `#[cfg(...)]` that has been read but not yet attached to its item.
+        let mut attached = false;
+        // A `#![cfg(...)]` guards everything that follows it in the file.
+        let mut whole_file = false;
+
+        for (index, line) in source.lines().enumerate() {
+            let code = code_of(line);
+            let trimmed = code.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let debug_only = guards_a_debug_build(trimmed);
+            if trimmed.starts_with("#![") {
+                whole_file = whole_file || debug_only;
+                continue;
+            }
+            if trimmed.starts_with("#[") {
+                attached = attached || debug_only;
+                continue;
+            }
+
+            let guarded = whole_file || debug_only || attached || blocks.iter().any(|block| *block);
+            if trimmed.contains("devtools") && !guarded {
+                findings.push(index + 1);
+            }
+
+            let opened = trimmed.matches('{').count();
+            let closed = trimmed.matches('}').count();
+            for _ in 0..closed {
+                blocks.pop();
+            }
+            for _ in 0..opened {
+                blocks.push(debug_only || attached);
+            }
+            // The attribute belongs to this item, and to it alone: the next
+            // statement needs a guard of its own.
+            attached = false;
+        }
+
+        findings
     }
 
     #[test]
@@ -194,26 +348,51 @@ mod tests {
     #[test]
     fn a_devtools_call_carries_a_debug_assertions_guard() {
         for (name, source) in backend_sources() {
-            let lines: Vec<&str> = production_part(&source).lines().collect();
-            for (index, line) in lines.iter().enumerate() {
-                if !reaches_the_devtools(line) {
-                    continue;
-                }
+            let findings = unguarded_devtools_lines(production_part(&source));
+            assert!(
+                findings.is_empty(),
+                "{name} reaches the devtools without a debug_assertions guard, line(s) {findings:?}"
+            );
+        }
+    }
 
-                // The guard has to stand in the same block of lines as the call,
-                // that is without an empty line in between.
-                let guarded = lines[..index]
-                    .iter()
-                    .rev()
-                    .take_while(|previous| !previous.trim().is_empty())
-                    .any(|previous| debug_build_only(previous));
+    #[test]
+    fn a_guard_that_governs_the_call_is_accepted() {
+        let guarded = [
+            "#[cfg(debug_assertions)]\nwindow.open_devtools();",
+            "#[cfg(all(debug_assertions, windows))]\nwindow.open_devtools();",
+            "// the inspector\n#[cfg(debug_assertions)]\nwindow.open_devtools();",
+            "#[cfg(debug_assertions)]\nfn inspect() {\n    window.open_devtools();\n}",
+            "if cfg!(debug_assertions) {\n    window.open_devtools();\n}",
+            "#![cfg(debug_assertions)]\nfn inspect() {\n    window.open_devtools();\n}",
+            "// open_devtools is only compiled in a debug build",
+        ];
+        for source in guarded {
+            assert!(
+                unguarded_devtools_lines(source).is_empty(),
+                "the guard of {source:?} was not seen"
+            );
+        }
+    }
 
-                assert!(
-                    guarded,
-                    "{name}:{} reaches the devtools without a debug_assertions guard",
-                    index + 1
-                );
-            }
+    #[test]
+    fn a_guard_that_governs_nothing_is_rejected() {
+        let unguarded = [
+            "window.open_devtools();",
+            "// available with debug_assertions\nwindow.open_devtools();",
+            "#[cfg(debug_assertions)]\nlet inspect = true;\nwindow.open_devtools();",
+            "#[cfg(debug_assertions)]\nfn inspect() {\n    let on = true;\n}\nwindow.open_devtools();",
+            "#[cfg(any(debug_assertions, windows))]\nwindow.open_devtools();",
+            "#[cfg(not(debug_assertions))]\nwindow.open_devtools();",
+            "#[cfg(all(any(debug_assertions, windows), unix))]\nwindow.open_devtools();",
+            "if cfg!(debug_assertions) {\n    let on = true;\n}\nwindow.open_devtools();",
+            "let message = \"debug_assertions\";\nwindow.open_devtools();",
+        ];
+        for source in unguarded {
+            assert!(
+                !unguarded_devtools_lines(source).is_empty(),
+                "the missing guard of {source:?} was not seen"
+            );
         }
     }
 }
