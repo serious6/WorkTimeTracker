@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::{
     auth::{
         ARGON2_ITERATIONS, ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, LOGIN_LOCKOUT_MINUTES,
-        MAX_LOGIN_ATTEMPTS, SESSION_TIMEOUT_MINUTES,
+        MAX_LOGIN_ATTEMPTS, SESSION_MAX_LIFETIME_MINUTES, SESSION_TIMEOUT_MINUTES,
     },
     models::{
         adjusted_daily_target, Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Credentials,
@@ -30,6 +30,7 @@ const ENTITIES: &str = include_str!("../../contract/entities.json");
 #[serde(rename_all = "camelCase")]
 struct SecurityLimits {
     session_timeout_minutes: u64,
+    session_max_lifetime_minutes: u64,
     max_login_attempts: u32,
     login_lockout_minutes: u64,
 }
@@ -135,6 +136,10 @@ fn shares_the_security_limits_with_the_browser_fallback() {
     let limits: SecurityLimits = serde_json::from_value(rules()["securityLimits"].clone()).unwrap();
 
     assert_eq!(limits.session_timeout_minutes, SESSION_TIMEOUT_MINUTES);
+    assert_eq!(
+        limits.session_max_lifetime_minutes,
+        SESSION_MAX_LIFETIME_MINUTES
+    );
     assert_eq!(limits.max_login_attempts, MAX_LOGIN_ATTEMPTS);
     assert_eq!(limits.login_lockout_minutes, LOGIN_LOCKOUT_MINUTES);
 }

@@ -9,6 +9,7 @@ import {
   LOGIN_LOCKOUT_MINUTES,
   MAX_LOGIN_ATTEMPTS,
   PBKDF2_ITERATIONS,
+  SESSION_MAX_LIFETIME_MINUTES,
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { saveProjectBudgetSchema } from '@/features/budgets/budget-schema'
@@ -69,6 +70,7 @@ type UniquenessCase = {
 const rules = domainRules as unknown as {
   securityLimits: {
     sessionTimeoutMinutes: number
+    sessionMaxLifetimeMinutes: number
     maxLoginAttempts: number
     loginLockoutMinutes: number
   }
@@ -111,6 +113,7 @@ describe('domain rule contract', () => {
   it('shares the security limits with the Rust backend', () => {
     expect(rules.securityLimits).toEqual({
       sessionTimeoutMinutes: SESSION_TIMEOUT_MINUTES,
+      sessionMaxLifetimeMinutes: SESSION_MAX_LIFETIME_MINUTES,
       maxLoginAttempts: MAX_LOGIN_ATTEMPTS,
       loginLockoutMinutes: LOGIN_LOCKOUT_MINUTES,
     })

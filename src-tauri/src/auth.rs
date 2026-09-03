@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Write as _,
     sync::{LazyLock, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use argon2::{
@@ -23,6 +23,12 @@ use crate::{
 
 /// Idle timeout of a session. Every command resets it, an idle session ends.
 pub const SESSION_TIMEOUT_MINUTES: u64 = 480;
+/// Absolute lifetime of a session. Activity does not extend it, so a running
+/// timer cannot keep an unattended machine signed in forever.
+pub const SESSION_MAX_LIFETIME_MINUTES: u64 = 720;
+/// The absolute lifetime only adds to the idle timeout while it outlasts it,
+/// otherwise an idle session would already have ended before its lifetime.
+const _: () = assert!(SESSION_MAX_LIFETIME_MINUTES > SESSION_TIMEOUT_MINUTES);
 /// Failed logins of one email before the account is locked for a while.
 pub const MAX_LOGIN_ATTEMPTS: u32 = 5;
 /// Duration of the lockout that follows the last allowed attempt.
@@ -44,12 +50,55 @@ fn minutes(value: u64) -> Duration {
     Duration::from_secs(value * 60)
 }
 
+/// One point in time read from both clocks of the machine: the monotonic one,
+/// which no user can move, and the wall clock, which keeps running while the
+/// machine is suspended.
+#[derive(Clone, Copy)]
+struct Moment {
+    monotonic: Instant,
+    wall: SystemTime,
+}
+
+impl Moment {
+    fn now() -> Self {
+        Self {
+            monotonic: Instant::now(),
+            wall: SystemTime::now(),
+        }
+    }
+}
+
 struct ActiveSession {
     user_id: i64,
+    started_at: Moment,
     /// Label of the webview the session was started from. The id alone is a
     /// bearer token, so it is only accepted from that webview again.
     window: String,
     last_seen: Instant,
+}
+
+impl ActiveSession {
+    /// A session ends when it was idle for too long or when it reached its
+    /// absolute lifetime, whichever comes first.
+    fn is_alive_at(&self, now: Moment) -> bool {
+        now.monotonic.duration_since(self.last_seen) < minutes(SESSION_TIMEOUT_MINUTES)
+            && self.age_at(now) < minutes(SESSION_MAX_LIFETIME_MINUTES)
+    }
+
+    /// The age of the session, measured on whichever clock reports more. On
+    /// Linux `Instant` does not count the time the machine spent suspended, so
+    /// a lifetime on the monotonic clock alone would let a session survive a
+    /// night of sleep; the wall clock covers that. A wall clock set backwards
+    /// only ever reports less, so the monotonic age remains the floor and no
+    /// clock change can extend a session.
+    fn age_at(&self, now: Moment) -> Duration {
+        let monotonic = now.monotonic.duration_since(self.started_at.monotonic);
+        let wall = now
+            .wall
+            .duration_since(self.started_at.wall)
+            .unwrap_or(Duration::ZERO);
+        monotonic.max(wall)
+    }
 }
 
 /// Opaque identifier of one signed in session. It is generated from the
@@ -92,15 +141,13 @@ impl Sessions {
     /// reaches the backend from another webview than the one it was issued to
     /// resolves to nothing, exactly like an unknown id.
     pub fn user_id(&self, id: &SessionId, window: &str) -> AppResult<Option<i64>> {
-        self.user_id_at(id, window, Instant::now())
+        self.user_id_at(id, window, Moment::now())
     }
 
-    fn user_id_at(&self, id: &SessionId, window: &str, now: Instant) -> AppResult<Option<i64>> {
+    fn user_id_at(&self, id: &SessionId, window: &str, now: Moment) -> AppResult<Option<i64>> {
         let mut sessions = self.0.lock()?;
-        // An idle session ends; expired sessions never pile up in the map.
-        sessions.retain(|_, session| {
-            now.duration_since(session.last_seen) < minutes(SESSION_TIMEOUT_MINUTES)
-        });
+        // An expired session ends; expired sessions never pile up in the map.
+        sessions.retain(|_, session| session.is_alive_at(now));
         let Some(active) = sessions.get_mut(id) else {
             return Ok(None);
         };
@@ -109,24 +156,25 @@ impl Sessions {
         if active.window != window {
             return Ok(None);
         }
-        active.last_seen = now;
+        active.last_seen = now.monotonic;
         Ok(Some(active.user_id))
     }
 
     /// Starts a session for the given webview and returns its id. The caller
     /// hands the id back with every following command.
     pub fn start(&self, user_id: i64, window: &str) -> AppResult<SessionId> {
-        self.start_at(user_id, window, Instant::now())
+        self.start_at(user_id, window, Moment::now())
     }
 
-    fn start_at(&self, user_id: i64, window: &str, now: Instant) -> AppResult<SessionId> {
+    fn start_at(&self, user_id: i64, window: &str, now: Moment) -> AppResult<SessionId> {
         let id = SessionId::generate();
         self.0.lock()?.insert(
             id.clone(),
             ActiveSession {
                 user_id,
+                started_at: now,
                 window: window.to_owned(),
-                last_seen: now,
+                last_seen: now.monotonic,
             },
         );
         Ok(id)
@@ -293,17 +341,33 @@ mod tests {
         assert!(!verify_password("Str0ng-Passphrase!!x", "not-a-hash"));
     }
 
+    /// Both clocks of the machine moved on by the same amount, the ordinary
+    /// case of time passing while the application runs.
+    fn later(moment: Moment, elapsed: Duration) -> Moment {
+        Moment {
+            monotonic: moment.monotonic + elapsed,
+            wall: moment.wall + elapsed,
+        }
+    }
+
     #[test]
     fn keeps_a_used_session_alive() {
         let sessions = Sessions::default();
-        let now = Instant::now();
+        let now = Moment::now();
         let id = sessions.start_at(7, "main", now).unwrap();
-        let later = now + minutes(SESSION_TIMEOUT_MINUTES) - Duration::from_secs(1);
+        let step = minutes(SESSION_TIMEOUT_MINUTES) - Duration::from_secs(1);
 
-        assert_eq!(sessions.user_id_at(&id, "main", later).unwrap(), Some(7));
+        assert_eq!(
+            sessions.user_id_at(&id, "main", later(now, step)).unwrap(),
+            Some(7)
+        );
         assert_eq!(
             sessions
-                .user_id_at(&id, "main", later + minutes(SESSION_TIMEOUT_MINUTES / 2))
+                .user_id_at(
+                    &id,
+                    "main",
+                    later(now, step + minutes(SESSION_TIMEOUT_MINUTES / 2))
+                )
                 .unwrap(),
             Some(7)
         );
@@ -312,12 +376,12 @@ mod tests {
     #[test]
     fn ends_an_idle_session() {
         let sessions = Sessions::default();
-        let now = Instant::now();
+        let now = Moment::now();
         let id = sessions.start_at(7, "main", now).unwrap();
 
         assert_eq!(
             sessions
-                .user_id_at(&id, "main", now + minutes(SESSION_TIMEOUT_MINUTES))
+                .user_id_at(&id, "main", later(now, minutes(SESSION_TIMEOUT_MINUTES)))
                 .unwrap(),
             None
         );
@@ -325,9 +389,71 @@ mod tests {
     }
 
     #[test]
+    fn ends_a_continuously_used_session_at_its_absolute_lifetime() {
+        let sessions = Sessions::default();
+        let now = Moment::now();
+        let id = sessions.start_at(7, "main", now).unwrap();
+
+        // A running timer polls the backend, so the session is never idle.
+        let step = minutes(SESSION_TIMEOUT_MINUTES / 2);
+        let mut elapsed = step;
+        while elapsed < minutes(SESSION_MAX_LIFETIME_MINUTES) {
+            assert_eq!(
+                sessions
+                    .user_id_at(&id, "main", later(now, elapsed))
+                    .unwrap(),
+                Some(7)
+            );
+            elapsed += step;
+        }
+
+        assert_eq!(
+            sessions
+                .user_id_at(
+                    &id,
+                    "main",
+                    later(now, minutes(SESSION_MAX_LIFETIME_MINUTES))
+                )
+                .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn ends_a_session_that_outlived_its_lifetime_while_the_machine_slept() {
+        let sessions = Sessions::default();
+        let now = Moment::now();
+        let id = sessions.start_at(7, "main", now).unwrap();
+
+        // A suspended machine does not advance the monotonic clock on every
+        // platform, so a night of sleep only shows on the wall clock.
+        let resumed = Moment {
+            monotonic: now.monotonic + Duration::from_secs(1),
+            wall: now.wall + minutes(SESSION_MAX_LIFETIME_MINUTES),
+        };
+
+        assert_eq!(sessions.user_id_at(&id, "main", resumed).unwrap(), None);
+    }
+
+    #[test]
+    fn does_not_let_a_wall_clock_set_backwards_extend_a_session() {
+        let sessions = Sessions::default();
+        let now = Moment::now();
+        let id = sessions.start_at(7, "main", now).unwrap();
+
+        // The wall clock was moved a year back, the monotonic clock cannot be.
+        let rolled_back = Moment {
+            monotonic: now.monotonic + minutes(SESSION_MAX_LIFETIME_MINUTES),
+            wall: now.wall - Duration::from_secs(365 * 24 * 60 * 60),
+        };
+
+        assert_eq!(sessions.user_id_at(&id, "main", rolled_back).unwrap(), None);
+    }
+
+    #[test]
     fn gives_every_session_its_own_identity() {
         let sessions = Sessions::default();
-        let now = Instant::now();
+        let now = Moment::now();
         let first = sessions.start_at(7, "main", now).unwrap();
         let second = sessions.start_at(9, "second", now).unwrap();
 
@@ -350,26 +476,31 @@ mod tests {
     #[test]
     fn rejects_a_session_replayed_from_another_window() {
         let sessions = Sessions::default();
-        let now = Instant::now();
+        let now = Moment::now();
         let id = sessions.start_at(7, "main", now).unwrap();
-        let expiry = now + minutes(SESSION_TIMEOUT_MINUTES);
+        let timeout = minutes(SESSION_TIMEOUT_MINUTES);
 
         // The session of the owning window stays untouched by the replay ...
         assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), Some(7));
         assert_eq!(
             sessions
-                .user_id_at(&id, "second", expiry - Duration::from_secs(1))
+                .user_id_at(&id, "second", later(now, timeout - Duration::from_secs(1)))
                 .unwrap(),
             None
         );
         // ... and the replay does not keep it alive past its original timeout.
-        assert_eq!(sessions.user_id_at(&id, "main", expiry).unwrap(), None);
+        assert_eq!(
+            sessions
+                .user_id_at(&id, "main", later(now, timeout))
+                .unwrap(),
+            None
+        );
     }
 
     #[test]
     fn ends_a_session_only_from_its_own_window() {
         let sessions = Sessions::default();
-        let now = Instant::now();
+        let now = Moment::now();
         let id = sessions.start_at(7, "main", now).unwrap();
 
         sessions.end(&id, "second").unwrap();

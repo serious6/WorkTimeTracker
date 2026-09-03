@@ -3,6 +3,7 @@
  * numbers; `contract/domain-rules.json` keeps both sides in sync.
  */
 export const SESSION_TIMEOUT_MINUTES = 480
+export const SESSION_MAX_LIFETIME_MINUTES = 720
 export const MAX_LOGIN_ATTEMPTS = 5
 export const LOGIN_LOCKOUT_MINUTES = 15
 

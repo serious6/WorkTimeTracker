@@ -64,6 +64,7 @@ import {
   LOGIN_LOCKOUT_MINUTES,
   LoginAttempts,
   PBKDF2_ITERATIONS,
+  SESSION_MAX_LIFETIME_MINUTES,
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { findOverlap } from '@/features/time-entries/overlap'
@@ -130,7 +131,11 @@ const SESSIONS_KEY = 'work-time-tracker.sessions'
 
 const sessionsSchema = z.record(
   z.string(),
-  z.object({ userId: z.number().int().positive(), expiresAt: z.number().int().positive() }),
+  z.object({
+    userId: z.number().int().positive(),
+    startedAt: z.number().int().positive(),
+    expiresAt: z.number().int().positive(),
+  }),
 )
 
 type Sessions = z.infer<typeof sessionsSchema>
@@ -169,8 +174,13 @@ function atomically(keys: string[], apply: () => void): void {
   }
 }
 
-function expiresAt(): number {
-  return Date.now() + SESSION_TIMEOUT_MINUTES * 60_000
+function expiresAt(now: number = Date.now()): number {
+  return now + SESSION_TIMEOUT_MINUTES * 60_000
+}
+
+/** The moment a session ends no matter how much it was used. */
+function endsAt(startedAt: number): number {
+  return startedAt + SESSION_MAX_LIFETIME_MINUTES * 60_000
 }
 
 function readSessions(): Sessions {
@@ -182,7 +192,8 @@ function startSession(userId: number): void {
   const token = [...crypto.getRandomValues(new Uint8Array(32))]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
-  write(SESSIONS_KEY, { [token]: { userId, expiresAt: expiresAt() } })
+  const startedAt = Date.now()
+  write(SESSIONS_KEY, { [token]: { userId, startedAt, expiresAt: expiresAt(startedAt) } })
   globalThis.sessionStorage?.setItem(SESSION_KEY, token)
 }
 
@@ -191,16 +202,22 @@ function endSession(): void {
   globalThis.sessionStorage?.removeItem(SESSION_KEY)
 }
 
-/** An idle session ends after the timeout, every access extends it. */
+/**
+ * An idle session ends after the timeout and every access extends it, but no
+ * access extends it past its absolute lifetime.
+ */
 function sessionUserId(): number | null {
   const token = globalThis.sessionStorage?.getItem(SESSION_KEY)
   const session = token ? readSessions()[token] : undefined
   if (!token || !session) return null
-  if (session.expiresAt <= Date.now()) {
+  const now = Date.now()
+  if (session.expiresAt <= now || endsAt(session.startedAt) <= now) {
     endSession()
     return null
   }
-  write(SESSIONS_KEY, { [token]: { userId: session.userId, expiresAt: expiresAt() } })
+  write(SESSIONS_KEY, {
+    [token]: { userId: session.userId, startedAt: session.startedAt, expiresAt: expiresAt(now) },
+  })
   return session.userId
 }
 
