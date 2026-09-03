@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'
 import { securityAuditSchema } from '@/features/audit/security-audit-schema'
@@ -20,30 +20,29 @@ const appVersionSchema = z.string().min(1).nullable()
 /** Answer of `register` and `login`: the account and the id of the session. */
 const signedInSchema = z.object({ user: authUserSchema, sessionId: z.string().min(1) })
 
-const SESSION_ID_KEY = 'work-time-tracker.session-id'
-
 /**
  * The backend keys its sessions by an opaque id instead of holding one ambient
- * session, so every command names the session it acts for. The id is kept in
- * `sessionStorage`: a reload of the window keeps the session, a restart of the
- * application starts at the login page, just like the backend map.
+ * session, so every command names the session it acts for. That id is a bearer
+ * token for the whole command surface, therefore it stays in this module
+ * variable and is written to no storage a page script can read — no
+ * `sessionStorage`, `localStorage` or cookie. Reloading the window drops the
+ * variable and returns to the login page; the abandoned backend session ends
+ * with its idle timeout.
  */
-function sessionId(): string {
-  return globalThis.sessionStorage?.getItem(SESSION_ID_KEY) ?? ''
-}
+let currentSessionId = ''
 
 function rememberSession(id: string): void {
-  globalThis.sessionStorage?.setItem(SESSION_ID_KEY, id)
+  currentSessionId = id
 }
 
 function forgetSession(): void {
-  globalThis.sessionStorage?.removeItem(SESSION_ID_KEY)
+  currentSessionId = ''
 }
 
 /** Rejected commands carry a serialized `AppError`, everything else is unexpected. */
 async function run(command: string, args: Record<string, unknown> = {}): Promise<unknown> {
   try {
-    return await invoke(command, { sessionId: sessionId(), ...args })
+    return await invoke(command, { sessionId: currentSessionId, ...args })
   } catch (error) {
     throw toAppError(error) ?? (error instanceof Error ? error : new Error(String(error)))
   }
@@ -69,8 +68,13 @@ export const tauriRepository: Repository = {
   register: (credentials) => signIn('register', credentials),
   login: (credentials) => signIn('login', credentials),
   logout: async () => {
-    await run('logout')
-    forgetSession()
+    try {
+      await run('logout')
+    } finally {
+      // The window gives its token up even when the command was rejected, so a
+      // failed sign out never leaves a usable session behind in the frontend.
+      forgetSession()
+    }
   },
   listProjects: () => call('list_projects', {}, projectSchema.array()),
   createProject: (input) => call('create_project', { input }, projectSchema),

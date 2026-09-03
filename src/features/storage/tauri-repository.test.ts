@@ -28,9 +28,23 @@ function invokedWith(command: string, args: Record<string, unknown> = {}) {
   expect(mockInvoke).toHaveBeenCalledWith(command, { sessionId: expect.any(String), ...args })
 }
 
-beforeEach(() => {
+/** Every key and value a page script could read out of the web storage. */
+function storedEntries(): string[] {
+  return [globalThis.sessionStorage, globalThis.localStorage].flatMap((storage) =>
+    storage
+      ? Array.from({ length: storage.length }, (_, index) => storage.key(index) ?? '').flatMap(
+          (key) => [key, storage.getItem(key) ?? ''],
+        )
+      : [],
+  )
+}
+
+beforeEach(async () => {
   mockInvoke.mockReset()
   globalThis.sessionStorage?.clear()
+  // The session lives in a module variable, so a test signs out before it runs.
+  await tauriRepository.logout()
+  mockInvoke.mockReset()
 })
 
 describe('tauriRepository – auth', () => {
@@ -72,6 +86,29 @@ describe('tauriRepository – auth', () => {
     expect(mockInvoke).toHaveBeenLastCalledWith('list_projects', { sessionId: SESSION_ID })
   })
 
+  test('login writes the session id into no storage of the webview', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
+
+    expect(storedEntries()).not.toContain(SESSION_ID)
+    expect(globalThis.document?.cookie ?? '').not.toContain(SESSION_ID)
+  })
+
+  test('a reload of the window starts without a session', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
+
+    // A reload evaluates the module again; nothing outside it kept the id.
+    vi.resetModules()
+    const { tauriRepository: reloaded } = await import('./tauri-repository')
+    mockInvoke.mockResolvedValue([])
+
+    await reloaded.listProjects()
+
+    expect(mockInvoke).toHaveBeenLastCalledWith('list_projects', { sessionId: '' })
+  })
+
   test('logout invokes logout and forgets the session id', async () => {
     mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
     await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
@@ -79,6 +116,19 @@ describe('tauriRepository – auth', () => {
 
     await tauriRepository.logout()
     invokedWith('logout', {})
+    await tauriRepository.deleteProject(1)
+
+    expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })
+  })
+
+  test('logout forgets the session id even when the command fails', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
+    mockInvoke.mockRejectedValue(new Error('logout failed'))
+
+    await expect(tauriRepository.logout()).rejects.toThrow('logout failed')
+
+    mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteProject(1)
 
     expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })

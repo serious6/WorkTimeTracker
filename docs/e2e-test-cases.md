@@ -3,10 +3,10 @@
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
 (`calendar`, `week`, `projects`, `absences`, `overtime`, `audit-trails`, `reports-settings`,
-`licenses`, `persistence`) covers one use case as a complete click path. The marker in the first
-column is repeated as a comment above the matching test (`#<number>`, `E<number>`, `C<number>`,
-`W<number>`, `P<number>`, `A<number>`, `O<number>`, `AT<number>`, `R<number>`, `S<number>`,
-`L<number>`, `X<number>`), so a
+`licenses`, `security-csp`, `persistence`) covers one use case as a complete click path. The marker
+in the first column is repeated as a comment above the matching test (`#<number>`, `E<number>`,
+`C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `AT<number>`, `R<number>`,
+`S<number>`, `L<number>`, `SEC<number>`, `X<number>`), so a
 test and its specification can always be matched in both directions.
 
 Run the suite with `npm run test:e2e`. Every test starts from the shared `test.beforeEach` setup,
@@ -127,6 +127,19 @@ timer on it.
 |----|-------------------------------|-------|------|------|
 | L1 | `L1: licenses page is reachable and expands package notices with license text` | The user is signed in | The user opens Licenses from the account menu (while on Settings/footer area) and expands a package | The npm and Rust sections show counts, and expanded package details show license text |
 
+## Content Security Policy
+
+The CSP of the desktop application (`app.security.csp` in
+[`src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json)) is read by the spec and added to the
+document response of the preview server, so the production bundle is exercised under the policy the
+webview enforces.
+
+| #  | Test (`e2e/security-csp.spec.ts`) | Given | When | Then |
+|----|-----------------------------------|-------|------|------|
+| SEC1 | `SEC1: the shipped policy states the protective directives and allows no inline code` | The shipped Tauri configuration | The policy is read | It names `default-src`, `script-src`, `style-src`, `object-src`, `base-uri` and `frame-ancestors`, contains neither `unsafe-inline` nor `unsafe-eval`, and leaves the Tauri CSP modification enabled |
+| SEC2 | `SEC2: the application renders under the production policy without a violation` | The production bundle is served with that policy | The user registers, creates a project, adds an entry and opens every page of the main navigation | No `securitypolicyviolation` is reported |
+| SEC3 | `SEC3: the policy blocks an injected stylesheet and an injected script` | The application runs under that policy | A `<style>` and a `<script>` element with inline content are injected into the document | Neither is applied and both are reported as a violation of `style-src-elem` and `script-src-elem` |
+
 ## Cross-cutting journeys
 
 | #  | Test (`e2e/persistence.spec.ts`) | Given | When | Then |
@@ -146,3 +159,8 @@ timer on it.
 - Locators are role based and accessible (`getByRole`, `getByLabel`, `getByText`).
 - Tests wait for observable state (`expect(...)`) instead of fixed timeouts. Elapsed time is
   simulated with `page.clock`, never by waiting for real seconds.
+- The suite drives the browser build, which stores its data in `localStorage`. A path that exists
+  only in the desktop build — for example the session of `tauri-repository.ts`, which no Playwright
+  run can reach because there is no native backend — is covered instead by an application level
+  test that renders `App` over the mocked Tauri commands, such as
+  [`src/features/storage/tauri-session-reload.test.tsx`](../src/features/storage/tauri-session-reload.test.tsx).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import entities from '../../../contract/entities.json'
 import { absenceAuditSchema, absenceSchema } from '@/features/absences/absence-schema'
 import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audit-schema'

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import { isPlausibleEmail } from '@/lib/email'
 import { isPasswordCompliant, MIN_PASSWORD_LENGTH } from './password-policy'
 

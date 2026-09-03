@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from '@/lib/zod'
 import { combineDateAndTime, toDateKey, toTimeKey } from '@/lib/date'
 
 export const OVERLAP_MESSAGE = 'This time overlaps with another time entry'
