@@ -3,35 +3,44 @@
 Detailed rules for agents and automation are in [`AGENTS.md`](AGENTS.md); this page is the short
 version for humans.
 
-## Quick start
+## Prerequisites
 
-Node.js 26+, Rust 1.95+ stable and — for the native app — Postgres 18 (the `db` service of
-`compose.yaml`) plus the platform prerequisites listed in
-[`AGENTS.md`](AGENTS.md#setup-and-tooling).
+| Software | Version | Needed for | Notes |
+| --- | --- | --- | --- |
+| Node.js + npm | 26+ | Frontend, Vite dev server, Tauri CLI | Enough on its own for `npm run dev` |
+| Rust + Cargo | 1.95+ (stable) | Tauri backend | Install via [rustup](https://rustup.rs/) |
+| C toolchain | — | Linking the Rust backend | **Windows**: MSVC Build Tools (`x86_64-pc-windows-msvc`); the GNU toolchain cannot link the `cdylib` target. **macOS**: Xcode Command Line Tools. **Linux**: see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) |
+| WebView runtime | — | Native window | **Windows**: WebView2, preinstalled on Windows 11. macOS ships WKWebView, Linux needs `webkit2gtk` |
+| Podman or Docker (+ Compose) | — | Postgres via `compose.yaml` | Not needed with a local Postgres |
+| PostgreSQL | 18 | Backend storage | Provided by the compose `db` service |
+
+## Local development
 
 ```sh
-git clone https://github.com/serious6/WorkTimeTracker.git
-cd WorkTimeTracker
 npm ci
-npm run dev               # browser-only UI at http://localhost:1420, data in localStorage
-
-cp .env.example .env      # then set POSTGRES_PASSWORD and DATABASE_URL
-podman compose up -d db   # or: docker compose up -d db
-npm run tauri dev         # desktop application with the Rust backend
+cp .env.example .env       # set POSTGRES_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
+podman compose up -d db    # or: docker compose up -d db
+npm run tauri dev          # desktop application, needs Postgres
+npm run dev                # browser UI on http://localhost:1420, localStorage only
+podman compose up --build  # browser UI and Postgres in containers
 ```
+
+`DATABASE_URL` must point at `localhost`, another loopback address, or the compose hostname `db`.
+`podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
+Tauri windows need a desktop display server and belong on the host.
 
 ## Branches
 
-Branch off `main` and name the branch `<type>/<short-topic>` with the type of the change, for
-example `feat/project-budgets`, `fix/overlapping-entries` or `docs/contributing`.
+Branch off `main` as `<type>/<short-topic>`, for example `feat/project-budgets` or
+`fix/overlapping-entries`.
 
 ## Tests are required
 
-Every new feature and every bugfix ships with **unit tests** (Vitest next to the code as
-`<name>.test.ts(x)`, `#[cfg(test)]` modules for Rust) **and**, for anything user-facing, an
-**end-to-end test** in `e2e/` covering the happy path and at least one failure case, documented in
-[`docs/e2e-test-cases.md`](docs/e2e-test-cases.md). Tests must be deterministic — mock the clock,
-never read the real one. A bugfix starts with a test that fails without the fix.
+Every feature and every bugfix ships with **unit tests** (Vitest as `<name>.test.ts(x)` next to the
+code, `#[cfg(test)]` modules for Rust). Anything user-facing also ships with an **e2e test** in
+`e2e/` covering the happy path and one failure case, listed in
+[`docs/e2e-test-cases.md`](docs/e2e-test-cases.md). Tests mock the clock instead of reading it. A
+bugfix starts with a failing test.
 
 ## Quality checks
 
@@ -44,24 +53,21 @@ npm run licenses:check
 npm run test:coverage
 npm run test:e2e
 npm run architecture:check
-npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 `npm run test:coverage` fails below 80 percent statement, branch, function, or line coverage.
-`npm run test:e2e` builds the app in the `test-e2e` mode and serves the build with `vite preview`,
-which is faster and more stable than running the tests against the dev server; run
-`npx playwright install --with-deps chromium` once before the first run. The Rust tests that need a
-database skip without a reachable `DATABASE_URL`; set `REQUIRE_POSTGRES_TESTS=1` (as CI does) to
-turn that skip into a failure.
+`npm run test:e2e` runs against a `test-e2e` build served by `vite preview`, not the dev server.
+Run `npx playwright install --with-deps chromium` once before the first e2e run.
+Rust tests that need a database skip without a reachable `DATABASE_URL`; `REQUIRE_POSTGRES_TESTS=1`
+(as in CI) turns the skip into a failure.
 
 ## Conventional Commits
 
-Every commit message and every pull request title follows
+Commit messages and pull request titles follow
 [Conventional Commits](https://www.conventionalcommits.org/): `<type>(<scope>): <summary>`, lower
-case and imperative. The repository squash-merges, so the pull request title becomes the commit
-message and CI rejects a title that does not parse.
+case and imperative. The repository squash-merges, so CI rejects a title that does not parse.
 
 | Type | Use for | Example |
 | --- | --- | --- |
@@ -73,11 +79,11 @@ message and CI rejects a title that does not parse.
 | `perf` | performance | `perf(reports): memoise the weekly totals` |
 | `chore` | maintenance, dependencies | `chore(deps): update tauri to 2.11.4` |
 | `build` | build system, bundling | `build(tauri): bundle the generated icon set` |
-| `ci` | workflows and CI configuration | `ci: run the e2e suite on pull requests` |
+| `ci` | workflows and CI | `ci: run the e2e suite on pull requests` |
 
-Common scopes: `ui`, `tracker`, `timer`, `entries`, `projects`, `budgets`, `absences`, `overtime`,
-`settings`, `auth`, `db`, `tauri`, `docs`, `ci`, `deps`. A breaking change adds `!` after the type
-or scope and a `BREAKING CHANGE:` footer:
+Scopes: `ui`, `timer`, `entries`, `projects`, `budgets`, `absences`, `overtime`, `settings`, `auth`,
+`db`, `tauri`, `docs`, `ci`, `deps`. A breaking change adds `!` after the type or scope and a
+`BREAKING CHANGE:` footer:
 
 ```text
 refactor(ui)!: replace the toast store with a provider
@@ -87,24 +93,56 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 
 ## Pull request checklist
 
-- [ ] The change is focused on one topic.
-- [ ] Unit tests added or updated, e2e test added for user-facing behaviour.
-- [ ] All quality checks above pass locally.
-- [ ] Documentation updated (README, `docs/`, `architecture/`) where the change invalidates it.
+- [ ] One topic per pull request.
+- [ ] Unit tests added or updated; e2e test added for user-facing behaviour.
+- [ ] The quality checks above pass locally.
+- [ ] Documentation the change invalidates is updated.
 - [ ] A schema change ships with a new numbered migration in `drizzle/`.
-- [ ] The pull request title follows Conventional Commits.
+- [ ] The title follows Conventional Commits.
 
-## Guidelines
+## Linux release bundles
 
-- Only add dependencies with an OSI-approved open-source license, and regenerate
-  `src/data/licenses.json` with `npm run licenses:generate`.
+```sh
+podman build -f Containerfile.build -o type=local,dest=./release .
+# or, when the client rejects --output (Podman on Windows and macOS):
+podman build -f Containerfile.build --target builder -t worktimetracker-release .
+podman create --name worktimetracker-release worktimetracker-release
+podman cp worktimetracker-release:/artifacts ./release
+podman rm worktimetracker-release
+```
+
+`./release` then holds the `.deb`, `.rpm`, and `.AppImage` files; `--build-arg TAURI_BUNDLES=deb`
+restricts the formats. Windows and macOS installers are built by the `Release` workflow.
+
+## Project layout
+
+```text
+architecture/   LikeC4 model and decision records
+contract/       Domain rules shared by the Rust backend and the browser fallback
+docs/           Data model and further documentation
+drizzle/        Single Postgres migration applied by the Rust backend and Drizzle
+e2e/            Playwright tests
+scripts/        Repository tooling, for example the icon generator
+src/            React application (app, components, db, features, lib, pages)
+src-tauri/src/  Rust backend (auth, commands, error, logging, postgres_store, window_state)
+```
+
+## Application icon
+
+`src-tauri/icons/app-icon.svg` is the source artwork, `public/favicon.svg` the same mark for the web
+build, and both repeat the paths of the in-app `AppLogo`. After changing the source run
+`npm run icons:generate`: it regenerates every icon and the checksums in
+`src-tauri/icons/icons.lock.json`, which the unit tests verify.
+
+## Conventions
+
+- Only add dependencies with an OSI-approved open-source license.
 - Keep documentation concise.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- `drizzle/0000_init.sql` is the baseline migration and stays unchanged. A schema change gets a new
-  numbered file in `drizzle/`, is appended to `MIGRATIONS` in `src-tauri/src/postgres_store.rs`
-  (which applies it once, inside a transaction, and records it in `schema_migrations`), and comes
-  with the matching update in `src/db/schema.ts` and the queries in
-  `src-tauri/src/postgres_store.rs`.
+- `drizzle/0000_init.sql` is the baseline migration and stays unchanged. A schema change adds a new
+  numbered file in `drizzle/`, appends it to `MIGRATIONS` in `src-tauri/src/postgres_store.rs`
+  (applied once inside a transaction and recorded in `schema_migrations`), and updates
+  `src/db/schema.ts` and the queries in `src-tauri/src/postgres_store.rs`.
 - UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md) and
   update [`docs/ui-audit.md`](docs/ui-audit.md) when a view changes noticeably.
