@@ -1,13 +1,8 @@
-//! Turns the configured connection string into the `postgres::Config` and the
-//! TLS connector to use with it.
+//! Validates a database connection string and builds its TLS connector.
 //!
-//! Development, the tests and CI connect to a local server without TLS, which
-//! is what the compose stack provides. A remote host is only reachable from a
-//! production build, and only over a connection whose certificate chain *and*
-//! host name are verified against a pinned certificate authority
-//! (`sslmode=verify-full`). There is deliberately no switch that relaxes this:
-//! a remote host without verified TLS fails to connect, and a production build
-//! that is pointed at a local server is refused as well.
+//! Development, tests and CI may only reach local Postgres without TLS.
+//! Production must reach a remote host with `sslmode=verify-full` and the
+//! pinned certificate authority; there is no downgrade path.
 
 use std::{net::IpAddr, sync::Arc};
 
