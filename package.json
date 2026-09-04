@@ -9,6 +9,7 @@
     "licenses:generate": "node scripts/generate-licenses.mjs",
     "licenses:check": "node scripts/generate-licenses.mjs --check",
     "db:assert-local": "node scripts/assert-local-database.mjs",
+    "portable:assert-env": "node scripts/assert-portable-env.mjs",
     "prebuild": "npm run licenses:check",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

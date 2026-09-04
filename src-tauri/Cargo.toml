@@ -35,3 +35,19 @@ r2d2 = "0.8.10"
 r2d2_postgres = "0.18.2"
 rustls = { version = "0.23.43", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 tokio-postgres-rustls = { version = "0.14.0", default-features = false, features = ["ring"] }
+
+# The credential store of the user account holds the database secrets of a
+# portable installation, so the folder the application runs from carries none.
+# Only the platforms a portable archive is shipped for link a store, and both
+# work without administrator rights: the Windows Credential Manager, which
+# protects the value with DPAPI in the scope of the current user, and the macOS
+# Keychain. On every other platform `portable.rs` reports the secret as
+# unavailable instead of leaving it readable in the folder.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+keyring-core = "1.0.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0.2", default-features = false, features = ["keychain"] }

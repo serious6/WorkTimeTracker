@@ -78,7 +78,39 @@ Errors of the backend and of the user interface are appended to
 The `Release` workflow runs on manual dispatch. It checks that `package.json`,
 `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs the checks
 listed in [`docs/development.md`](docs/development.md#release-checks), bundles the application on
-Windows and macOS, and attaches those installers to a GitHub release tagged `v<version>`.
+Windows and macOS, and attaches those installers and the portable archives below to a GitHub
+release tagged `v<version>`.
+
+### Portable archives
+
+Every release also contains `windows-x86_64-WorkTimeTracker-portable.zip` and
+`macos-aarch64-WorkTimeTracker-portable.zip` for machines where nothing may be installed. Unpack
+the archive into any folder you may write to and start `WorkTimeTracker.exe` or
+`WorkTimeTracker.app` from there; no administrator rights are needed. Windows needs the WebView2
+runtime, which is part of Windows 10 and 11. The archives are not signed, so SmartScreen and
+Gatekeeper warn about them once; on macOS the quarantine flag is removed with
+`xattr -d com.apple.quarantine WorkTimeTracker.app`.
+
+A portable installation requires the remote database described above, because it can neither
+install nor run a local Postgres. It reads its connection from `WorkTimeTracker.env` next to the
+application — beside `WorkTimeTracker.exe` on Windows and beside `WorkTimeTracker.app` on macOS, so
+the file survives replacing the bundle. Copy the included `WorkTimeTracker.env.example`, fill in the
+settings of [`.env.example`](.env.example), and restrict the file to your account
+(`chmod 600 WorkTimeTracker.env`); a relative `SUPABASE_DB_ROOT_CERT` path is resolved against that
+folder, so the pinned certificate authority travels with the archive. A value that the process
+environment already carries wins over the file, so a managed deployment can still override it.
+
+The folder may be copied or synchronized, so it never keeps a secret. On the first start
+`DATABASE_URL` and `SUPABASE_DB_PASSWORD` are moved into the credential store of the user
+account — the Windows Credential Manager, which protects them with DPAPI in the scope of the
+current user, and the macOS Keychain, both available without administrator rights — and the file
+keeps the marker `stored-in-credential-store` in their place. Only the host, the port, the database
+name and the path of the certificate authority stay readable. Deleting the file forgets the
+connection: the next start removes the stored secrets as well. The application refuses to start on a
+file that others may read, on a secret it can neither store nor read back, and on a certificate it
+cannot verify against the pinned authority; every message names the file and the setting, never a
+value. Application data and logs stay in the user profile directory, and a portable installation is
+updated by hand.
 
 `src/data/licenses.json` is the committed license notice for shipped dependencies. Run
 `npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.

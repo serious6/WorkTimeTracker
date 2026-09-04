@@ -250,7 +250,7 @@ A deployment shares one database between clients, so migrating it on every start
 acceptable: a production process only verifies that every migration of `MIGRATIONS` is recorded and
 refuses to start otherwise. Applying them is a deliberate step, `WORK_TIME_TRACKER_DB_MIGRATE=true`
 in a separately approved job that runs after the release artifacts are built. Only that step reads
-the flag: `DbConfig::from_env`, which every application process uses, resolves a production
+the flag: `DbConfig::resolve`, which every application process uses, resolves a production
 database as verify-only whatever the environment asks for, and `DbConfig::for_migration` of the
 `migrate` entry point is the single place that may authorize applying them. The version of the
 running build is reported from the binary, so no client writes into the shared `app_metadata` row;
@@ -262,6 +262,23 @@ part of the repository: they are read from `DATABASE_URL` or assembled from `SUP
 `SUPABASE_DB_ROOT_CERT`, and the release workflow injects them from the secrets of the protected
 `production` environment only. Every message that names a connection string passes
 `redact_database_url` first.
+
+A portable installation has no deployment that could inject them, so `portable.rs` reads the same
+settings from `WorkTimeTracker.env` next to the application, ahead of the resolution and with the
+process environment winning over the file, and resolves a relative `SUPABASE_DB_ROOT_CERT` against
+the folder of the application. Only a portable archive ships that file; without it the resolution
+sees the process environment alone, so an installed build and local development are unchanged. The
+file never migrates a database, and it is the configuration of a client of a remote database: it
+cannot relax the verification, because there is no setting for that.
+
+The folder of such an installation may be copied or synchronised, so it holds no secret. On the
+first start `DATABASE_URL` and `SUPABASE_DB_PASSWORD` are moved into the credential store of the
+user account - the Windows Credential Manager, which protects them with DPAPI in the scope of the
+current user, and the macOS Keychain, both of which work without administrator rights - and the
+file keeps a marker in their place; deleting the file forgets them again. A secret that can neither
+be stored nor read back fails the start instead of staying readable in the folder, as does a file
+that others may read. The failures name the file and the setting, never a value, and the release
+job refuses to pack an archive whose env file carries a secret.
 
 ## 17. The legal texts are versioned content, not layout
 
