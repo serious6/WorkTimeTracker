@@ -63,6 +63,26 @@ test('validates the password policy while typing and blocks weak passwords', asy
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })
 
+// #24 in docs/e2e-test-cases.md
+test('blocks registration until both legal texts are accepted', async ({ page }) => {
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Logout' }).click()
+  await page.getByRole('button', { name: 'Register' }).click()
+  await page.getByLabel('Email').fill('legal@example.com')
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('alert')).toContainText('You must accept the terms of service')
+
+  await page.getByLabel('I accept the Terms of Service').check()
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('alert')).toContainText('You must accept the privacy policy')
+
+  await page.getByLabel('I accept the Privacy Policy').check()
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+})
+
 // #4 in docs/e2e-test-cases.md
 test('discards the input when the registration is cancelled', async ({ page }) => {
   await openAccountMenu(page)

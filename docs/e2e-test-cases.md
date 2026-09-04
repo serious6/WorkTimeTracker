@@ -38,6 +38,7 @@ each other and of their execution order.
 | 21 | `replaces an absence only after an explicit confirmation` | An absence (vacation) exists on a day | The user tries to record another absence (sick leave) on the same day | The conflict message appears, only "Replace existing absences" replaces it and it can be deleted afterwards |
 | 22 | `adds an explicit overtime record on top of the tracked time` | Working time is configured and the tracked time matches the target, so the automatic overtime is zero | The user opens "Overtime" from the menu, is rejected with an invalid value and then saves an opening balance of 2h 30m | The balance is split into "+0h 00m" automatic and "+2h 30m" explicit, the record is listed as "Manual" and the dashboard shows "+2h 30m" |
 | 23 | `returns to the login page when the session expires` | The user is signed in and a project exists | The stored session is aged past its idle timeout while the user opens "Audit Trails", and past its absolute lifetime while a project dialog holds unsaved input | Both expiries return the application to the login page; signing in again continues on the interrupted view, the data is unchanged and the unsaved input was not stored |
+| 24 | `blocks registration until both legal texts are accepted` | The registration form is open with a valid e-mail and password | The user submits without accepting legal texts, then accepts them one by one | The form first requires the terms of service, then the privacy policy, and only creates the account after both are accepted |
 
 ## Rounding of a stopped timer
 

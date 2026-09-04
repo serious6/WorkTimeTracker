@@ -35,8 +35,7 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
     }
 
     try {
-      const { email, password: acceptedPassword } = result.data
-      await register.mutateAsync({ email, password: acceptedPassword })
+      await register.mutateAsync({ email: result.data.email, password: result.data.password })
       onSuccess?.()
     } catch (failure) {
       setError({ field: null, message: errorMessage(failure, 'The account could not be created.') })
