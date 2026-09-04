@@ -17,6 +17,7 @@ export const projects = pgTable('projects', {
   description: text(),
   color: text().notNull(),
   active: boolean().notNull().default(true),
+  archived: boolean().notNull().default(false),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
 })

@@ -6,6 +6,7 @@ import { Field, Input, Select } from '@/components/ui/input'
 import { errorToast, toast } from '@/components/ui/toast-store'
 import { dayRange, entriesInRange, totalMinutes } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
+import { selectableProjects } from '@/features/projects/project-schema'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { TimeEntryList } from '@/features/time-entries/components/time-entry-list'
@@ -77,7 +78,7 @@ export function TimeManagementPage() {
                 value={projectValue}
               >
                 <option value="">Select a project</option>
-                {projects.map((project) => (
+                {selectableProjects(projects).map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
                   </option>

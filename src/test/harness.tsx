@@ -80,6 +80,7 @@ export async function seedProject(
     description: null,
     color: '#22c55e',
     active: true,
+    archived: false,
     ...overrides,
   })
 }

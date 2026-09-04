@@ -3,9 +3,11 @@ import { Clock, Pause, Play, Square, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { OverdueBudgetWarning } from '@/features/budgets/components/overdue-budget-warning'
 import { ProjectPicker } from '@/features/projects/components/project-picker'
+import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project } from '@/features/projects/project-schema'
-import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
+import { DELETED_PROJECT_NAME, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
@@ -14,6 +16,8 @@ import { cn } from '@/lib/utils'
 export function CurrentlyTrackingCard({
   timer,
   projects,
+  budgets = [],
+  entries = [],
   now,
   pickerOpen,
   onPickerOpenChange,
@@ -21,6 +25,9 @@ export function CurrentlyTrackingCard({
 }: {
   timer: ReturnType<typeof useTimer>
   projects: Project[]
+  /** Budgets and entries only feed the overdue warning; both may be empty. */
+  budgets?: ProjectBudget[]
+  entries?: TimeEntry[]
   now: number
   pickerOpen: boolean
   onPickerOpenChange: (open: boolean) => void
@@ -69,6 +76,12 @@ export function CurrentlyTrackingCard({
             </Button>
           </div>
         )}
+        <OverdueBudgetWarning
+          budgets={budgets}
+          entries={entries}
+          now={now}
+          projectId={selectedProjectId}
+        />
       </Card>
     )
   }
@@ -171,6 +184,12 @@ export function CurrentlyTrackingCard({
           value={status.projectId}
         />
       </div>
+      <OverdueBudgetWarning
+        budgets={budgets}
+        entries={entries}
+        now={now}
+        projectId={status.projectId}
+      />
 
       {status.running && (
         <StartCorrectionDialog

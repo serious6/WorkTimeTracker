@@ -52,6 +52,13 @@
           "nullable": false
         },
         {
+          "name": "archived",
+          "type": "boolean",
+          "nullable": false,
+          "sample": false,
+          "defaultsFromNull": false
+        },
+        {
           "name": "createdAt",
           "type": "string",
           "nullable": false

@@ -108,6 +108,7 @@ pub fn run() {
             commands::list_overtime_audits,
             commands::get_work_settings,
             commands::update_work_settings,
+            commands::delete_account,
             commands::get_app_version,
             commands::log_client_error
         ])

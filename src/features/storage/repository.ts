@@ -18,6 +18,11 @@ export type Repository = {
   register: (credentials: Credentials) => Promise<AuthUser>
   login: (credentials: Credentials) => Promise<AuthUser>
   logout: () => Promise<void>
+  /**
+   * Erases the account of the signed-in user and everything belonging to it,
+   * the audit trails included (GDPR Art. 17), and ends the session.
+   */
+  deleteAccount: () => Promise<void>
   listProjects: () => Promise<Project[]>
   createProject: (input: SaveProject) => Promise<Project>
   updateProject: (id: number, input: SaveProject) => Promise<Project>
@@ -30,7 +35,7 @@ export type Repository = {
   deleteTimeEntry: (id: number) => Promise<void>
   listTimeEntryAudits: (range?: ListRange) => Promise<TimeEntryAudit[]>
   listAuditLog: (range?: ListRange) => Promise<AuditLogEntry[]>
-  /** Identity and configuration records, append-only like every other trail. */
+  /** Identity and configuration records, append-only for the lifetime of the account. */
   listSecurityAudits: (range?: ListRange) => Promise<SecurityAudit[]>
   listProjectBudgets: () => Promise<ProjectBudget[]>
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>

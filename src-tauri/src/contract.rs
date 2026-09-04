@@ -260,6 +260,7 @@ fn serializes_the_models_of_the_entity_contract() {
             description: None,
             color: "#112233".into(),
             active: true,
+            archived: false,
             created_at: moment.clone(),
             updated_at: moment.clone(),
         }),
@@ -526,6 +527,7 @@ fn enforces_uniqueness_like_the_contract() {
                             description: None,
                             color: "#336699".into(),
                             active: true,
+                            archived: false,
                         },
                     )
                     .unwrap();

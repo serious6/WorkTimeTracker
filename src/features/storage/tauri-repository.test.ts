@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 const { tauriRepository } = await import('./tauri-repository')
 
 const USER = { id: 1, email: 'user@example.com', createdAt: '2024-01-01T00:00:00Z' }
-const PROJECT = { id: 1, name: 'Test', description: null, color: '#22c55e', active: true, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
+const PROJECT = { id: 1, name: 'Test', description: null, color: '#22c55e', active: true, archived: false, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
 const TIME_ENTRY = { id: 1, projectId: 1, startTime: '2024-01-01T09:00:00Z', endTime: '2024-01-01T10:00:00Z', note: null, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
 const AUDIT_RECORD = { id: 1, entity: 'timeEntry', entityId: 1, action: 'update', oldValue: '{"projectId":1,"startTime":"2024-01-01T09:00:00Z","endTime":null,"note":null}', newValue: '{"projectId":1,"startTime":"2024-01-01T09:00:00Z","endTime":"2024-01-01T10:00:00Z","note":null}', createdAt: '2024-01-01T10:00:00Z' }
 const BUDGET = { id: 1, projectId: 1, budgetMinutes: 6000, dueDate: '2024-12-31', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
@@ -133,6 +133,18 @@ describe('tauriRepository – auth', () => {
 
     expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })
   })
+
+  test('deleteAccount invokes delete_account and forgets the session id', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
+    mockInvoke.mockResolvedValue(undefined)
+
+    await tauriRepository.deleteAccount()
+    invokedWith('delete_account', {})
+    await tauriRepository.deleteProject(1)
+
+    expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })
+  })
 })
 
 describe('tauriRepository – projects', () => {
@@ -145,14 +157,14 @@ describe('tauriRepository – projects', () => {
 
   test('createProject invokes create_project with input', async () => {
     mockInvoke.mockResolvedValue(PROJECT)
-    const input = { name: 'Test', description: null, color: '#22c55e', active: true }
+    const input = { name: 'Test', description: null, color: '#22c55e', active: true, archived: false }
     await tauriRepository.createProject(input)
     invokedWith('create_project', { input })
   })
 
   test('updateProject invokes update_project with id and input', async () => {
     mockInvoke.mockResolvedValue(PROJECT)
-    const input = { name: 'Updated', description: null, color: '#22c55e', active: true }
+    const input = { name: 'Updated', description: null, color: '#22c55e', active: true, archived: false }
     await tauriRepository.updateProject(1, input)
     invokedWith('update_project', { id: 1, input })
   })

@@ -61,6 +61,14 @@ describe('ProjectPicker – open state', () => {
     })
   })
 
+  it('leaves archived projects out of the list', async () => {
+    await seedProject('Current')
+    await seedProject('Retired', { archived: true })
+    render({ open: true })
+    await waitFor(() => expect(screen.getByText('Current')).toBeInTheDocument())
+    expect(screen.queryByText('Retired')).not.toBeInTheDocument()
+  })
+
   it('filters by search', async () => {
     await seedProject('Alpha')
     await seedProject('Beta')

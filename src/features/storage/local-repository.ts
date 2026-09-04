@@ -400,6 +400,7 @@ function projectPayload(project: Project): AuditPayload {
     description: project.description,
     color: project.color,
     active: project.active,
+    archived: project.archived,
   }
 }
 
@@ -645,6 +646,31 @@ const fallbackRepository: Repository = {
   },
   logout: async () => {
     endSession()
+  },
+  /**
+   * Erases the account and every record of it, the audit trails included
+   * (GDPR Art. 17). Every record is stored below the key of its owner, so
+   * removing those keys and the stored user leaves nothing of the account
+   * behind, and no record of the deletion is written: such a record would
+   * itself be personal data of an erased account.
+   */
+  deleteAccount: async () => {
+    const userId = requireUserId()
+    const users = readUsers()
+    const user = users.find((stored) => stored.id === userId)
+    const keys = SCOPED_KEYS.map((key) => `work-time-tracker.${userId}.${key}`)
+    // The session ends inside the same scope: a failure there would otherwise
+    // leave the account erased while the caller is told that nothing was.
+    atomically([USERS_KEY, SESSIONS_KEY, ...keys], () => {
+      for (const key of keys) globalThis.localStorage?.removeItem(key)
+      write(
+        USERS_KEY,
+        users.filter((stored) => stored.id !== userId),
+      )
+      endSession()
+    })
+    // The lockout counter names the erased email, so it goes as well.
+    if (user) loginAttempts.recordSuccess(user.email)
   },
   listProjects: async () => readProjects().sort((left, right) => left.name.localeCompare(right.name)),
   createProject: async (input) => {

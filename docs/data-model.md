@@ -123,6 +123,7 @@ erDiagram
     text name
     text description "nullable"
     boolean active "default true"
+    boolean archived "default false"
     text color
     text created_at
     text updated_at
@@ -242,6 +243,7 @@ erDiagram
 | `description` | TEXT | no | Trimmed, at most 500 characters, empty becomes `NULL` | — |
 | `color` | TEXT | yes | `#rrggbb`, new projects cycle through `PROJECT_COLORS` | — |
 | `active` | BOOLEAN | yes | Default `true` | — |
+| `archived` | BOOLEAN | yes | Default `false`; an archived project keeps its entries but is offered for tracking no more | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
 ### time_entries
@@ -274,7 +276,9 @@ erDiagram
 | `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
 Rows are only inserted, never updated or deleted, and are kept for at least the retention period of
-two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
+two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`). The erasure of an
+account (`delete_account`) is the one exception, see
+[Erasure of an account](#erasure-of-an-account).
 
 ### absences
 
@@ -302,8 +306,10 @@ two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`).
 | `old_value`, `new_value` | TEXT | no | JSON of the absence before and after the change | — |
 | `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
-Rows are only inserted, never updated or deleted. `list_absence_audits` reads the trail of one user
-in a `recorded_at` window (`ListRange`), newest first and bounded by the list limits.
+Rows are only inserted, never updated or deleted. The erasure of an account (`delete_account`) is
+the one exception, see [Erasure of an account](#erasure-of-an-account). `list_absence_audits` reads
+the trail of one user in a `recorded_at` window (`ListRange`), newest first and bounded by the list
+limits.
 
 ### overtime_entries
 
@@ -342,8 +348,10 @@ first entry is tracked.
 | `old_value`, `new_value` | TEXT | no | JSON of the record before and after the change, including `origin` | — |
 | `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
-Rows are only inserted, never updated or deleted. `list_overtime_audits` reads the trail of one user
-in a `recorded_at` window (`ListRange`), newest first and bounded by the list limits.
+Rows are only inserted, never updated or deleted. The erasure of an account (`delete_account`) is
+the one exception, see [Erasure of an account](#erasure-of-an-account). `list_overtime_audits` reads
+the trail of one user in a `recorded_at` window (`ListRange`), newest first and bounded by the list
+limits.
 
 ### project_budgets
 
@@ -393,8 +401,9 @@ their own.
 | `recorded_at` | TEXT | yes | ISO 8601 UTC | — |
 
 Rows are only inserted, never updated or deleted by a command; the repository layer offers no such
-path. Each record is written in the same transaction as the change it describes, so a failed write
-leaves no record. `list_security_audits` reads the trail of one user in a `recorded_at` window
+path, apart from the retention of the `auth` records and the erasure of an account, see
+[Erasure of an account](#erasure-of-an-account). Each record is written in the same transaction as
+the change it describes, so a failed write leaves no record. `list_security_audits` reads the trail of one user in a `recorded_at` window
 (`ListRange`), newest first and bounded by the list limits.
 
 #### Recording policy
@@ -431,6 +440,23 @@ Deliberately **not** recorded, so the trail stays evidence instead of a stream o
 The prune deletes rows of the `auth` entity only, so the compliance and configuration trails are
 never touched by it. `login_attempts` is not a trail: it holds the counter of the lockout and is
 evicted as soon as the lockout is served, which is why the auth events are recorded separately.
+
+### Erasure of an account
+
+The trails are append-only **for the lifetime of the account**. A user can delete their own account
+from the settings menu (GDPR Art. 17, `delete_account` in `src-tauri/src/commands.rs` and
+`src-tauri/src/postgres_store.rs`), and that erasure is the second deliberate exception next to the
+retention of the auth events.
+
+- One statement, `DELETE FROM users WHERE id = $1`, inside one transaction: every table that
+  references `users.id` does so `ON DELETE CASCADE`, so the projects, budgets, time entries,
+  absences, overtime records, work settings and **all** trails of the account go with the row. A
+  failure anywhere leaves the account and all of its data intact.
+- The lockout counter of the account is keyed by e-mail instead of by `user_id` and is deleted in
+  the same transaction, so the address does not survive the erasure either.
+- Records in `security_audits` with `user_id IS NULL` — failed logins of an unknown e-mail — belong
+  to no account and are deliberately kept.
+- No record of the deletion is written: it would itself be personal data of an erased account.
 
 ### app_metadata
 
@@ -484,8 +510,9 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 
 ## Migration
 
-Because WorkTimeTracker has not been released yet, the native database starts from the complete
-baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies it in a single transaction that is
+A fresh native database starts from the complete baseline migration `drizzle/0000_init.sql`; every
+later migration upgrades a database that already recorded the baseline and stays idempotent.
+`PostgresStore::connect` applies the not yet recorded migrations in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
 directory.

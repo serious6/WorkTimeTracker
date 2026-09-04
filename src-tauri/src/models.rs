@@ -178,6 +178,9 @@ pub struct SaveProject {
     pub description: Option<String>,
     pub color: String,
     pub active: bool,
+    /// An archived project keeps its entries but is offered for tracking no more.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 impl SaveProject {
@@ -210,6 +213,7 @@ pub struct Project {
     pub description: Option<String>,
     pub color: String,
     pub active: bool,
+    pub archived: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -681,6 +685,7 @@ mod tests {
             description: Some("  ".into()),
             color: "#22c55e".into(),
             active: true,
+            archived: false,
         };
         input.validate().unwrap();
         assert_eq!(input.name, "Website Redesign");
@@ -694,6 +699,7 @@ mod tests {
             description: None,
             color: "green".into(),
             active: true,
+            archived: false,
         };
         assert!(input.validate().is_err());
     }

@@ -230,6 +230,7 @@ describe('domain rule contract', () => {
       description: null,
       color: '#22c55e',
       active: true,
+      archived: false,
     })
     const budget = saveProjectBudgetSchema.parse(testCase.input)
     await createLocalRepository().createProjectBudget(budget)

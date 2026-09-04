@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   nextProjectColor,
   PROJECT_COLORS,
+  projectSchema,
   saveProjectSchema,
+  selectableProjects,
   type Project,
 } from './project-schema'
 
@@ -13,6 +15,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     description: null,
     color: '#22c55e',
     active: true,
+    archived: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     ...overrides,
@@ -88,5 +91,32 @@ describe('saveProjectSchema', () => {
   it('defaults active to true when omitted', () => {
     const result = saveProjectSchema.parse({ name: 'X', color: '#22c55e' })
     expect(result.active).toBe(true)
+  })
+
+  it('defaults archived to false when omitted', () => {
+    const result = saveProjectSchema.parse({ name: 'X', color: '#22c55e' })
+    expect(result.archived).toBe(false)
+  })
+})
+
+describe('projectSchema', () => {
+  it('reads a project written before archiving existed as not archived', () => {
+    const { archived: _archived, ...stored } = makeProject()
+
+    expect(projectSchema.parse(stored).archived).toBe(false)
+  })
+})
+
+describe('selectableProjects', () => {
+  it('leaves archived projects out', () => {
+    const projects = [makeProject(), makeProject({ id: 2, name: 'Old', archived: true })]
+
+    expect(selectableProjects(projects).map((project) => project.id)).toEqual([1])
+  })
+
+  it('keeps the archived project that is already selected', () => {
+    const projects = [makeProject(), makeProject({ id: 2, name: 'Old', archived: true })]
+
+    expect(selectableProjects(projects, 2).map((project) => project.id)).toEqual([1, 2])
   })
 })
