@@ -3,7 +3,7 @@ name: code-review
 description: Review checklist for every WorkTimeTracker code review, including PR reviews, requested reviews, and local/staged diffs across frontend, Rust backend, contracts, migrations, tests, and docs.
 ---
 
-# Code review and quality
+# Code review
 
 Apply this checklist to **every** code review in this repository. Project constraints, layout, and
 commands are in [`AGENTS.md`](../../../AGENTS.md); this skill only adds what a reviewer checks.
