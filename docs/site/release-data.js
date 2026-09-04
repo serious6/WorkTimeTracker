@@ -40,24 +40,48 @@ export function formatReleaseDate(value) {
 export function releaseState(releases) {
   return Array.isArray(releases) && releases.length ? 'release' : 'empty'
 }
-export async function loadReleases(fetcher, storage, now = Date.now()) {
-  let cached = null
+// Every cache access is best-effort: browsers throw (for example `SecurityError`)
+// when storage is blocked, and downloads must still load in that case.
+function clearCache(storage) {
   try {
-    cached = JSON.parse(storage.getItem(CACHE_KEY) || 'null')
+    storage.removeItem(CACHE_KEY)
   } catch {
-    storage.removeItem(CACHE_KEY)
+    // Nothing can be dropped when storage is unavailable.
   }
-  if (cached && !Array.isArray(cached.releases)) {
-    storage.removeItem(CACHE_KEY)
-    cached = null
+}
+function readCache(storage) {
+  let raw = null
+  try {
+    raw = storage.getItem(CACHE_KEY)
+  } catch {
+    return null
   }
-  if (cached?.expiresAt > now && Array.isArray(cached.releases)) return { releases: cached.releases, stale: false }
+  if (!raw) return null
+  try {
+    const cached = JSON.parse(raw)
+    if (cached && Array.isArray(cached.releases)) return cached
+  } catch {
+    // A malformed entry is dropped below.
+  }
+  clearCache(storage)
+  return null
+}
+function writeCache(storage, value) {
+  try {
+    storage.setItem(CACHE_KEY, value)
+  } catch {
+    // A missing cache only costs a request on the next visit.
+  }
+}
+export async function loadReleases(fetcher, storage, now = Date.now()) {
+  const cached = readCache(storage)
+  if (cached?.expiresAt > now) return { releases: cached.releases, stale: false }
   try {
     const response = await fetcher(RELEASES_URL, { headers: { Accept: 'application/vnd.github+json' } })
     if (!response.ok) throw new ReleaseRequestError(response.status)
     const releases = await response.json()
     if (!Array.isArray(releases)) throw new ReleaseRequestError()
-    storage.setItem(CACHE_KEY, JSON.stringify({ releases, expiresAt: now + CACHE_TTL }))
+    writeCache(storage, JSON.stringify({ releases, expiresAt: now + CACHE_TTL }))
     return { releases, stale: false }
   } catch (error) {
     if (Array.isArray(cached?.releases)) return { releases: cached.releases, stale: true }

@@ -40,4 +40,10 @@ describe('release page helpers', () => {
     await loadReleases(async () => ({ ok: true, json: async () => [] }), storage)
     expect(removed).toEqual([CACHE_KEY])
   })
+  test('loads releases when the browser blocks storage access', async () => {
+    const blocked = () => { throw new DOMException('blocked', 'SecurityError') }
+    const storage = { getItem: blocked, setItem: blocked, removeItem: blocked }
+    const releases = [{ tag_name: 'v1.0.0' }]
+    await expect(loadReleases(async () => ({ ok: true, json: async () => releases }), storage)).resolves.toEqual({ releases, stale: false })
+  })
 })

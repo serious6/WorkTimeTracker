@@ -25,13 +25,24 @@ model {
       description 'Sessions kept by opaque id, with idle timeout and login lockout'
     }
 
+    website = container 'Website' {
+      technology 'Static HTML, CSS, ES modules on GitHub Pages'
+      description 'Landing page that lists the published releases and their installers'
+    }
+
     frontend -> backend 'Invokes commands with its session id'
     backend -> session 'Resolves the user of that session id'
     backend -> database 'Reads and writes bounded windows of that user, verifies credentials'
     database -> session 'Keeps the login attempt counters across restarts'
   }
 
+  releaseApi = system 'GitHub Releases API' {
+    description 'Public REST API that publishes the releases and their installer assets'
+  }
+
   user -> application 'Signs in and tracks work time'
+  user -> website 'Opens the landing page and downloads an installer'
+  website -> releaseApi 'Reads the published releases of this repository'
 }
 
 views {

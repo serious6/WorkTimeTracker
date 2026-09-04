@@ -11,4 +11,4 @@ At load time the page calls GitHub’s public Releases API for this repository. 
 3. Choose **Deploy from a branch**, select that branch, then select the `/docs` folder.
 4. Save. The page is published at `https://serious6.github.io/WorkTimeTracker/site/`.
 
-If using the repository-root Pages URL is preferred, deploy `docs/site/` with a GitHub Pages Actions workflow instead. When changing page content, edit `docs/site/index.html`; keep release behavior in `release-data.js` and its tests in `scripts/release-data.test.mjs`.
+If using the repository-root Pages URL is preferred, deploy `docs/site/` with a GitHub Pages Actions workflow instead. When changing page content, edit `docs/site/index.html`; keep release behavior in `release-data.js` and its tests in `scripts/release-data.test.mjs`. The rendered page is covered end to end by [`e2e/website.spec.ts`](../e2e/website.spec.ts), which serves `docs/site/` statically and answers the Releases API itself.

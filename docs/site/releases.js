@@ -17,12 +17,13 @@ function render(releases, stale) {
     const downloads = Number.isFinite(asset.download_count) ? ` · ${asset.download_count} download${asset.download_count === 1 ? '' : 's'}` : ''
     return url ? `<a class="asset" href="${escapeHtml(url)}"><span class="asset-icon" aria-hidden="true">↓</span><div><strong>${escapeHtml(inferPlatform(asset.name))} · ${escapeHtml(asset.name || 'Installer')}</strong><span class="asset-meta">${formatBytes(asset.size)}${downloads}</span></div><span class="download-arrow" aria-hidden="true">↓</span></a>` : ''
   }).join('')
-  const notes = release.body ? `<p class="release-notes">${escapeHtml(release.body.slice(0, 320))}${release.body.length > 320 ? '…' : ''}</p>` : ''
+  const body = typeof release.body === 'string' ? release.body.trim() : ''
+  const notes = body ? `<p class="release-notes">${escapeHtml(body.slice(0, 320))}${body.length > 320 ? '…' : ''}</p>` : ''
   content.innerHTML = `<div class="release-head"><div><h3>Latest release: ${escapeHtml(release.tag_name)}</h3>${publishedDate ? `<p class="release-meta">Published ${publishedDate}</p>` : ''}</div>${stale ? '<span class="release-meta">Showing saved results</span>' : ''}</div>${notes}${assets ? `<div class="asset-list">${assets}</div>` : '<p class="release-meta">This release does not include downloadable assets yet.</p>'}<a class="older-link" href="${RELEASES_PAGE}">View all releases on GitHub →</a>`
 }
 function renderError(error) {
   content.setAttribute('aria-busy', 'false')
-  const rateLimited = error.status === 403
+  const rateLimited = error?.status === 403 || error?.status === 429
   content.innerHTML = `<div class="error"><h3>${rateLimited ? 'Downloads are temporarily busy' : 'Couldn’t load releases'}</h3><p>${rateLimited ? 'GitHub’s public API rate limit has been reached. Please try again shortly.' : 'Please check your connection or visit GitHub Releases directly.'}</p><a class="older-link" href="${RELEASES_PAGE}">View releases on GitHub →</a></div>`
 }
 loadReleases((url, init) => fetch(url, init), localStorage).then(

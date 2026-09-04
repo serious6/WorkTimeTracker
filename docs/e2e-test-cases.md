@@ -3,10 +3,10 @@
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
 (`calendar`, `week`, `projects`, `absences`, `overtime`, `audit-trails`, `reports-settings`,
-`licenses`, `legal`, `security-csp`, `persistence`) covers one use case as a complete click path. The marker
+`licenses`, `legal`, `security-csp`, `website`, `persistence`) covers one use case as a complete click path. The marker
 in the first column is repeated as a comment above the matching test (`#<number>`, `E<number>`,
 `C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `AT<number>`, `R<number>`,
-`S<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `X<number>`), so a
+`S<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `WEB<number>`, `X<number>`), so a
 test and its specification can always be matched in both directions.
 
 Run the suite with `npm run test:e2e`. Every test starts from the shared `test.beforeEach` setup,
@@ -156,6 +156,16 @@ webview enforces.
 | SEC1 | `SEC1: the shipped policy states the protective directives and allows no inline code` | The shipped Tauri configuration | The policy is read | It names `default-src`, `script-src`, `style-src`, `object-src`, `base-uri` and `frame-ancestors`, contains neither `unsafe-inline` nor `unsafe-eval`, and leaves the Tauri CSP modification enabled |
 | SEC2 | `SEC2: the application renders under the production policy without a violation` | The production bundle is served with that policy | The user registers, creates a project, adds an entry and opens every page of the main navigation | No `securitypolicyviolation` is reported |
 | SEC3 | `SEC3: the policy blocks an injected stylesheet and an injected script` | The application runs under that policy | A `<style>` and a `<script>` element with inline content are injected into the document | Neither is applied and both are reported as a violation of `style-src-elem` and `script-src-elem` |
+
+## Website
+
+The landing page in `docs/site` is served statically by its own preview server on port 1421, and the
+spec answers the GitHub Releases API itself, so the cases stay independent of published releases.
+
+| #  | Test (`e2e/website.spec.ts`) | Given | When | Then |
+|----|------------------------------|-------|------|------|
+| WEB1 | `WEB1: the landing page renders the latest release with its installer` | The Releases API returns a release with a Windows installer | The user opens the landing page | The release tag, its notes and the installer link with platform, size and download count are shown |
+| WEB2 | `WEB2: the landing page explains a rate-limited and a failed release request` | The Releases API answers with 429 and later fails | The user opens the landing page | The rate-limit panel is shown, the failed request shows the connection message, and both link to GitHub Releases |
 
 ## Cross-cutting journeys
 

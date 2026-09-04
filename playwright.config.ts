@@ -24,11 +24,22 @@ export default defineConfig({
   // couple of seconds once, while the dev server transforms the modules again
   // for every page load of every test. The `test-e2e` mode keeps the browser
   // storage fallback available, which a plain production build refuses to use.
-  webServer: {
-    command:
-      'npx vite build --mode test-e2e && npx vite preview --host 127.0.0.1 --port 1420 --strictPort',
-    url: 'http://127.0.0.1:1420',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command:
+        'npx vite build --mode test-e2e && npx vite preview --host 127.0.0.1 --port 1420 --strictPort',
+      url: 'http://127.0.0.1:1420',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    // The landing page in `docs/site` ships as plain files; serving that folder
+    // statically lets the website spec load it like GitHub Pages does.
+    {
+      command:
+        'npx vite preview --outDir docs/site --host 127.0.0.1 --port 1421 --strictPort',
+      url: 'http://127.0.0.1:1421',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 })
