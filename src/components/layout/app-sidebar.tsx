@@ -152,9 +152,11 @@ export function AppSidebar() {
       <div className="mx-2 rounded-lg border border-border p-3 text-xs text-muted-foreground">
         <p className="flex items-center gap-2 font-medium text-foreground">
           <span aria-hidden className="size-2 rounded-full bg-success" />
-          <span className={cn(!sidebarExpanded && 'sr-only')}>Local data</span>
+          <span className={cn(!sidebarExpanded && 'sr-only')}>Data storage</span>
         </p>
-        {sidebarExpanded && <p className="pt-1">All data is stored locally on this device.</p>}
+        {sidebarExpanded && (
+          <p className="pt-1">All data is stored in the database this build is configured for.</p>
+        )}
       </div>
     </aside>
   )

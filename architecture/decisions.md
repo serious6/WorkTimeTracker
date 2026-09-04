@@ -276,10 +276,18 @@ timezone, and every timestamp the application derives from the clock is already 
 enough. An installed build keeps the revision it was released with, so a user can tell which text
 that build includes.
 
-Neither document is stored, acknowledged or synchronised. There is no service behind the
-application, so there is nothing to record consent with: the texts describe the license, the
-absence of a warranty and the local-first handling of the data, and they are reachable from the
-account menu next to the third-party license notices.
+Neither document is stored or synchronised, and the acceptance itself is not persisted. The
+registration form requires accepting both texts before it creates an account; after sign-in, the
+texts remain reachable from the account menu next to the third-party license notices.
+
+Because decision 16 gives the application two storage modes, both texts name them instead of
+promising a single one: desktop development builds, browser development or test runs, and
+self-hosted production deployments keep the data in storage controlled by you or the organisation
+that deploys the application for you, while a released production build stores it in the hosted
+Postgres database in the EU. That is content again, so the distinction lives in the text, not in a
+component that would have to know the mode. The texts also state that the authors administer the
+production database and may read its contents to fix errors and evaluate usage, because a promise
+the deployment cannot keep would be worse than no promise.
 
 ## 18. Archiving retires a project, it never touches its records
 

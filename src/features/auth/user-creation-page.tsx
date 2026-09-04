@@ -2,19 +2,21 @@ import { useState, type FormEvent } from 'react'
 import { AppLogo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Field, Input } from '@/components/ui/input'
+import { Checkbox, Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
-import { registrationSchema } from './auth-schema'
+import { accountCreationSchema } from './auth-schema'
 import { PasswordPolicyChecklist } from './components/password-policy-checklist'
 import { useRegister } from './session-queries'
 
 interface UserCreationPageProps {
   onCancel: () => void
+  onShowPrivacy: () => void
+  onShowTerms: () => void
   onSuccess?: () => void
 }
 
 /** Registration page; the new account is signed in right away. */
-export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps) {
+export function UserCreationPage({ onCancel, onShowPrivacy, onShowTerms, onSuccess }: UserCreationPageProps) {
   const register = useRegister()
   const [password, setPassword] = useState('')
   const [error, setError] = useState<{ field: string | null; message: string }>()
@@ -22,7 +24,12 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const result = registrationSchema.safeParse({ email: form.get('email'), password })
+    const result = accountCreationSchema.safeParse({
+      email: form.get('email'),
+      password,
+      termsAccepted: form.get('termsAccepted') !== null,
+      privacyAccepted: form.get('privacyAccepted') !== null,
+    })
     if (!result.success) {
       const issue = result.error.issues[0]
       setError({ field: typeof issue?.path[0] === 'string' ? issue.path[0] : null, message: issue?.message ?? '' })
@@ -30,7 +37,7 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
     }
 
     try {
-      await register.mutateAsync(result.data)
+      await register.mutateAsync({ email: result.data.email, password: result.data.password })
       onSuccess?.()
     } catch (failure) {
       setError({ field: null, message: errorMessage(failure, 'The account could not be created.') })
@@ -59,6 +66,29 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
               />
             </Field>
             <PasswordPolicyChecklist password={password} />
+            <p className="text-sm text-muted-foreground">
+              Read{' '}
+              <Button onClick={onShowTerms} size="inline" type="button" variant="link">
+                Terms of Service
+              </Button>{' '}
+              and{' '}
+              <Button onClick={onShowPrivacy} size="inline" type="button" variant="link">
+                Privacy Policy
+              </Button>{' '}
+              before accepting them.
+            </p>
+            <Field
+              error={error?.field === 'termsAccepted' ? error.message : undefined}
+              label="I accept the Terms of Service"
+            >
+              <Checkbox name="termsAccepted" />
+            </Field>
+            <Field
+              error={error?.field === 'privacyAccepted' ? error.message : undefined}
+              label="I accept the Privacy Policy"
+            >
+              <Checkbox name="privacyAccepted" />
+            </Field>
             {error?.field === null && (
               <p className="text-sm text-destructive" role="alert">
                 {error.message}

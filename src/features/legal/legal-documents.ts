@@ -20,15 +20,15 @@ export type LegalDocument = {
 
 export const termsOfService: LegalDocument = {
   title: 'Terms of Service',
-  version: '1.0',
+  version: '1.1',
   updatedAt: '2026-09-04',
   summary:
-    'WorkTimeTracker is open-source software that runs on your own machine against a database you control. There is no service behind it, so these terms describe how you may use the software and what it does not promise.',
+    'WorkTimeTracker is open-source software that runs on your own machine, against a database you control when you self-host it, or against the hosted Postgres database in the European Union that the released production build connects to. These terms describe how you may use the software and what it does not promise.',
   sections: [
     {
       heading: '1. Scope',
       paragraphs: [
-        'These terms apply to your use of the WorkTimeTracker desktop application and its browser build. They are an agreement about the software itself; no account is created with the authors and no data is transmitted to them.',
+        'These terms apply to your use of the WorkTimeTracker desktop application and its browser build. They are an agreement about the software itself. Using a released production build means your data is stored in the hosted database in the European Union described in the privacy policy, which the authors administer and whose contents they may review to fix errors and to evaluate usage, while a self-hosted or browser build keeps the data in the storage you configured and transmits nothing to the authors.',
       ],
     },
     {
@@ -41,10 +41,10 @@ export const termsOfService: LegalDocument = {
     {
       heading: '3. Your responsibility',
       paragraphs: [
-        'Because the software runs entirely under your control, you are responsible for:',
+        'Because you decide how and where the software runs, you are responsible for:',
       ],
       items: [
-        'the database or browser storage the data is written to, its access rights and its backups',
+        'the database or browser storage the data is written to, its access rights and its backups, including the credentials of your account in the hosted database of a released production build',
         'the accuracy and completeness of the times, breaks, absences and exports you record',
         'complying with the working time, tax and data protection obligations that apply to you or your organisation',
       ],
@@ -69,13 +69,19 @@ export const termsOfService: LegalDocument = {
       ],
     },
     {
-      heading: '7. Changes to these terms',
+      heading: '7. No availability commitment',
+      paragraphs: [
+        'There is no uptime or availability commitment, either for the software or for the hosted database of the released production build, whose availability depends on a third-party provider. Export your records regularly so that a temporary or permanent loss of access to the database does not take your working time record with it.',
+      ],
+    },
+    {
+      heading: '8. Changes to these terms',
       paragraphs: [
         'A new release may ship a revised version of these terms. The version and the date above identify the revision contained in the installed build; an older build keeps the terms it was released with.',
       ],
     },
     {
-      heading: '8. Privacy',
+      heading: '9. Privacy',
       paragraphs: [
         'How the application handles your data is described in the privacy policy, which you can open from the same menu.',
       ],
@@ -85,19 +91,29 @@ export const termsOfService: LegalDocument = {
 
 export const privacyPolicy: LegalDocument = {
   title: 'Privacy Policy',
-  version: '1.0',
+  version: '1.1',
   updatedAt: '2026-09-04',
   summary:
-    'WorkTimeTracker is local-first. Your data stays in the database or browser storage you provide, no telemetry is collected and the application makes no network call other than to that database.',
+    'Where your data is stored depends on how you run WorkTimeTracker: a local, self-hosted or browser build keeps it in the database or browser storage you provide, while the released production build stores it in a Postgres database hosted by Supabase in the European Union. No telemetry is collected and the application makes no network call other than to that database. In the released production build the authors administer that database and may look at its contents to investigate errors and to evaluate how the application is used.',
   sections: [
     {
       heading: '1. Who is responsible',
       paragraphs: [
-        'The authors of the software operate no server and receive no data from it. Because the application stores everything locally, you — or the organisation that deploys the application for you — are the controller of the data it holds.',
+        'The authors of the software operate no service of their own beyond the database of the released production build, and a local or self-hosted deployment sends them nothing at all. For desktop development, browser development or test runs, and self-hosted production deployments, you — or the organisation that deploys the application for you — are the controller of the data the application holds. For the released production build, the authors decide the limited purposes for administering and reviewing the hosted database described in the section on tracking and access below, while Supabase, Inc. hosts that database as a processor.',
       ],
     },
     {
-      heading: '2. What is stored',
+      heading: '2. Where your data is stored',
+      paragraphs: [
+        'The application always writes to one storage backend, but which one depends on the build and deployment mode.',
+        'Desktop development builds use the local Postgres database configured by the developer. Self-hosted production deployments use the Postgres database configured by the operator. Browser development and test runs keep everything in the storage of that browser profile.',
+        'The released production build: the data is stored in a Postgres database operated by Supabase, Inc. on infrastructure located in the European Union. Supabase is the hosting provider of that database and processes the data only to run it. The connection is encrypted with TLS, and both the certificate chain and the host name are verified (sslmode=verify-full) against a pinned certificate authority; a certificate that cannot be verified aborts the start instead of falling back to an unencrypted connection.',
+        'Everything listed under "3. What is stored" below is held in that hosted database when you use a released production build.',
+        'The connection details are configuration, not part of the repository. A self-hosted production deployment can use a remote Postgres database controlled by its operator when the connection uses sslmode=verify-full with a pinned certificate authority; production mode rejects local database hosts, and non-production desktop modes reject remote hosts.',
+      ],
+    },
+    {
+      heading: '3. What is stored',
       paragraphs: ['The application stores only the data you enter or that follows from it:'],
       items: [
         'your account: e-mail address and a hash of your password, never the password itself',
@@ -109,47 +125,47 @@ export const privacyPolicy: LegalDocument = {
       ],
     },
     {
-      heading: '3. Where it is stored',
+      heading: '4. Separation per user',
       paragraphs: [
-        'In the desktop application the data lives in the PostgreSQL database you configure, on your machine or on a server you control. In the browser build it lives in the local storage of that browser profile, separated per user.',
-        'Every record is scoped to the user who created it, so several accounts on the same installation do not see each other’s data.',
+        'Every record is scoped to the user who created it, so several accounts on the same installation or in the same database do not see each other’s data.',
       ],
     },
     {
-      heading: '4. No tracking and no transmission',
+      heading: '5. No tracking, and access by the authors',
       paragraphs: [
-        'There are no analytics, no telemetry, no crash reporting and no advertising. Apart from the connection to your own database, the application makes no network request, so nothing you record leaves your environment through it.',
+        'The application itself contains no analytics, no telemetry, no crash reporting and no advertising. The only network connection it makes is to the configured database, which in the released production build is the hosted database in the European Union described above. Nothing you record is sent to any analytics, advertising or tracking service, and no data is passed on to any other third party.',
+        'In a local or self-hosted deployment the authors receive nothing. In the released production build the authors administer the hosted database and can therefore read the data stored in it. They access it only to investigate and fix errors and to evaluate how the application is used. They limit that access to what those purposes require, and they neither sell the data nor use it for advertising.',
       ],
     },
     {
-      heading: '5. Session handling',
+      heading: '6. Session handling',
       paragraphs: [
         'In the desktop application the session identifier is held in memory only and is not written to browser-readable storage; reloading the window signs you out and the abandoned backend session ends with its idle timeout.',
         'In the browser build the session token is stored in sessionStorage, and its timeout metadata is stored in localStorage under that token, so a reload keeps the session until it expires or you sign out.',
       ],
     },
     {
-      heading: '6. Log files',
+      heading: '7. Log files',
       paragraphs: [
         'Errors are written to a log file in the application data directory of your machine. Credentials, password hashes, e-mail addresses, connection strings and file system paths are redacted before anything is written, and the file is never transmitted anywhere.',
       ],
     },
     {
-      heading: '7. Your data is in your hands',
+      heading: '8. Your data is in your hands',
       paragraphs: [
         'You can view and correct all records, delete projects, budgets, time entries, absences and overtime records, and export your monthly record as CSV or PDF.',
         'Audit trails are read-only: deleting a source record adds a delete audit row, and existing audit rows stay readable (except failed-login and lockout rows, which expire after 90 days).',
-        'Deleting the database, or clearing the browser storage of the browser build, removes the stored data permanently; the authors hold no copy that could be requested or erased.',
+        'Deleting the database, or clearing the browser storage of the browser build, removes the stored data permanently. In the released production build, deleting your account removes your rows from the hosted database, and the authors keep no separate copy of them outside it; backups of the hosted database expire on the schedule of the hosting provider.',
       ],
     },
     {
-      heading: '8. Changes to this policy',
+      heading: '9. Changes to this policy',
       paragraphs: [
         'A new release may ship a revised version of this policy. The version and the date above identify the revision contained in the installed build.',
       ],
     },
     {
-      heading: '9. Terms of service',
+      heading: '10. Terms of service',
       paragraphs: [
         'The conditions under which the software is provided are described in the terms of service, which you can open from the same menu.',
       ],

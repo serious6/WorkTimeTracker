@@ -5,6 +5,8 @@ import { isPasswordCompliant, MIN_PASSWORD_LENGTH } from './password-policy'
 export const INVALID_CREDENTIALS_MESSAGE = 'Email or password is incorrect'
 export const DUPLICATE_EMAIL_MESSAGE = 'An account with this email already exists'
 export const PASSWORD_POLICY_MESSAGE = `The password does not meet the policy of at least ${MIN_PASSWORD_LENGTH} characters, upper and lower case letters, and two special characters`
+export const TERMS_ACCEPTANCE_MESSAGE = 'You must accept the terms of service to create an account'
+export const PRIVACY_ACCEPTANCE_MESSAGE = 'You must accept the privacy policy to create an account'
 
 export const authUserSchema = z.object({
   id: z.number().int().positive(),
@@ -27,6 +29,11 @@ export const credentialsSchema = z.object({
 export const registrationSchema = z.object({
   email: emailSchema,
   password: z.string().refine(isPasswordCompliant, PASSWORD_POLICY_MESSAGE),
+})
+
+export const accountCreationSchema = registrationSchema.extend({
+  termsAccepted: z.literal(true, { error: TERMS_ACCEPTANCE_MESSAGE }),
+  privacyAccepted: z.literal(true, { error: PRIVACY_ACCEPTANCE_MESSAGE }),
 })
 
 export type AuthUser = z.infer<typeof authUserSchema>

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   INVALID_CREDENTIALS_MESSAGE,
   PASSWORD_POLICY_MESSAGE,
+  accountCreationSchema,
   credentialsSchema,
   registrationSchema,
 } from './auth-schema'
@@ -54,5 +55,36 @@ describe('registrationSchema', () => {
     })
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.message).toBe(PASSWORD_POLICY_MESSAGE)
+  })
+})
+
+describe('accountCreationSchema', () => {
+  test('accepts compliant credentials with both legal texts accepted', () => {
+    const result = accountCreationSchema.safeParse({
+      email: 'User@Example.com',
+      password: 'Str0ng-Passphrase!!x',
+      termsAccepted: true,
+      privacyAccepted: true,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        email: 'user@example.com',
+        password: 'Str0ng-Passphrase!!x',
+        termsAccepted: true,
+        privacyAccepted: true,
+      })
+    }
+  })
+
+  test('requires both legal texts to be accepted', () => {
+    const result = accountCreationSchema.safeParse({
+      email: 'user@example.com',
+      password: 'Str0ng-Passphrase!!x',
+      termsAccepted: false,
+      privacyAccepted: false,
+    })
+    expect(result.success).toBe(false)
+    expect(result.error?.issues.map((issue) => issue.path[0])).toEqual(['termsAccepted', 'privacyAccepted'])
   })
 })

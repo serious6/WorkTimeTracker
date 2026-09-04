@@ -57,6 +57,38 @@ test('validates the password policy while typing and blocks weak passwords', asy
 
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await expect(policy.getByRole('listitem').filter({ hasText: 'not met' })).toHaveCount(0)
+  await page.getByLabel('I accept the Terms of Service').check()
+  await page.getByLabel('I accept the Privacy Policy').check()
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+})
+
+// #24 in docs/e2e-test-cases.md
+test('blocks registration until both legal texts are accepted', async ({ page }, testInfo) => {
+  const email = `legal-${testInfo.workerIndex}-${testInfo.repeatEachIndex}-${testInfo.retry}@example.com`
+
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Logout' }).click()
+  await page.getByRole('button', { name: 'Register' }).click()
+
+  await page.getByRole('button', { name: 'Terms of Service' }).click()
+  await expect(page.getByRole('heading', { name: 'Terms of Service' })).toBeVisible()
+  await page.getByRole('button', { name: 'Back to registration' }).click()
+  await page.getByRole('button', { name: 'Privacy Policy' }).click()
+  await expect(page.getByRole('heading', { name: 'Privacy Policy' })).toBeVisible()
+  await page.getByRole('button', { name: 'Back to registration' }).click()
+
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('alert')).toContainText('You must accept the terms of service')
+
+  await page.getByLabel('I accept the Terms of Service').check()
+  await page.getByRole('button', { name: 'Register' }).click()
+  await expect(page.getByRole('alert')).toContainText('You must accept the privacy policy')
+
+  await page.getByLabel('I accept the Privacy Policy').check()
   await page.getByRole('button', { name: 'Register' }).click()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })
@@ -106,7 +138,7 @@ test('keeps the data of every user separate', async ({ page }) => {
 test('shows the dashboard with empty states', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
-  await expect(page.getByText('Local data')).toBeVisible()
+  await expect(page.getByText('Data storage')).toBeVisible()
   await expect(page.getByText('Tracked Today', { exact: true })).toBeVisible()
   await expect(page.getByText('No time tracked today')).toBeVisible()
   await expect(page.getByText('Create your first project to start tracking.')).toBeVisible()

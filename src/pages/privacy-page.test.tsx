@@ -17,6 +17,15 @@ describe('PrivacyPage', () => {
     }
   })
 
+  test('names both storage modes', () => {
+    renderWithProviders(<PrivacyPage />)
+
+    expect(screen.getByRole('heading', { level: 2, name: '2. Where your data is stored' })).toBeInTheDocument()
+    expect(screen.getByText(/Desktop development builds use the local Postgres database/i)).toBeInTheDocument()
+    expect(screen.getByText(/Supabase, Inc\. on infrastructure located in the European Union/)).toBeInTheDocument()
+    expect(screen.getByText(/only to investigate and fix errors/i)).toBeInTheDocument()
+  })
+
   test('names the stored data and rules out telemetry', () => {
     renderWithProviders(<PrivacyPage />)
 

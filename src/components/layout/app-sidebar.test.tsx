@@ -126,8 +126,8 @@ describe('AppSidebar', () => {
     )
   })
 
-  test('shows local data notice', () => {
+  test('shows data storage notice', () => {
     renderWithProviders(<AppSidebar />)
-    expect(screen.getByText('Local data')).toBeInTheDocument()
+    expect(screen.getByText('Data storage')).toBeInTheDocument()
   })
 })

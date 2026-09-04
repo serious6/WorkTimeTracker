@@ -84,9 +84,10 @@ describe('SettingsPage', () => {
     expect(input).toHaveAttribute('aria-describedby', error.id)
   })
 
-  test('shows local data section', async () => {
+  test('shows where the data is stored', async () => {
     renderWithProviders(<SettingsPage />)
-    expect(await screen.findByText('Local data')).toBeInTheDocument()
+    expect(await screen.findByText('Where your data is stored')).toBeInTheDocument()
+    expect(screen.getByText(/hosted database in the European Union/i)).toBeInTheDocument()
   })
 
   test('saves adjusted working time limits', async () => {

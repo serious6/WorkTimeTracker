@@ -63,7 +63,10 @@ The account menu of the header opens the terms of service, the privacy policy an
 license notices. Both legal texts live in
 [`src/features/legal/legal-documents.ts`](src/features/legal/legal-documents.ts) and carry their own
 version and date, so a wording change is a content change and the installed build always states the
-revision it shows.
+revision it shows. Both texts distinguish the two storage modes: a local, self-hosted or browser
+build keeps the data in the storage you configured, while a released production build stores it in
+the hosted Postgres database in the EU described above, which the authors administer and may review
+to fix errors and evaluate usage.
 
 ## Logs
 

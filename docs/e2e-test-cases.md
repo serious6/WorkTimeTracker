@@ -15,9 +15,9 @@ each other and of their execution order.
 
 | #  | Test (`e2e/app.spec.ts`) | Given | When | Then |
 |----|--------------------------|-------|------|------|
-| 1  | `registers a new account and signs it in directly` | No user is signed in | The user registers with an e-mail address and a password | The user is signed in and the dashboard shows the e-mail address |
+| 1  | `registers a new account and signs it in directly` | No user is signed in | The user registers with an e-mail address, a password, and accepts both legal texts | The user is signed in and the dashboard shows the e-mail address |
 | 2  | `shows the login page when no user is signed in` | The user is signed in | The user signs out and enters a wrong password | "Email or password is incorrect" appears; the correct password signs the user in and the dashboard appears |
-| 3  | `validates the password policy while typing and blocks weak passwords` | The registration form is open | The user types a password that is too short and tries to register | The policy checklist marks the unmet criteria and "does not meet the policy" appears; a strong password completes the registration |
+| 3  | `validates the password policy while typing and blocks weak passwords` | The registration form is open | The user types a password that is too short and tries to register | The policy checklist marks the unmet criteria and "does not meet the policy" appears; a strong password plus both legal acceptances completes the registration |
 | 4  | `discards the input when the registration is cancelled` | The registration form is open with an e-mail address entered | The user clicks "Cancel" | The login page is shown and the e-mail field is empty |
 | 5  | `rejects an email that is already registered` | The e-mail address is already registered | The user registers again with the same address | "An account with this email already exists" appears |
 | 6  | `keeps the data of every user separate` | User A has created a project | User B registers and the test switches back to user A | The project of user A is invisible for user B and still visible for user A |
@@ -38,6 +38,7 @@ each other and of their execution order.
 | 21 | `replaces an absence only after an explicit confirmation` | An absence (vacation) exists on a day | The user tries to record another absence (sick leave) on the same day | The conflict message appears, only "Replace existing absences" replaces it and it can be deleted afterwards |
 | 22 | `adds an explicit overtime record on top of the tracked time` | Working time is configured and the tracked time matches the target, so the automatic overtime is zero | The user opens "Overtime" from the menu, is rejected with an invalid value and then saves an opening balance of 2h 30m | The balance is split into "+0h 00m" automatic and "+2h 30m" explicit, the record is listed as "Manual" and the dashboard shows "+2h 30m" |
 | 23 | `returns to the login page when the session expires` | The user is signed in and a project exists | The stored session is aged past its idle timeout while the user opens "Audit Trails", and past its absolute lifetime while a project dialog holds unsaved input | Both expiries return the application to the login page; signing in again continues on the interrupted view, the data is unchanged and the unsaved input was not stored |
+| 24 | `blocks registration until both legal texts are accepted` | The registration form is open | The user opens both legal texts, submits with a valid e-mail and password without accepting them, then accepts them one by one | The legal texts are readable before sign-in; the form first requires the terms of service, then the privacy policy, and only creates the account after both are accepted |
 
 ## Rounding of a stopped timer
 
@@ -141,7 +142,7 @@ timer on it.
 
 | #  | Test (`e2e/legal.spec.ts`) | Given | When | Then |
 |----|----------------------------|-------|------|------|
-| LG1 | `LG1: terms of service and privacy policy are reachable from the account menu` | The user is signed in | The user opens "Terms of Service" and then "Privacy Policy" from the account menu | Both pages show their heading, the revision line and their sections, and the main navigation still works afterwards |
+| LG1 | `LG1: terms of service and privacy policy are reachable from the account menu` | The user is signed in | The user opens "Terms of Service" and then "Privacy Policy" from the account menu | Both pages show their heading, the revision line and their sections, including the terms heading "5. No warranty" and the privacy headings "2. Where your data is stored" and "5. No tracking, and access by the authors", and the main navigation still works afterwards |
 | LG2 | `LG2: the legal documents stay reachable and are not restored after a reload` | The privacy policy is open | The user reloads and opens the terms of service from another view | The reload returns to the dashboard instead of restoring the policy, and the account menu opens the terms from any view |
 
 ## Content Security Policy

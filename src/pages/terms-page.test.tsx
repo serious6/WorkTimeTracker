@@ -19,6 +19,14 @@ describe('TermsPage', () => {
     }
   })
 
+  test('names the hosted database and rules out an availability commitment', () => {
+    renderWithProviders(<TermsPage />)
+
+    expect(screen.getByRole('heading', { level: 2, name: '7. No availability commitment' })).toBeInTheDocument()
+    expect(screen.getByText(/no uptime or availability commitment/i)).toBeInTheDocument()
+    expect(screen.getByText(/hosted database in the European Union described in the privacy policy/i)).toBeInTheDocument()
+  })
+
   test('states that the working time checks are no legal advice', () => {
     renderWithProviders(<TermsPage />)
 
