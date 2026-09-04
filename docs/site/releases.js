@@ -25,4 +25,7 @@ function renderError(error) {
   const rateLimited = error.status === 403
   content.innerHTML = `<div class="error"><h3>${rateLimited ? 'Downloads are temporarily busy' : 'Couldn’t load releases'}</h3><p>${rateLimited ? 'GitHub’s public API rate limit has been reached. Please try again shortly.' : 'Please check your connection or visit GitHub Releases directly.'}</p><a class="older-link" href="${RELEASES_PAGE}">View releases on GitHub →</a></div>`
 }
-loadReleases(fetch, localStorage).then(({ releases, stale }) => render(releases, stale)).catch(renderError)
+loadReleases((url, init) => fetch(url, init), localStorage).then(
+  ({ releases, stale }) => render(releases, stale),
+  renderError,
+)
