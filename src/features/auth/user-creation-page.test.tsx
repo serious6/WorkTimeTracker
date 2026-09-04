@@ -14,6 +14,11 @@ function typeIntoForm(email: string, pw: string) {
   fireEvent.change(pwInput, { target: { value: pw } })
 }
 
+function acceptLegalTexts() {
+  fireEvent.click(screen.getByLabelText('I accept the Terms of Service'))
+  fireEvent.click(screen.getByLabelText('I accept the Privacy Policy'))
+}
+
 describe('UserCreationPage', () => {
   test('renders the heading', () => {
     renderWithProviders(<UserCreationPage onCancel={() => {}} />)
@@ -50,8 +55,21 @@ describe('UserCreationPage', () => {
     let succeeded = false
     renderWithProviders(<UserCreationPage onCancel={() => {}} onSuccess={() => { succeeded = true }} />)
     typeIntoForm('newuser@example.com', 'Str0ng-Passphrase!!x')
+    acceptLegalTexts()
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     await waitFor(() => expect(succeeded).toBe(true))
+  })
+
+  test('requires both legal texts before registration', async () => {
+    renderWithProviders(<UserCreationPage onCancel={() => {}} onSuccess={() => { throw new Error('unexpected') }} />)
+    typeIntoForm('newuser@example.com', 'Str0ng-Passphrase!!x')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('You must accept the terms of service')
+
+    fireEvent.click(screen.getByLabelText('I accept the Terms of Service'))
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('You must accept the privacy policy')
   })
 
   test('shows error when email is already taken', async () => {
@@ -61,6 +79,7 @@ describe('UserCreationPage', () => {
 
     renderWithProviders(<UserCreationPage onCancel={() => {}} />)
     typeIntoForm('dup@example.com', 'Str0ng-Passphrase!!x')
+    acceptLegalTexts()
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })

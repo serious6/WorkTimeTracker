@@ -57,6 +57,8 @@ test('validates the password policy while typing and blocks weak passwords', asy
 
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await expect(policy.getByRole('listitem').filter({ hasText: 'not met' })).toHaveCount(0)
+  await page.getByLabel('I accept the Terms of Service').check()
+  await page.getByLabel('I accept the Privacy Policy').check()
   await page.getByRole('button', { name: 'Register' }).click()
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })

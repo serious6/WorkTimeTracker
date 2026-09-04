@@ -2,9 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { AppLogo } from '@/components/logo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Field, Input } from '@/components/ui/input'
+import { Checkbox, Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
-import { registrationSchema } from './auth-schema'
+import { accountCreationSchema } from './auth-schema'
 import { PasswordPolicyChecklist } from './components/password-policy-checklist'
 import { useRegister } from './session-queries'
 
@@ -22,7 +22,12 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const result = registrationSchema.safeParse({ email: form.get('email'), password })
+    const result = accountCreationSchema.safeParse({
+      email: form.get('email'),
+      password,
+      termsAccepted: form.get('termsAccepted') === 'on',
+      privacyAccepted: form.get('privacyAccepted') === 'on',
+    })
     if (!result.success) {
       const issue = result.error.issues[0]
       setError({ field: typeof issue?.path[0] === 'string' ? issue.path[0] : null, message: issue?.message ?? '' })
@@ -30,7 +35,8 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
     }
 
     try {
-      await register.mutateAsync(result.data)
+      const { email, password: acceptedPassword } = result.data
+      await register.mutateAsync({ email, password: acceptedPassword })
       onSuccess?.()
     } catch (failure) {
       setError({ field: null, message: errorMessage(failure, 'The account could not be created.') })
@@ -59,6 +65,18 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
               />
             </Field>
             <PasswordPolicyChecklist password={password} />
+            <Field
+              error={error?.field === 'termsAccepted' ? error.message : undefined}
+              label="I accept the Terms of Service"
+            >
+              <Checkbox name="termsAccepted" />
+            </Field>
+            <Field
+              error={error?.field === 'privacyAccepted' ? error.message : undefined}
+              label="I accept the Privacy Policy"
+            >
+              <Checkbox name="privacyAccepted" />
+            </Field>
             {error?.field === null && (
               <p className="text-sm text-destructive" role="alert">
                 {error.message}

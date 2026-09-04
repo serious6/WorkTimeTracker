@@ -15,9 +15,9 @@ each other and of their execution order.
 
 | #  | Test (`e2e/app.spec.ts`) | Given | When | Then |
 |----|--------------------------|-------|------|------|
-| 1  | `registers a new account and signs it in directly` | No user is signed in | The user registers with an e-mail address and a password | The user is signed in and the dashboard shows the e-mail address |
+| 1  | `registers a new account and signs it in directly` | No user is signed in | The user registers with an e-mail address, a password, and accepts both legal texts | The user is signed in and the dashboard shows the e-mail address |
 | 2  | `shows the login page when no user is signed in` | The user is signed in | The user signs out and enters a wrong password | "Email or password is incorrect" appears; the correct password signs the user in and the dashboard appears |
-| 3  | `validates the password policy while typing and blocks weak passwords` | The registration form is open | The user types a password that is too short and tries to register | The policy checklist marks the unmet criteria and "does not meet the policy" appears; a strong password completes the registration |
+| 3  | `validates the password policy while typing and blocks weak passwords` | The registration form is open | The user types a password that is too short and tries to register | The policy checklist marks the unmet criteria and "does not meet the policy" appears; a strong password plus both legal acceptances completes the registration |
 | 4  | `discards the input when the registration is cancelled` | The registration form is open with an e-mail address entered | The user clicks "Cancel" | The login page is shown and the e-mail field is empty |
 | 5  | `rejects an email that is already registered` | The e-mail address is already registered | The user registers again with the same address | "An account with this email already exists" appears |
 | 6  | `keeps the data of every user separate` | User A has created a project | User B registers and the test switches back to user A | The project of user A is invisible for user B and still visible for user A |

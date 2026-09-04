@@ -111,6 +111,8 @@ export async function register(page: Page, email: string, password = PASSWORD) {
   await page.getByRole('button', { name: 'Register' }).click()
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill(password)
+  await page.getByLabel('I accept the Terms of Service').check()
+  await page.getByLabel('I accept the Privacy Policy').check()
   await page.getByRole('button', { name: 'Register' }).click()
 }
 
