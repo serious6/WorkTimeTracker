@@ -3,8 +3,8 @@
 //! Ownership checks stay inside the SQL: caller-supplied record ids are matched
 //! with `AND user_id = $n`, and foreign keys supplied by the caller are checked
 //! the same way. Foreign and unknown ids both return [`StoreError::NotFound`].
-//! The limited statements without a user predicate either run before a session
-//! exists (`users`, `login_attempts`, auth audit inserts) or describe database
+//! Statements without a `user_id` predicate either run before a session exists
+//! (`users`, `login_attempts`, auth audit inserts) or describe database
 //! state (`app_metadata`, `schema_migrations`).
 
 use std::time::Duration;
