@@ -16,6 +16,8 @@ import { toDateKey } from '@/lib/date'
 
 /** Satisfies the password policy, so registrations succeed. */
 export const TEST_PASSWORD = 'Str0ng-Passphrase!!x'
+// Valid PBKDF2-SHA256 hash of TEST_PASSWORD with the app's test salt; regenerate
+// if TEST_PASSWORD or PBKDF2_ITERATIONS changes.
 const TEST_PASSWORD_HASH =
   'pbkdf2-sha256$210000$d29yay10aW1lLXRlc3QtMQ==$9WatE7lxQeDr47my/+676IM7dG0Neb4WKkD3V/MVUZw='
 const USERS_KEY = 'work-time-tracker.users'

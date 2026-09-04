@@ -1,6 +1,8 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
+// `.tsx` tests render React and stay in jsdom by glob. Keep `.ts` tests here
+// only when they use DOM/browser events or Testing Library renderHook.
 const jsdomTestFiles = [
   'src/lib/global-errors.test.ts',
   'src/features/auth/session-queries.test.ts',

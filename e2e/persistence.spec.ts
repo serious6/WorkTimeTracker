@@ -13,8 +13,8 @@ import {
   markAbsence,
   openAccountMenu,
   register,
-  trackingCard,
   startSignedInSession,
+  trackingCard,
 } from './helpers'
 
 test.beforeEach(async ({ page }) => {

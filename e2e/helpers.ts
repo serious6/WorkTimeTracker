@@ -106,12 +106,15 @@ export async function downloadText(page: Page, button: string) {
 }
 
 export const PASSWORD = 'Str0ng-Passphrase!!x'
+// Valid PBKDF2-SHA256 hash of PASSWORD with the app's test salt; regenerate if
+// PASSWORD or PBKDF2_ITERATIONS changes.
 const PASSWORD_HASH =
   'pbkdf2-sha256$210000$d29yay10aW1lLXRlc3QtMQ==$9WatE7lxQeDr47my/+676IM7dG0Neb4WKkD3V/MVUZw='
 
 export async function startSignedInSession(page: Page, email = 'first@example.com') {
   await page.addInitScript(
     ({ accountEmail, passwordHash, sessionTimeoutMinutes }) => {
+      if (localStorage.getItem('work-time-tracker.users')) return
       const now = Date.now()
       const createdAt = new Date(now).toISOString()
       const user = { id: 1, email: accountEmail, createdAt, passwordHash }
