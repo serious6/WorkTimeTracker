@@ -1,7 +1,7 @@
 # UI and design principles
 
 Binding for every UI change, referenced from [`../CONTRIBUTING.md`](../CONTRIBUTING.md) and
-[`../AGENTS.md`](../AGENTS.md). Record the resulting state in [`ui-audit.md`](ui-audit.md).
+[`../AGENTS.md`](../AGENTS.md).
 
 Reuse before inventing: `Button`, `Card`, `Dialog`, `ConfirmDialog`, `Menu`, `Input`, `Select`,
 `Textarea`, `Checkbox`, `Progress` and `Toaster` in `src/components/ui/` are the only sanctioned
@@ -19,11 +19,10 @@ the Tailwind scale. Arbitrary values such as `p-[13px]` need a justification in 
    button); everything else uses `outline`, `ghost` or `subtle`. Never several emphasised actions
    per card.
 5. **Accessibility** — WCAG 2.2 AA: 4.5:1 for body text, 3:1 for large text and interactive
-   boundaries; verify token changes with a contrast checker and record the numbers in
-   `ui-audit.md`. Icon-only controls get an `aria-label`, decorative icons and colour dots get
-   `aria-hidden`, collapsed navigation labels stay in the accessibility tree via
-   `sr-only lg:not-sr-only`. State is readable without colour. Never hide a label with `hidden` or
-   remove the focus ring.
+   boundaries; verify token changes with a contrast checker. Icon-only controls get an
+   `aria-label`, decorative icons and colour dots get `aria-hidden`, collapsed navigation labels
+   stay in the accessibility tree via `sr-only lg:not-sr-only`. State is readable without colour.
+   Never hide a label with `hidden` or remove the focus ring.
 6. **Proximity** — start, pause and stop form one control group (`currently-tracking-card.tsx`);
    delete sits behind the row `Menu` or a separate icon slot guarded by `ConfirmDialog`, never next
    to save.

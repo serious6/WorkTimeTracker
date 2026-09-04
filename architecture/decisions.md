@@ -1,212 +1,147 @@
 # Architecture decisions
 
-## 1. Two backends, one contract
+Each record follows the arc42 decision template: **Context**, **Decision**, and **Consequences**.
+Superseded implementation notes are intentionally omitted; keep this file for decisions that affect
+future changes.
 
-The Rust commands (`src-tauri/src/commands.rs`) are the production backend. The browser fallback
-(`src/features/storage/local-repository.ts`) exists so that the UI can be developed and tested with
-Playwright without a native build. Both implement the same domain rules and would otherwise drift
-apart silently.
+## Keep the Rust backend and browser fallback behind one contract
 
-`contract/domain-rules.json` is the single source of truth for those rules. Every case is executed
-twice: by `src-tauri/src/contract.rs` against the Rust models and by
-`src/features/storage/domain-rules.contract.test.ts` against the Zod schemas and `findOverlap`. It
-covers credential and password validation, project, time entry, budget and settings validation,
-normalization, overlap detection, and the shared security limits. A rule that changes on one side
-only fails the other suite in CI, so new rules are added to the contract first.
+**Status:** accepted
 
-## 2. Structured errors across the IPC boundary
+**Context:** The native app uses Rust commands and Postgres. The browser fallback exists for the Vite
+UI and Playwright tests. Without a shared contract the two storage paths can drift.
 
-Commands return `AppError` (`src-tauri/src/error.rs`) instead of `String`. The variants
-`notSignedIn`, `validation`, `conflict`, `notFound`, `rateLimited`, `database`, and `internal` are
-serialized as
-`{ "kind": ..., "message": ... }`. The frontend turns them back into the `AppError` class in
-`src/lib/errors.ts` and branches on `kind` with `isErrorKind`, never on message text. Messages of
-the `database` kind are replaced by the fallback text of the calling view, so infrastructure
-details never reach the user interface. `internal` covers failures of the process itself, such as a
-key derivation or a poisoned lock; its message is replaced the same way, so a failing KDF is never
-reported as a database failure.
+**Decision:** Domain rules live in `contract/domain-rules.json`, entity shapes in
+`contract/entities.json`. Rust contract tests and TypeScript contract tests execute those files.
+Frontend application data access goes through the `Repository` type in `src/features/storage/`.
+The explicit infrastructure exception is `log_client_error`, which may invoke the backend directly.
 
-## 3. One log file for both sides
+**Consequences:** Validation, overlap, limit, and entity changes start in `contract/` and update both
+backends. A capability used by the frontend needs a Rust command, command registration, repository
+method, and browser fallback implementation.
 
-Every failed command is written to `<app data>/logs/work-time-tracker.log` by `logging::logged`
-(`src-tauri/src/logging.rs`), together with backend panics and setup failures. The frontend sends
-its own failures through the `log_client_error` command, so render errors, unhandled rejections and
-failed queries end up in the same file. The browser fallback has no file system and logs to the
-console instead.
+## Return structured command errors and log both sides safely
 
-Both sides redact before writing: e-mail addresses, password hashes, values of keys such as
-`password` or `token`, and file system paths are replaced by `[redacted]`. The rules are mirrored in
-`src-tauri/src/logging.rs` and `src/lib/redact.ts` and every message is clamped to 2,000 characters.
-The file is rotated once it passes 512 KiB, and a failing logger never breaks a command.
+**Status:** accepted
 
-## 4. Sessions and credentials
+**Context:** UI code must not match localized or redacted message text, and failures from Rust and
+React need one diagnostic path without leaking credentials.
 
-Native sessions live in memory and end after 480 idle minutes; every command extends them, a
-restart always returns to the login page. Next to the idle timeout every session carries the moment
-it started and ends 720 minutes after it, no matter how much it was used: a running timer polls the
-backend all day, so without that absolute lifetime an application left open on an unattended machine
-would stay signed in forever. That age is measured on the wall clock, because `Instant` does not
-count the hours a suspended machine spent asleep, with the monotonic age as its floor, so moving the
-system clock backwards cannot extend a session either. `login` and `register` start a session and answer with its
-opaque random id (`auth::SessionId`, 32 bytes from the operating system RNG). Sessions are kept in a
-map keyed by that id, and every command names the session it acts for instead of reading one ambient
-process-global session, so two windows can hold two identities and a session is distinguishable in
-an audit. Expired sessions are dropped whenever the map is read, so it stays bounded. The id is a
-bearer token for the whole command surface, so the frontend keeps it in a module variable of
-`src/features/storage/tauri-repository.ts` and in no storage a page script can reach — neither
-`sessionStorage` nor `localStorage` nor a cookie — where an injected script or an open devtools
-console could read and replay it. Reloading the window therefore returns to the login page as well;
-the abandoned backend session ends with its idle timeout, and restarting the application starts
-there because the backend map is empty again.
+**Decision:** Commands return the `AppError` variants from `src-tauri/src/error.rs`. The frontend
+branches on `kind` through `src/lib/errors.ts`. Backend failures are written by
+`src-tauri/src/logging.rs`; frontend failures use `log_client_error` and `src/lib/logger.ts`.
+Redaction rules stay mirrored with `src/lib/redact.ts`.
 
-A session also records the label of the webview it was started from, and a command only resolves it
-when the call arrives from that webview. Binding the bearer token to its window makes a leaked id
-useless everywhere else: a replay from another window answers `notSignedIn` without extending the
-idle timeout, and only the owning window can end the session. Both storage paths lock an email out for 15 minutes after 5
-failed logins. The limits are part of the contract file, so both sides stay equal.
+**Consequences:** New command errors use an existing `AppError` kind or add a kind on both sides.
+Never branch on error messages, and never log raw credentials, password hashes, emails, tokens, or
+file paths.
 
-An expiry costs as little context as possible: the resulting `notSignedIn` error returns the user
-interface to the login page but keeps the view it interrupted, and signing in again as the same user
-continues there. Another user starts on the dashboard, and either way the cached data of the ended
-session is dropped, so no account sees the records of another.
+## Treat sessions as bearer tokens bound to one webview
 
-The native counters live in the `login_attempts` table, not in the process: restarting the
-application no longer clears a lockout. A login counts its attempt before it verifies the password,
-through the single store operation `reserve_login_attempt`: it evicts the counters whose lockout has
-been served, counts the attempt and answers the resulting count in one transaction. Checking and
-counting separately would let parallel logins all read the same count and verify a password
-together, so the table stays bounded and the limit holds under concurrency. A successful login
-clears the counter, and a rejected attempt leaves the counter frozen, so a locked out address cannot
-extend its own lockout. The browser fallback keeps its counters in memory and is single threaded,
-which is consistent with it not being a security boundary.
+**Status:** accepted
 
-A login with an unknown email verifies a fixed dummy hash instead of returning early, so both paths
-spend the same Argon2 work and the response time does not reveal whether an account exists.
+**Context:** A session id grants access to all account data. A running timer polls the backend, so
+idle timeout alone would keep an unattended app signed in.
 
-The browser fallback stores an opaque random token in `sessionStorage` and resolves it against a
-session record that carries both its start and its idle expiry, and applies the same two limits. Client-side storage stays fully readable and writable, therefore the
-fallback is a development and test tool only, not a security boundary. It is never shipped as the
-production path, which is also why it hashes passwords with PBKDF2-SHA256 (the strongest KDF
-available in the browser) while the Rust backend uses Argon2id for real credentials.
+**Decision:** Native sessions live in memory, carry idle and absolute expiry, and are bound to the
+webview label that created them. The frontend keeps the native session id only in a module variable.
+Commands that need a user are generated with `authed_command!`; public commands are listed in
+`PUBLIC_COMMANDS`. Login lockout counters are persisted in Postgres.
 
-Both key derivations are pinned instead of using library defaults: Argon2id runs with 19 MiB of
-memory, two passes and one lane, PBKDF2-SHA256 with 210,000 iterations, both following the OWASP
-recommendation. The numbers live in `contract/domain-rules.json` (`keyDerivation`), so a dependency
-update cannot silently change the cost of a hash. Verification still reads the parameters from the
-stored hash, so older hashes keep working.
+**Consequences:** Reloading the webview returns to login. New data commands must use
+`authed_command!`, receive the current user id from it, and must not store the session id in
+`localStorage`, `sessionStorage`, or cookies.
 
-## 5. Postgres connection pool
+## Keep native persistence Postgres-only and migrations explicit
 
-The native backend talks to Postgres through a small synchronous `r2d2` connection pool. Commands
-still execute short transactions, but independent requests do not need to share one process-wide
-connection. The pool keeps startup and command code simple while leaving room for background jobs or
-report queries to run without blocking unrelated reads.
+**Status:** accepted
 
-## 6. Audit trail and timer recovery
+**Context:** The desktop application stores durable data in Postgres. Development and tests use the
+local compose database; production may use a managed database.
 
-Every write of a time entry appends one `time_entry_audits` row with the actor (`user_id`), the timestamp,
-and JSON snapshots of the old and the new value. The rows are written inside the same connection as
-the change, so a rejected write records nothing, and they are never updated or deleted. The native backend and
-the browser fallback both implement it, so the fallback keeps the same evidence.
+**Decision:** `src-tauri/src/postgres_store.rs` is the native store. The current pre-release baseline
+is `drizzle/0000_init.sql`, registered in `MIGRATIONS`. Production processes verify migrations.
+Only the separate migration entry point `DbConfig::for_migration` may apply them, and only when
+`WORK_TIME_TRACKER_DB_MIGRATE=true`; `DbConfig::from_env` keeps application startup verify-only.
 
-The running timer is the time entry without an end time, never a client-side clock. On start the
-stored entries decide what is running (`reconcileSession`), so a restart, a crash or a system sleep
-cannot lose tracked time; the persisted session only carries the closed segments of a paused timer.
-A running timer can be moved to the time work actually started (`correctStart`); the entry itself is
-rewritten, so every derived figure and the audit trail follow.
+**Consequences:** Schema changes keep `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
+queries, models, and `docs/data-model.md` aligned. A production app start never mutates the shared
+schema.
 
-Stopping the timer rounds the tracked session to whole minutes, half up on the seconds part
-(`roundToMinutes`). The rounding happens once, and the stored end time already carries the rounded
-value, so no report or export rounds a second time. A session that rounds to zero minutes, that is
-one shorter than 30 seconds, is discarded instead of stored and the user is told so.
+## Enforce ownership in storage queries
 
-## 7. The repository is resolved on use, not at module load
+**Status:** accepted
 
-`src/features/storage/index.ts` exposes `getRepository()` instead of a `repository` constant. The
-backend is chosen on the first call and cached, so tests can replace it with `setRepository()` and
-restore the default with `setRepository(null)` instead of mocking the module.
+**Context:** Fetching a row before checking ownership could leak whether another user's record exists
+or let a new code path forget the check.
 
-The browser fallback is only reachable through `createLocalRepository()`, which throws outside a
-development or test build (`import.meta.env`). The dead branch also lets the bundler drop the
-fallback from a production desktop build, so the code that is explicitly not a security boundary is
-neither shipped nor constructible there.
+**Decision:** Queries that use caller-supplied record ids include `AND user_id = $n`. Writes that
+reference a caller-supplied foreign key first prove that the referenced row belongs to the user.
+Foreign ids and unknown ids both map to `notFound`.
 
-## 8. Authentication is the default of a command, not a convention
+**Consequences:** New reads, updates, deletes, and foreign-key writes must keep the ownership check in
+SQL or in the equivalent browser fallback filter. A write that changes no row is an error, not a
+silent success.
 
-Commands are written with the `authed_command!` macro in `src-tauri/src/commands.rs`. It adds the
-log frame, the lookup of the signed in user and the check that the calling webview owns that
-session, and only then runs the body, which receives the user
-id as a binding. Authorisation can no longer be forgotten by leaving a line out: a command that runs
-without a session has to be written by hand and named in `commands::PUBLIC_COMMANDS`
-(`register`, `login`, `logout`, `current_session`, `get_app_version`, `log_client_error`).
+## Bound history queries and page full-account calculations
 
-Three tests keep the list honest. They read the declaration of a function instead of matching a name
-as a substring, so a hand written `pub async fn` is seen too. The first fails when the hand written
-`#[tauri::command]` functions are not exactly `PUBLIC_COMMANDS`, the second fails when a command
-registered in `tauri::generate_handler!` is neither generated by an `authed_command!` invocation nor
-public, and the third fails when a command works with a session without taking the calling webview
-and passing its label on.
+**Status:** accepted
 
-Input validation that belongs to the domain stays in `models.rs`: `SaveAbsence::validate_range`
-holds the rule that a saved range is not empty, is valid per day and never repeats a day, instead of
-the command spelling it out.
+**Context:** Accounts can accumulate years of entries and audit records. Views should not load the
+whole account unless their calculation requires it.
 
-## 9. List commands answer a bounded window
+**Decision:** List commands accept `from`, `to`, and `limit`; defaults and caps are declared in
+`contract/domain-rules.json`. UI views request the visible window. Full-account calculations use the
+paged helpers in `src/features/storage/list-range.ts`.
 
-`list_time_entries`, `list_time_entry_audits`, `list_audit_log` and `list_absences` take an optional
-range: `from` inclusive, `to` exclusive, plus a `limit`. The filter is pushed into SQL, so a query
-costs what the view shows instead of the whole account history. Without a range a command still
-answers at most `DEFAULT_LIST_LIMIT` rows, newest first, and the combined audit log stays at
-`AUDIT_LOG_LIMIT`. All three numbers live in `contract/domain-rules.json`, so
-`src/features/storage/list-range.ts` and `src-tauri/src/models.rs` cannot drift apart.
+**Consequences:** New list APIs must expose a bounded range. Views that need complete history must
+page explicitly instead of relying on an unbounded backend response.
 
-The calendar reads only the six weeks of its grid, as timestamps for the entries and as date keys
-for the absences, so a time zone east or west of UTC cannot lose an entry at the edge of the grid.
+## Persist audit trails and derive timer state from entries
 
-The views whose numbers span the account (the cumulative balance, the budget progress, the monthly
-export) name no window. `listAllPages` in `src/features/storage/list-range.ts` then reads the whole
-history page by page, each page a bounded query for the newest rows before the oldest row already
-read. Every request stays bounded while no calculation is silently based on a truncated page.
+**Status:** accepted
 
-## 10. `contract/entities.json` is the authority for the entity shapes
+**Context:** Users need an audit trail for changes, and tracking must survive reloads, crashes, and
+sleep without trusting a client-side clock.
 
-The same entities used to be described in four places: the Drizzle schema (`src/db/schema.ts`), the
-SQL migrations in `drizzle/`, the Rust models (`src-tauri/src/models.rs`) and the Zod schemas under
-`src/features/*`. Rust owns all runtime SQL, so nothing forced the four to agree.
+**Decision:** Mutations write audit rows in the same transaction as the change. A running timer is a
+`time_entries` row with `end_time` null. Recovery reconciles the stored entries; stopping rounds once
+and stores the rounded result.
 
-`contract/entities.json` now names the fields, their types and their nullability for every entity
-that crosses the IPC boundary, and both sides are checked against it:
+**Consequences:** Rejected writes do not produce audit rows. Reports, exports, and balances derive
+from stored timestamps and do not round a second time.
 
-- `serializes_the_models_of_the_entity_contract` in `src-tauri/src/contract.rs` serializes a sample
-  of every model and compares the field names, types and nulls.
-- `src/features/storage/entities.contract.test.ts` compares the Zod schemas with the same file and
-  asserts that only the declared fields accept `null`.
+## Harden development and webview entry points
 
-A field added or renamed on one side only fails one of the two suites. `drizzle/*.sql` stays the
-migration history of the database and `src/db/schema.ts` its typed description; neither is consulted
-at runtime, and neither may add a field to an entity without the contract naming it.
+**Status:** accepted
 
-## 11. Consolidate the unreleased database schema into one baseline
+**Context:** The dev server, CSP, and web inspector determine whether an injected script or a network
+peer can read application data.
 
-WorkTimeTracker has not shipped a release, so no deployed database needs an incremental upgrade
-path. The complete Postgres schema therefore lives in `drizzle/0000_init.sql`, and
-`PostgresStore` registers that single migration.
+**Decision:** The dev server binds `127.0.0.1` unless `TAURI_DEV_HOST` is set deliberately. The Tauri
+CSP allows bundled scripts and styles only, no inline/eval execution, and IPC-only connections.
+Zod is imported through `src/lib/zod.ts` so schemas run without eval. Web inspector support remains
+compiled into debug builds only.
 
-This makes a fresh installation reproducible without retaining pre-release migration history.
+**Consequences:** LAN testing is opt-in and temporary. New frontend dependencies must work under the
+CSP. Release builds must not enable `tauri/devtools` or release `debug-assertions`.
 
-## 12. The dev server is loopback only, LAN access is an opt-in
+## Separate local development databases from verified production databases
 
-The dev server used to start with `--host 0.0.0.0` from `beforeDevCommand`, which offered the
-unauthenticated UI and the source maps to every host on the network for the whole development
-session. `vite.config.ts` now resolves the bind address in `resolveDevServerHost` and defaults to
-`127.0.0.1`.
+**Status:** accepted
 
-Testing on a physical device is the one case that needs more, and it uses the variable the Tauri CLI
-already sets for `tauri android dev --host`: `TAURI_DEV_HOST=<address>` binds the dev server to that
-address. Nothing else in the repository binds a wildcard address, apart from the container image,
-whose port `compose.yaml` publishes on `127.0.0.1` only.
+**Context:** Development, tests, and CI must never reach a deployed database. Production needs a
+remote database, but only with verified transport and an explicit migration step.
 
-## 13. The webview executes no inline code
+**Decision:** `WORK_TIME_TRACKER_ENV` defaults to `development`, where database hosts must be
+`localhost`, loopback, or the compose host `db` without TLS. `production` refuses local hosts and
+requires `sslmode=verify-full` with a pinned CA from connection-string `sslrootcert` or
+`SUPABASE_DB_ROOT_CERT`. The release workflow injects production connection values from the
+protected `production` environment.
+
+**Consequences:** Test helpers refuse to create or drop databases outside development/local hosts.
+Remote connection strings are redacted before logging. Production database credentials never belong
+in the repository or CI jobs outside the protected migration step.
 
 `app.security.csp` in `src-tauri/tauri.conf.json` names every directive it relies on instead of
 falling back to `default-src`, and it grants neither `'unsafe-inline'` nor `'unsafe-eval'`:
@@ -325,7 +260,25 @@ part of the repository: they are read from `DATABASE_URL` or assembled from `SUP
 `production` environment only. Every message that names a connection string passes
 `redact_database_url` first.
 
-## 17. Archiving retires a project, it never touches its records
+## 17. The legal texts are versioned content, not layout
+
+The terms of service and the privacy policy are declared as data in
+`src/features/legal/legal-documents.ts` and rendered by one `LegalDocumentView`. A wording change
+therefore never touches a component, and both pages stay identical in structure and in the
+accessibility of their headings.
+
+Each document carries its own version and an ISO day. The day is shown as it is written instead of
+being formatted for the locale of the reader: it identifies a revision of a text, not a moment in a
+timezone, and every timestamp the application derives from the clock is already timezone dependent
+enough. An installed build keeps the revision it was released with, so a user can tell which text
+that build includes.
+
+Neither document is stored, acknowledged or synchronised. There is no service behind the
+application, so there is nothing to record consent with: the texts describe the license, the
+absence of a warranty and the local-first handling of the data, and they are reachable from the
+account menu next to the third-party license notices.
+
+## 18. Archiving retires a project, it never touches its records
 
 A project that is no longer worked on is archived instead of deleted: deletion detaches its entries
 (`project_id` becomes `NULL`) and the past reads as "Deleted project", which loses information the

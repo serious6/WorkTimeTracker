@@ -5,8 +5,9 @@ import type { AuthUser } from '@/features/auth/auth-schema'
 import { useLogout } from '@/features/auth/session-queries'
 
 /**
- * Header with the burger menu. Both entries end the session and return to the
- * login page, so a different user can sign in.
+ * Header with the burger menu. It offers the legal documents and the
+ * third-party licences, and the two entries that end the session and return to
+ * the login page, so a different user can sign in.
  */
 export function AppHeader({ user }: { user: AuthUser }) {
   const logout = useLogout()
@@ -17,6 +18,8 @@ export function AppHeader({ user }: { user: AuthUser }) {
       <span className="truncate text-sm text-muted-foreground">{user.email}</span>
       <Menu
         items={[
+          { label: 'Terms of Service', onSelect: () => navigate('terms') },
+          { label: 'Privacy Policy', onSelect: () => navigate('privacy') },
           { label: 'Third-Party Licenses', onSelect: () => navigate('licenses') },
           { label: 'Switch User', onSelect: () => logout.mutate() },
           { label: 'Logout', onSelect: () => logout.mutate(), destructive: true },

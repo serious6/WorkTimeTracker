@@ -1,11 +1,8 @@
 import { AppError } from '@/lib/errors'
 
 /**
- * Window of a list query: `from` is inclusive, `to` is exclusive, both an ISO
- * date or timestamp. A query without a window still answers at most
- * {@link DEFAULT_LIST_LIMIT} rows, so its cost never grows with the age of the
- * account. `contract/domain-rules.json` pins the three numbers for both
- * backends, `ListRange` in `src-tauri/src/models.rs` is the native half.
+ * Window of a list query: `from` is inclusive, `to` is exclusive, and a missing
+ * limit still falls back to {@link DEFAULT_LIST_LIMIT}.
  */
 export type ListRange = {
   from?: string
@@ -116,12 +113,8 @@ function afterInstant(value: string): string | undefined {
 }
 
 /**
- * Reads a complete descending audit trail in bounded pages. Unlike
- * {@link listAllPages} the bound of a row is not unique: several records may
- * carry the same `recordedAt`. The next page therefore asks for everything up
- * to one millisecond after the oldest row read, which keeps the neighbours of
- * that timestamp instead of skipping them, and the rows read twice are dropped
- * by their id.
+ * Reads a complete descending audit trail. `recordedAt` is not unique, so pages
+ * overlap by one millisecond and duplicate ids are dropped.
  */
 export async function listAllAuditPages<T extends { id: number; recordedAt: string }>(
   page: (range: ListRange) => Promise<T[]>,
@@ -150,13 +143,8 @@ export async function listAllAuditPages<T extends { id: number; recordedAt: stri
 }
 
 /**
- * Reads a complete ascending history in bounded pages instead of a single
- * truncated page. Each call asks for the newest {@link MAX_LIST_LIMIT} rows
- * before the oldest row already read, so the backend answers a bounded query
- * while a view that spans the whole account (a cumulative balance, a budget
- * report) still sees every row. `bound` names the exclusive upper bound of a
- * row; it has to be unique per row, which holds for the start of a time entry
- * (entries may not overlap) and for the date of an absence (one per day).
+ * Reads a complete ascending history in bounded pages. `bound` must be unique,
+ * such as a non-overlapping entry start or an absence date.
  */
 export async function listAllPages<T>(
   page: (range: ListRange) => Promise<T[]>,

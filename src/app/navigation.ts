@@ -16,6 +16,8 @@ export type View =
   | 'audit-trails'
   | 'settings'
   | 'licenses'
+  | 'terms'
+  | 'privacy'
 
 type NavigationState = {
   view: View
