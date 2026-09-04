@@ -25,7 +25,7 @@ pub(crate) const APP_SCHEMA: &str = "wtt";
 /// Pinned at connection startup because the store uses unqualified SQL; direct
 /// test clients must set the same option when they query application tables.
 /// The path intentionally excludes `public` for the Supabase defense-in-depth
-/// boundary.
+/// boundary, so future extension function calls must be schema-qualified.
 pub(crate) fn search_path_options() -> String {
     format!("-c search_path={APP_SCHEMA}")
 }
@@ -35,6 +35,11 @@ fn options_with_search_path(existing: Option<&str>) -> String {
         Some(options) => format!("{options} {}", search_path_options()),
         None => search_path_options(),
     }
+}
+
+fn pin_search_path(config: &mut postgres::Config) {
+    let startup_options = options_with_search_path(config.get_options());
+    config.options(&startup_options);
 }
 
 /// How a connection is protected. `Disabled` is the local development case,
@@ -149,8 +154,7 @@ pub fn plan(
         // The driver only has to insist on TLS; the chain and the host name
         // are verified by the connector built from `root_cert`.
         config.ssl_mode(SslMode::Require);
-        let startup_options = options_with_search_path(config.get_options());
-        config.options(&startup_options);
+        pin_search_path(&mut config);
         Ok(Plan {
             config,
             tls: TlsPlan::Verified { root_cert },
@@ -163,8 +167,7 @@ pub fn plan(
             });
         }
         config.ssl_mode(SslMode::Disable);
-        let startup_options = options_with_search_path(config.get_options());
-        config.options(&startup_options);
+        pin_search_path(&mut config);
         Ok(Plan {
             config,
             tls: TlsPlan::Disabled,
