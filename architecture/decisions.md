@@ -324,3 +324,21 @@ part of the repository: they are read from `DATABASE_URL` or assembled from `SUP
 `SUPABASE_DB_ROOT_CERT`, and the release workflow injects them from the secrets of the protected
 `production` environment only. Every message that names a connection string passes
 `redact_database_url` first.
+
+## 17. The legal texts are versioned content, not layout
+
+The terms of service and the privacy policy are declared as data in
+`src/features/legal/legal-documents.ts` and rendered by one `LegalDocumentView`. A wording change
+therefore never touches a component, and both pages stay identical in structure and in the
+accessibility of their headings.
+
+Each document carries its own version and an ISO day. The day is shown as it is written instead of
+being formatted for the locale of the reader: it identifies a revision of a text, not a moment in a
+timezone, and every timestamp the application derives from the clock is already timezone dependent
+enough. An installed build keeps the revision it was released with, so a user can tell which text
+they accepted.
+
+Neither document is stored, acknowledged or synchronised. There is no service behind the
+application, so there is nothing to record consent with: the texts describe the licence, the
+absence of a warranty and the local-first handling of the data, and they are reachable from the
+account menu next to the third-party licence notices.
