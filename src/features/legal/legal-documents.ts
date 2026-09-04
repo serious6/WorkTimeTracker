@@ -32,10 +32,10 @@ export const termsOfService: LegalDocument = {
       ],
     },
     {
-      heading: '2. Licence',
+      heading: '2. License',
       paragraphs: [
-        'The software is licensed under the MIT licence. You may use, copy, modify and redistribute it under the conditions of that licence, which is included with every release and takes precedence over these terms wherever they differ.',
-        'The dependencies keep their own licences. The full notices are listed in the application under "Third-Party Licenses".',
+        'The software is licensed under the MIT license. You may use, copy, modify and redistribute it under the conditions of that license, which is included with every release and takes precedence over these terms wherever they differ.',
+        'The dependencies keep their own licenses. The full notices are listed in the application under "Third-Party Licenses".',
       ],
     },
     {
@@ -118,7 +118,7 @@ export const privacyPolicy: LegalDocument = {
     {
       heading: '4. No tracking and no transmission',
       paragraphs: [
-        'There is no analytics, no telemetry, no crash reporting and no advertising. Apart from the connection to your own database, the application makes no network request, so nothing you record leaves your environment through it.',
+        'There are no analytics, no telemetry, no crash reporting and no advertising. Apart from the connection to your own database, the application makes no network request, so nothing you record leaves your environment through it.',
       ],
     },
     {

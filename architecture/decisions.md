@@ -339,6 +339,6 @@ enough. An installed build keeps the revision it was released with, so a user ca
 that build includes.
 
 Neither document is stored, acknowledged or synchronised. There is no service behind the
-application, so there is nothing to record consent with: the texts describe the licence, the
+application, so there is nothing to record consent with: the texts describe the license, the
 absence of a warranty and the local-first handling of the data, and they are reachable from the
-account menu next to the third-party licence notices.
+account menu next to the third-party license notices.
