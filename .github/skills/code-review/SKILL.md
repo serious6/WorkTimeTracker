@@ -1,7 +1,6 @@
 ---
-name: code-review-and-quality
-description: Review checklist for WorkTimeTracker code changes, mapped to this repository's frontend, Rust backend, contract, migrations, tests, and docs.
-trigger: Every code review - pull request reviews, requested reviews, and reviews of local or staged diffs.
+name: code-review
+description: Review checklist for every WorkTimeTracker code review, including PR reviews, requested reviews, and local/staged diffs across frontend, Rust backend, contracts, migrations, tests, and docs.
 ---
 
 # Code review and quality
@@ -21,9 +20,8 @@ commands are in [`AGENTS.md`](../../../AGENTS.md); this skill only adds what a r
    finding.
 5. **Severity** — `blocker` (correctness, security, data loss, contract divergence), `major`
    (architecture, missing tests), `minor` (readability), `nit` (style, explicitly optional).
-6. **Verification** — state which of `npm run lint`, `npm run typecheck`, `npm test`,
-   `npm run test:e2e`, `npm run architecture:check`, `npm run licenses:check`, and
-   `cargo test --manifest-path src-tauri/Cargo.toml` were run or still need to run.
+6. **Verification** — state which applicable quality checks from
+   [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#quality-checks) were run or still need to run.
 7. **Verdict** — approve, request changes, or comment, using the output template.
 
 ## Dimensions
@@ -143,8 +141,10 @@ commands are in [`AGENTS.md`](../../../AGENTS.md); this skill only adds what a r
   stays consistent and DST-safe; no ad-hoc format string, no second UI language in shared components.
 - **Migration safety**: migrations are forward-only and non-destructive by default, because the
   user's database is theirs and we cannot inspect it.
-- **Audit trail**: writes to entries, projects, absences, and settings still record their trail via
-  `src/features/audit/`; a write path that bypasses it is a blocker.
+- **Audit trail**: writes to entries, projects, budgets, absences, overtime, and settings append
+  audit rows atomically in the mutation paths (`src/features/storage/local-repository.ts`,
+  `src-tauri/src/postgres_store.rs`) per `architecture/decisions.md`; a write path that bypasses
+  it is a blocker.
 - **User-facing errors**: surfaced through `src/lib/errors.ts` by `AppError.kind`, never by message
   text, and never leaking a connection string or a stack trace.
 

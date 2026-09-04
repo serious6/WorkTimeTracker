@@ -84,7 +84,7 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 ## Code review
 
 Reviews - by humans or agents - follow
-[`.github/skills/code-review-and-quality/SKILL.md`](.github/skills/code-review-and-quality/SKILL.md):
+[`.github/skills/code-review/SKILL.md`](.github/skills/code-review/SKILL.md):
 the review dimensions, severity levels, and output template.
 
 ## Project layout
