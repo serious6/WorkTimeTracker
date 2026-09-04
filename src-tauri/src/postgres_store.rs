@@ -2037,6 +2037,29 @@ impl Store for PostgresStore {
         transaction.commit()?;
         Ok(user)
     }
+
+    /// Deletes the row in `users`; every table that references `users.id` does
+    /// so `ON DELETE CASCADE`, so the projects, budgets, entries, absences,
+    /// overtime records, settings and all audit trails of the account go with
+    /// it. The lockout counter of the account is keyed by email instead of by
+    /// `user_id` and is removed explicitly, so the address does not survive
+    /// the erasure either. Auth records with `user_id IS NULL` belong to no
+    /// account and are deliberately left untouched. One transaction: a failure
+    /// anywhere leaves the account fully intact.
+    fn delete_account(&self, user_id: i64) -> Result<(), StoreError> {
+        let mut client = self.conn()?;
+        let mut transaction = client.transaction()?;
+        let Some(row) =
+            transaction.query_opt("SELECT email FROM users WHERE id = $1", &[&user_id])?
+        else {
+            return Err(StoreError::NotFound);
+        };
+        let email: String = row.get(0);
+        transaction.execute("DELETE FROM login_attempts WHERE email = $1", &[&email])?;
+        transaction.execute("DELETE FROM users WHERE id = $1", &[&user_id])?;
+        transaction.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -3124,5 +3147,273 @@ mod tests {
             1
         );
         assert_eq!(store.list_project_budgets(user).unwrap(), [other.budget]);
+    }
+
+    /// Every table that carries a `user_id`. A table added later without being
+    /// registered here fails `every_user_owned_table_is_registered`, so the
+    /// erasure below is asserted table by table instead of for a handful of
+    /// hand-picked ones.
+    const USER_OWNED_TABLES: [&str; 10] = [
+        "absence_audits",
+        "absences",
+        "overtime_audits",
+        "overtime_entries",
+        "project_budgets",
+        "projects",
+        "security_audits",
+        "time_entries",
+        "time_entry_audits",
+        "work_settings",
+    ];
+
+    fn test_client() -> postgres::Client {
+        let url = std::env::var("DATABASE_URL").expect("test_store checked DATABASE_URL");
+        postgres::Client::connect(&url, NoTls).expect("test_store already connected to this server")
+    }
+
+    fn rows_of_user(client: &mut postgres::Client, table: &str, user_id: i64) -> i64 {
+        client
+            .query_one(
+                &format!("SELECT COUNT(*) FROM {table} WHERE user_id = $1"),
+                &[&user_id],
+            )
+            .unwrap()
+            .get(0)
+    }
+
+    /// One account with at least one row in every user-owned table, so the
+    /// erasure can be proven per table instead of in bulk.
+    fn seed_account(store: &PostgresStore) -> User {
+        // Records `user.registered` in security_audits.
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+        let project = store
+            .insert_project(
+                user.id,
+                &SaveProject {
+                    name: "Erasure project".into(),
+                    description: None,
+                    color: "#336699".into(),
+                    active: true,
+                },
+            )
+            .unwrap();
+        store
+            .insert_project_budget(
+                user.id,
+                &SaveProjectBudget {
+                    project_id: project.id,
+                    budget_minutes: 600,
+                    due_date: "2026-12-31".into(),
+                },
+            )
+            .unwrap();
+        store
+            .create_time_entry(
+                user.id,
+                &SaveTimeEntry {
+                    project_id: Some(project.id),
+                    start_time: "2026-01-05T08:00:00.000Z".into(),
+                    end_time: Some("2026-01-05T09:00:00.000Z".into()),
+                    entry_type: None,
+                    note: None,
+                },
+            )
+            .unwrap();
+        store
+            .insert_absence(
+                user.id,
+                &SaveAbsence {
+                    absence_type: "vacation".into(),
+                    date: "2026-01-06".into(),
+                },
+            )
+            .unwrap();
+        store
+            .insert_overtime_entry(
+                user.id,
+                &SaveOvertimeEntry {
+                    effective_date: "2026-01-07".into(),
+                    minutes: 60,
+                    kind: "adjustment".into(),
+                    origin: None,
+                    note: None,
+                },
+            )
+            .unwrap();
+        let settings = store.read_settings(user.id).unwrap();
+        store
+            .write_settings(
+                user.id,
+                &WorkSettings {
+                    weekly_target_minutes: settings.weekly_target_minutes + 60,
+                    ..settings
+                },
+            )
+            .unwrap();
+        // A failed login of this account: an auth record and a lockout counter.
+        store
+            .record_auth_event(&user.email, LOGIN_FAILED_ACTION)
+            .unwrap();
+        store
+            .reserve_login_attempt(
+                &user.email,
+                "2026-01-08T10:00:00.000Z",
+                "1971-01-01T00:00:00.000Z",
+                5,
+            )
+            .unwrap();
+        user
+    }
+
+    /// The erasure relies on the `ON DELETE CASCADE` of every table that
+    /// references `users.id`, so a new user-owned table has to be known here.
+    #[test]
+    fn every_user_owned_table_is_registered() {
+        let Some(_store) = test_store() else {
+            return;
+        };
+        let mut client = test_client();
+
+        let found: Vec<String> = client
+            .query(
+                "SELECT table_name FROM information_schema.columns
+                 WHERE table_schema = 'public' AND column_name = 'user_id'
+                 ORDER BY table_name",
+                &[],
+            )
+            .unwrap()
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+
+        assert_eq!(
+            found,
+            USER_OWNED_TABLES.map(str::to_owned),
+            "a user-owned table has to be registered in USER_OWNED_TABLES, \
+             so the erasure is asserted for it"
+        );
+    }
+
+    /// GDPR Art. 17: the account and everything of it goes, the audit trails
+    /// included.
+    #[test]
+    fn erases_every_record_of_the_deleted_account() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let user = seed_account(&store);
+        let mut client = test_client();
+        for table in USER_OWNED_TABLES {
+            assert!(
+                rows_of_user(&mut client, table, user.id) > 0,
+                "{table} was not seeded, the erasure would prove nothing"
+            );
+        }
+
+        store.delete_account(user.id).unwrap();
+
+        for table in USER_OWNED_TABLES {
+            assert_eq!(
+                rows_of_user(&mut client, table, user.id),
+                0,
+                "{table} still holds records of the deleted account"
+            );
+        }
+        assert!(
+            store.read_user(user.id).unwrap().is_none(),
+            "the account itself must be gone"
+        );
+        assert_eq!(
+            store.read_login_attempt(&user.email).unwrap(),
+            None,
+            "the lockout counter names the erased email"
+        );
+    }
+
+    #[test]
+    fn keeps_every_record_of_the_other_accounts() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let deleted = seed_account(&store);
+        let kept = seed_account(&store);
+        let mut client = test_client();
+        let before: Vec<i64> = USER_OWNED_TABLES
+            .iter()
+            .map(|table| rows_of_user(&mut client, table, kept.id))
+            .collect();
+
+        store.delete_account(deleted.id).unwrap();
+
+        for (table, count) in USER_OWNED_TABLES.iter().zip(before) {
+            assert_eq!(
+                rows_of_user(&mut client, table, kept.id),
+                count,
+                "{table} lost records of another account"
+            );
+        }
+        assert!(store.read_user(kept.id).unwrap().is_some());
+        assert!(store.read_login_attempt(&kept.email).unwrap().is_some());
+    }
+
+    /// A failed login of an unknown email belongs to no account, so no erasure
+    /// of an account may take it with it.
+    #[test]
+    fn keeps_the_auth_records_that_belong_to_no_account() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let unknown = unique_email();
+        store
+            .record_auth_event(&unknown, LOGIN_FAILED_ACTION)
+            .unwrap();
+        let user = seed_account(&store);
+        let mut client = test_client();
+
+        store.delete_account(user.id).unwrap();
+
+        let unowned: i64 = client
+            .query_one(
+                "SELECT COUNT(*) FROM security_audits WHERE user_id IS NULL AND actor = $1",
+                &[&unknown],
+            )
+            .unwrap()
+            .get(0);
+        assert_eq!(unowned, 1, "the record of an unknown email must survive");
+    }
+
+    /// The erasure is one transaction: a failure leaves the account, its data
+    /// and all of its trails intact, and is surfaced to the caller. The trigger
+    /// makes a cascade of the deletion fail, so a private database is used.
+    #[test]
+    fn keeps_the_account_when_the_deletion_fails() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let store = PostgresStore::connect(database.url()).unwrap();
+        let user = seed_account(&store);
+        let mut client = postgres::Client::connect(database.url(), NoTls).unwrap();
+        client
+            .batch_execute(
+                "CREATE FUNCTION refuse_delete() RETURNS TRIGGER AS $$
+                 BEGIN RAISE EXCEPTION 'refused'; END;
+                 $$ LANGUAGE plpgsql;
+                 CREATE TRIGGER refuse_time_entry_delete BEFORE DELETE ON time_entries
+                 FOR EACH ROW EXECUTE FUNCTION refuse_delete()",
+            )
+            .unwrap();
+
+        let error = store
+            .delete_account(user.id)
+            .expect_err("the failing cascade must reject the erasure");
+
+        assert!(matches!(error, StoreError::Backend(_)), "{error}");
+        for table in USER_OWNED_TABLES {
+            assert!(
+                rows_of_user(&mut client, table, user.id) > 0,
+                "{table} lost records although the erasure failed"
+            );
+        }
+        assert!(store.read_user(user.id).unwrap().is_some());
     }
 }

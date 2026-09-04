@@ -193,6 +193,24 @@ impl Sessions {
         }
         Ok(())
     }
+
+    /// Erases an account and ends every session of that user, the sessions of
+    /// other windows included: a session only carries a user id, so a window
+    /// left signed in would keep commanding a user that no longer exists. The
+    /// erasure runs while the session map is locked, so a login racing it
+    /// either starts its session before the erasure and is removed here, or
+    /// after it and fails on the credentials that are already gone. Nothing is
+    /// signed out when the erasure fails.
+    pub fn end_all_of_user(
+        &self,
+        user_id: i64,
+        erase: impl FnOnce() -> AppResult<()>,
+    ) -> AppResult<()> {
+        let mut sessions = self.0.lock()?;
+        erase()?;
+        sessions.retain(|_, session| session.user_id != user_id);
+        Ok(())
+    }
 }
 
 /// Counts the login attempts per email to slow down password guessing. The
@@ -508,6 +526,33 @@ mod tests {
         assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), Some(7));
         sessions.end(&id, "main").unwrap();
         assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), None);
+    }
+
+    #[test]
+    fn ends_every_window_of_an_erased_user() {
+        let sessions = Sessions::default();
+        let now = Moment::now();
+        let first = sessions.start_at(7, "main", now).unwrap();
+        let second = sessions.start_at(7, "second", now).unwrap();
+        let other = sessions.start_at(9, "third", now).unwrap();
+
+        sessions.end_all_of_user(7, || Ok(())).unwrap();
+
+        assert_eq!(sessions.user_id_at(&first, "main", now).unwrap(), None);
+        assert_eq!(sessions.user_id_at(&second, "second", now).unwrap(), None);
+        assert_eq!(sessions.user_id_at(&other, "third", now).unwrap(), Some(9));
+    }
+
+    #[test]
+    fn keeps_the_sessions_when_the_erasure_fails() {
+        let sessions = Sessions::default();
+        let now = Moment::now();
+        let id = sessions.start_at(7, "main", now).unwrap();
+
+        let failed = sessions.end_all_of_user(7, || Err(AppError::internal("erasure failed")));
+
+        assert!(failed.is_err());
+        assert_eq!(sessions.user_id_at(&id, "main", now).unwrap(), Some(7));
     }
 
     #[test]

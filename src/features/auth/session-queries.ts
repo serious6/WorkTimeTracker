@@ -24,8 +24,10 @@ let expiredUserId: number | null = null
 
 /**
  * Switching the user drops every cached record of the previous user, so no data
- * of another account can be shown. `keepView` is only set when the same user
- * continues an interrupted session, where the view is not another account's.
+ * of another account can be shown. The mutation cache goes with it: it still
+ * holds the variables and results of the previous user, credentials included.
+ * `keepView` is only set when the same user continues an interrupted session,
+ * where the view is not another account's.
  */
 function applySession(
   queryClient: QueryClient,
@@ -34,6 +36,7 @@ function applySession(
 ): void {
   useTimerStore.getState().setSession(null)
   if (!keepView) useNavigationStore.getState().navigate('dashboard')
+  queryClient.getMutationCache().clear()
   queryClient.removeQueries({
     predicate: (query) => query.queryKey[0] !== sessionKeys.current[0],
   })
@@ -76,6 +79,22 @@ export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => getRepository().logout(),
+    onSuccess: () => {
+      expiredUserId = null
+      applySession(queryClient, null)
+    },
+  })
+}
+
+/**
+ * Erases the account and everything of it (GDPR Art. 17). The session ends
+ * like on a logout and the cache is dropped with it, so no data of the deleted
+ * account is left readable in memory.
+ */
+export function useDeleteAccount() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => getRepository().deleteAccount(),
     onSuccess: () => {
       expiredUserId = null
       applySession(queryClient, null)

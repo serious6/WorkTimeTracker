@@ -133,6 +133,18 @@ describe('tauriRepository – auth', () => {
 
     expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })
   })
+
+  test('deleteAccount invokes delete_account and forgets the session id', async () => {
+    mockInvoke.mockResolvedValue({ user: USER, sessionId: SESSION_ID })
+    await tauriRepository.login({ email: 'user@example.com', password: 'pw' })
+    mockInvoke.mockResolvedValue(undefined)
+
+    await tauriRepository.deleteAccount()
+    invokedWith('delete_account', {})
+    await tauriRepository.deleteProject(1)
+
+    expect(mockInvoke).toHaveBeenLastCalledWith('delete_project', { sessionId: '', id: 1 })
+  })
 })
 
 describe('tauriRepository – projects', () => {
