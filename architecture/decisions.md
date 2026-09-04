@@ -276,17 +276,19 @@ timezone, and every timestamp the application derives from the clock is already 
 enough. An installed build keeps the revision it was released with, so a user can tell which text
 that build includes.
 
-Neither document is stored, acknowledged or synchronised. The authors run no service that could
-record consent: the texts describe the license, the absence of a warranty and where the data is
-kept, and they are reachable from the account menu next to the third-party license notices.
+Neither document is stored, acknowledged or synchronised. The application implements no
+acknowledgment or consent flow: the texts describe the license, the absence of a warranty and where
+the data is kept, and they are reachable from the account menu next to the third-party license
+notices.
 
 Because decision 16 gives the application two storage modes, both texts name them instead of
-promising a single one: a development, self-hosted or browser build keeps the data in the storage
-the user configured, while a production release stores it in the hosted Postgres database in the
-EU. That is content again, so the distinction lives in the text, not in a component that would have
-to know the mode. The texts also state that the authors administer the production database and may
-read its contents to fix errors and evaluate usage, because a promise the deployment cannot keep
-would be worse than no promise.
+promising a single one: desktop development builds, browser development or test runs, and
+self-hosted production deployments keep the data in storage controlled by the operator, while a
+released production build stores it in the hosted Postgres database in the EU. That is content
+again, so the distinction lives in the text, not in a component that would have to know the mode. The
+texts also state that the authors administer the production database and may read its contents to fix
+errors and evaluate usage, because a promise the deployment cannot keep would be worse than no
+promise.
 
 ## 18. Archiving retires a project, it never touches its records
 

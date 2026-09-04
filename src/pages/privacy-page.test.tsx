@@ -21,7 +21,7 @@ describe('PrivacyPage', () => {
     renderWithProviders(<PrivacyPage />)
 
     expect(screen.getByRole('heading', { level: 2, name: '2. Where your data is stored' })).toBeInTheDocument()
-    expect(screen.getByText(/Local, development, self-hosted and browser builds/i)).toBeInTheDocument()
+    expect(screen.getByText(/Desktop development builds use the local Postgres database/i)).toBeInTheDocument()
     expect(screen.getByText(/Supabase, Inc\. on infrastructure located in the European Union/)).toBeInTheDocument()
     expect(screen.getByText(/only to investigate and fix errors/i)).toBeInTheDocument()
   })

@@ -376,11 +376,11 @@ export function SettingsPage() {
         <CardContent>
           <p className="text-sm text-muted-foreground">
             All projects, time entries and settings are stored in the database this build is
-            configured for: a local or self-hosted build keeps them on your own machine, the released
-            production build keeps them in the hosted database in the European Union that the authors
-            administer and may review to fix errors and evaluate usage. The application collects no
-            telemetry and sends nothing to an analytics service. The privacy policy describes both
-            cases.
+            configured for: a local or self-hosted build keeps them in storage controlled by you or
+            the operator, and the released production build keeps them in the hosted database in the
+            European Union that the authors administer and may review to fix errors and evaluate
+            usage. The application collects no telemetry and sends nothing to an analytics service.
+            The privacy policy describes both cases.
           </p>
         </CardContent>
       </Card>

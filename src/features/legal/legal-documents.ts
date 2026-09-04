@@ -71,7 +71,7 @@ export const termsOfService: LegalDocument = {
     {
       heading: '7. No availability commitment',
       paragraphs: [
-        'There is no uptime or availability commitment, neither for the software nor for the hosted database of the released production build, whose availability depends on a third-party provider. Export your records regularly so that a temporary or permanent loss of access to the database does not take your working time record with it.',
+        'There is no uptime or availability commitment, either for the software or for the hosted database of the released production build, whose availability depends on a third-party provider. Export your records regularly so that a temporary or permanent loss of access to the database does not take your working time record with it.',
       ],
     },
     {
@@ -99,17 +99,17 @@ export const privacyPolicy: LegalDocument = {
     {
       heading: '1. Who is responsible',
       paragraphs: [
-        'The authors of the software operate no service of their own beyond the database of the released production build, and a local or self-hosted deployment sends them nothing at all. You — or the organisation that deploys the application for you — are the controller of the data the application holds. For the released production build, Supabase, Inc. hosts the database as a processor, and the authors administer that database and can access the data stored in it, as described in the section on tracking and access below.',
+        'The authors of the software operate no service of their own beyond the database of the released production build, and a local or self-hosted deployment sends them nothing at all. For desktop development, browser development or test runs, and self-hosted production deployments, you — or the organisation that deploys the application for you — are the controller of the data the application holds. For the released production build, the authors decide the limited purposes for administering and reviewing the hosted database described in the section on tracking and access below, while Supabase, Inc. hosts that database as a processor.',
       ],
     },
     {
       heading: '2. Where your data is stored',
       paragraphs: [
-        'The application always writes to one database, but which one depends on the build you run.',
-        'Local, development, self-hosted and browser builds: the data never leaves your machine or the database you configured. The connection is restricted to loopback hosts, and the browser build keeps everything in the storage of that browser profile.',
+        'The application always writes to one storage backend, but which one depends on the build and deployment mode.',
+        'Desktop development builds use the local Postgres database configured by the developer. Browser development and test runs keep everything in the storage of that browser profile.',
         'The released production build: the data is stored in a Postgres database operated by Supabase, Inc. on infrastructure located in the European Union. Supabase is the hosting provider of that database and processes the data only to run it. The connection is encrypted with TLS, and both the certificate chain and the host name are verified (sslmode=verify-full) against a pinned certificate authority; a certificate that cannot be verified aborts the start instead of falling back to an unencrypted connection.',
         'Everything listed under "3. What is stored" below is held in that hosted database when you use a released production build.',
-        'The connection details are configuration, not part of the repository. A self-built or self-hosted deployment can point the application at any Postgres database it controls instead.',
+        'The connection details are configuration, not part of the repository. A self-hosted production deployment can use a remote Postgres database controlled by its operator when the connection uses sslmode=verify-full with a pinned certificate authority; production mode rejects local database hosts, and non-production desktop modes reject remote hosts.',
       ],
     },
     {
@@ -134,7 +134,7 @@ export const privacyPolicy: LegalDocument = {
       heading: '5. No tracking, and access by the authors',
       paragraphs: [
         'The application itself contains no analytics, no telemetry, no crash reporting and no advertising. The only network connection it makes is to the configured database, which in the released production build is the hosted database in the European Union described above. Nothing you record is sent to any analytics, advertising or tracking service, and no data is passed on to any other third party.',
-        'In a local or self-hosted deployment the authors receive nothing. In the released production build the authors administer the hosted database and can therefore read the data stored in it. They access it only to investigate and fix errors and to evaluate how the application is used, they limit that access to what those purposes require, and they neither sell the data nor use it for advertising.',
+        'In a local or self-hosted deployment the authors receive nothing. In the released production build the authors administer the hosted database and can therefore read the data stored in it. They access it only to investigate and fix errors and to evaluate how the application is used. They limit that access to what those purposes require, and they neither sell the data nor use it for advertising.',
       ],
     },
     {
