@@ -2389,7 +2389,7 @@ mod tests {
             .query(
                 "SELECT table_name FROM information_schema.tables
                  WHERE table_schema = $1 AND table_type = 'BASE TABLE'
-                 ORDER BY table_name",
+                 ORDER BY table_name COLLATE \"C\"",
                 &[&APP_SCHEMA],
             )
             .unwrap()
@@ -2404,7 +2404,7 @@ mod tests {
                  WHERE table_schema = 'public'
                    AND table_type = 'BASE TABLE'
                    AND table_name = ANY($1)
-                 ORDER BY table_name",
+                 ORDER BY table_name COLLATE \"C\"",
                 &[&expected_tables],
             )
             .unwrap()
