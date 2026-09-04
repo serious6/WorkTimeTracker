@@ -32,6 +32,7 @@ npm run licenses:check
 npm run test:coverage
 npm run test:e2e
 npm run architecture:check
+npm run build
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
 cargo test --manifest-path src-tauri/Cargo.toml

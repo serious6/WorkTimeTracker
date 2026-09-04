@@ -135,8 +135,9 @@ remote database, but only with verified transport and an explicit migration step
 
 **Decision:** `WORK_TIME_TRACKER_ENV` defaults to `development`, where database hosts must be
 `localhost`, loopback, or the compose host `db` without TLS. `production` refuses local hosts and
-requires `sslmode=verify-full` with `SUPABASE_DB_ROOT_CERT`. The release workflow injects production
-connection values from the protected `production` environment.
+requires `sslmode=verify-full` with a pinned CA from connection-string `sslrootcert` or
+`SUPABASE_DB_ROOT_CERT`. The release workflow injects production connection values from the
+protected `production` environment.
 
 **Consequences:** Test helpers refuse to create or drop databases outside development/local hosts.
 Remote connection strings are redacted before logging. Production database credentials never belong
