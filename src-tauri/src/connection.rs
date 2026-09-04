@@ -21,6 +21,8 @@ pub const COMPOSE_ENV: &str = "WORK_TIME_TRACKER_COMPOSE";
 const COMPOSE_HOST: &str = "db";
 const VERIFY_FULL: &str = "verify-full";
 const DISABLE: &str = "disable";
+/// Pinned at connection startup because the store uses unqualified SQL; direct
+/// test clients must set the same option when they query application tables.
 pub(crate) const SEARCH_PATH_OPTIONS: &str = "-c search_path=wtt";
 
 /// How a connection is protected. `Disabled` is the local development case,

@@ -2381,7 +2381,10 @@ mod tests {
         let _store = PostgresStore::connect(database.url()).unwrap();
         let mut client = connect_test_client(database.url());
 
-        let application_tables = APPLICATION_TABLES.to_vec();
+        let expected_tables: Vec<String> = APPLICATION_TABLES
+            .iter()
+            .map(|table| (*table).to_owned())
+            .collect();
         let wtt_tables: Vec<String> = client
             .query(
                 "SELECT table_name FROM information_schema.tables
@@ -2393,10 +2396,6 @@ mod tests {
             .iter()
             .map(|row| row.get(0))
             .collect();
-        let expected_tables: Vec<String> = APPLICATION_TABLES
-            .iter()
-            .map(|table| (*table).to_owned())
-            .collect();
         assert_eq!(wtt_tables, expected_tables);
 
         let public_tables: Vec<String> = client
@@ -2406,7 +2405,7 @@ mod tests {
                    AND table_type = 'BASE TABLE'
                    AND table_name = ANY($1)
                  ORDER BY table_name",
-                &[&application_tables],
+                &[&expected_tables],
             )
             .unwrap()
             .iter()
@@ -3201,6 +3200,8 @@ mod tests {
         assert_eq!(store.list_project_budgets(user).unwrap(), [other.budget]);
     }
 
+    /// Every native application table, including migration bookkeeping. A table
+    /// added later must be listed here so its schema placement is asserted.
     const APPLICATION_TABLES: &[&str] = &[
         "absence_audits",
         "absences",
