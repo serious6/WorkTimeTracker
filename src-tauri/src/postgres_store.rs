@@ -627,6 +627,7 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
 fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
     let mut transaction = client.transaction()?;
     transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
+    // Keep the schema name aligned with `connection::APP_SCHEMA` and the baseline.
     transaction.batch_execute(
         "CREATE SCHEMA IF NOT EXISTS wtt;
          CREATE TABLE IF NOT EXISTS wtt.schema_migrations (

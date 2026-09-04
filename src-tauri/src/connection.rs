@@ -24,8 +24,17 @@ const DISABLE: &str = "disable";
 pub(crate) const APP_SCHEMA: &str = "wtt";
 /// Pinned at connection startup because the store uses unqualified SQL; direct
 /// test clients must set the same option when they query application tables.
+/// The path intentionally excludes `public` for the Supabase defense-in-depth
+/// boundary.
 pub(crate) fn search_path_options() -> String {
     format!("-c search_path={APP_SCHEMA}")
+}
+
+fn options_with_search_path(existing: Option<&str>) -> String {
+    match existing.filter(|options| !options.trim().is_empty()) {
+        Some(options) => format!("{options} {}", search_path_options()),
+        None => search_path_options(),
+    }
 }
 
 /// How a connection is protected. `Disabled` is the local development case,
@@ -140,7 +149,8 @@ pub fn plan(
         // The driver only has to insist on TLS; the chain and the host name
         // are verified by the connector built from `root_cert`.
         config.ssl_mode(SslMode::Require);
-        config.options(&search_path_options());
+        let startup_options = options_with_search_path(config.get_options());
+        config.options(&startup_options);
         Ok(Plan {
             config,
             tls: TlsPlan::Verified { root_cert },
@@ -153,7 +163,8 @@ pub fn plan(
             });
         }
         config.ssl_mode(SslMode::Disable);
-        config.options(&search_path_options());
+        let startup_options = options_with_search_path(config.get_options());
+        config.options(&startup_options);
         Ok(Plan {
             config,
             tls: TlsPlan::Disabled,
@@ -537,6 +548,19 @@ mod tests {
                 // separately configured authority, and is percent-decoded.
                 root_cert: "/tmp/ca file.crt".to_owned()
             }
+        );
+    }
+
+    #[test]
+    fn appends_the_schema_to_existing_startup_options() {
+        let plan = development(
+            "postgresql://user@localhost/database?options=-c%20statement_timeout%3D5000",
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan.config.get_options(),
+            Some("-c statement_timeout=5000 -c search_path=wtt")
         );
     }
 
