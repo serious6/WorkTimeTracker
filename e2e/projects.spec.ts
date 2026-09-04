@@ -139,7 +139,8 @@ test('P4: an archived project leaves the tracking selections and can be restored
   await dialog(page).getByRole('button', { name: 'Cancel' }).click()
 
   await gotoPage(page, 'Time Entries')
-  await expect(page.getByText('Archive Me', { exact: true }).first()).toBeVisible()
+  await expect(page.locator('li').filter({ hasText: 'Archive Me' }).first()).toBeVisible()
+  await expect(page.getByText('Total: 1h 00m')).toBeVisible()
 
   await gotoPage(page, 'Projects')
   await page.getByRole('button', { name: 'Unarchive Archive Me' }).click()
@@ -155,10 +156,11 @@ test('P4: an archived project leaves the tracking selections and can be restored
 test('P5: an overdue budget warns during tracking without blocking it', async ({ page }) => {
   await createProject(page, 'Overdue Project')
   await createProject(page, 'Healthy Project')
-  await addEntry(page, 'Overdue Project', '08:00', '11:00')
+  // Early in the day, so the timer started below never overlaps this entry.
+  await addEntry(page, 'Overdue Project', '00:00', '00:30')
 
   await gotoPage(page, 'Budgets')
-  await createBudget(page, { project: 'Overdue Project', budgetHours: '2', dueDate: dateKey(30) })
+  await createBudget(page, { project: 'Overdue Project', budgetHours: '0.25', dueDate: dateKey(30) })
   await expect(page.getByText('Budget created', { exact: true }).first()).toBeVisible()
 
   await gotoPage(page, 'Dashboard')
@@ -170,7 +172,7 @@ test('P5: an overdue budget warns during tracking without blocking it', async ({
   await page.getByRole('option', { name: 'Overdue Project' }).click()
   const warning = trackingCard(page).getByRole('status').filter({ hasText: 'Budget overdue' })
   await expect(warning).toBeVisible()
-  await expect(warning).toContainText('exceeded by 1h 00m')
+  await expect(warning).toContainText('exceeded by 0h 15m')
 
   // The warning informs only: the timer still starts and keeps warning.
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()

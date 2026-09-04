@@ -324,3 +324,23 @@ part of the repository: they are read from `DATABASE_URL` or assembled from `SUP
 `SUPABASE_DB_ROOT_CERT`, and the release workflow injects them from the secrets of the protected
 `production` environment only. Every message that names a connection string passes
 `redact_database_url` first.
+
+## 17. Archiving retires a project, it never touches its records
+
+A project that is no longer worked on is archived instead of deleted: deletion detaches its entries
+(`project_id` becomes `NULL`) and the past reads as "Deleted project", which loses information the
+monthly record needs. The `archived` flag only removes the project from the selections that create
+time: the tracking picker, the time entry dialog and the quick add of the Time Management and Week
+views. It stays on the Projects page with an `archived` marker, keeps its total, and its entries,
+reports and exports are unchanged. A selection that already names an archived project — the edit of
+an existing entry, the budget of that project — keeps offering it, so an edit cannot silently drop
+the booked project.
+
+Archiving is therefore allowed while the timer runs on that project: the running entry is a normal
+row and stopping it must not fail because of a configuration change. The card keeps naming the
+project until the user stops or switches; the archived project is only gone from the picker list.
+
+An overdue budget follows the same idea. Once the due date has passed or the tracked time exceeds
+the budget, selecting or tracking the project shows a status message next to the picker. It names
+the reason in text with an icon, never by colour alone, and it never blocks starting, switching or
+stopping the timer: recording what actually happened outweighs the plan.
