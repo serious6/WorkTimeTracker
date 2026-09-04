@@ -1,14 +1,16 @@
 import { sql } from 'drizzle-orm'
-import { bigint, boolean, check, index, pgTable, text, unique } from 'drizzle-orm/pg-core'
+import { bigint, boolean, check, index, pgSchema, text, unique } from 'drizzle-orm/pg-core'
 
-export const users = pgTable('users', {
+const wtt = pgSchema('wtt')
+
+export const users = wtt.table('users', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   email: text().notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   createdAt: text('created_at').notNull(),
 })
 
-export const projects = pgTable('projects', {
+export const projects = wtt.table('projects', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   userId: bigint('user_id', { mode: 'number' }).references(() => users.id, {
     onDelete: 'cascade',
@@ -22,7 +24,7 @@ export const projects = pgTable('projects', {
   updatedAt: text('updated_at').notNull(),
 })
 
-export const timeEntries = pgTable(
+export const timeEntries = wtt.table(
   'time_entries',
   {
     id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -47,7 +49,7 @@ export const timeEntries = pgTable(
 )
 
 /** Append-only trail that keeps every change to a time entry defensible. */
-export const timeEntryAudits = pgTable('time_entry_audits', {
+export const timeEntryAudits = wtt.table('time_entry_audits', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   userId: bigint('user_id', { mode: 'number' })
     .notNull()
@@ -60,7 +62,7 @@ export const timeEntryAudits = pgTable('time_entry_audits', {
   recordedAt: text('recorded_at').notNull(),
 })
 
-export const projectBudgets = pgTable(
+export const projectBudgets = wtt.table(
   'project_budgets',
   {
     id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -79,7 +81,7 @@ export const projectBudgets = pgTable(
   (table) => [check('project_budgets_budget_minutes_check', sql`${table.budgetMinutes} > 0`)],
 )
 
-export const workSettings = pgTable('work_settings', {
+export const workSettings = wtt.table('work_settings', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   userId: bigint('user_id', { mode: 'number' })
     .unique()
@@ -97,7 +99,7 @@ export const workSettings = pgTable('work_settings', {
   minRestMinutes: bigint('min_rest_minutes', { mode: 'number' }).notNull().default(660),
 })
 
-export const appMetadata = pgTable('app_metadata', {
+export const appMetadata = wtt.table('app_metadata', {
   key: text().primaryKey(),
   value: text().notNull(),
 })
@@ -106,7 +108,7 @@ export const appMetadata = pgTable('app_metadata', {
  * One record per excused calendar day; a range is stored as several rows so
  * the unique constraint keeps a day from carrying two absences.
  */
-export const absences = pgTable(
+export const absences = wtt.table(
   'absences',
   {
     id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -123,7 +125,7 @@ export const absences = pgTable(
   (table) => [unique('absences_day_unique').on(table.userId, table.absenceDate)],
 )
 
-export const absenceAudits = pgTable('absence_audits', {
+export const absenceAudits = wtt.table('absence_audits', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   userId: bigint('user_id', { mode: 'number' })
     .notNull()
@@ -141,7 +143,7 @@ export const absenceAudits = pgTable('absence_audits', {
  * and the absences is not stored; only an opening balance, an absolute
  * correction or a delta is persisted, one record per effective date.
  */
-export const overtimeEntries = pgTable(
+export const overtimeEntries = wtt.table(
   'overtime_entries',
   {
     id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -166,7 +168,7 @@ export const overtimeEntries = pgTable(
   ],
 )
 
-export const overtimeAudits = pgTable('overtime_audits', {
+export const overtimeAudits = wtt.table('overtime_audits', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   userId: bigint('user_id', { mode: 'number' })
     .notNull()
@@ -185,7 +187,7 @@ export const overtimeAudits = pgTable('overtime_audits', {
  * `entityId` for the records that name no row, such as the work settings.
  * Credentials are never stored in `oldValue`/`newValue`.
  */
-export const securityAudits = pgTable(
+export const securityAudits = wtt.table(
   'security_audits',
   {
     id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
@@ -210,7 +212,7 @@ export const securityAudits = pgTable(
  * Failed logins per email. Persisted so a restart does not clear a lockout;
  * rows are evicted once their lockout has been served.
  */
-export const loginAttempts = pgTable('login_attempts', {
+export const loginAttempts = wtt.table('login_attempts', {
   email: text().primaryKey(),
   failures: bigint({ mode: 'number' }).notNull(),
   lastFailure: text('last_failure').notNull(),

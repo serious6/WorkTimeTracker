@@ -34,8 +34,9 @@ browser-only UI at <http://127.0.0.1:1420>. Commands and prerequisites are in
 
 ## Database
 
-Postgres is required for the native application. `WORK_TIME_TRACKER_ENV` selects how it is reached
-and defaults to `development`.
+Postgres is required for the native application. Application tables live in the dedicated `wtt`
+schema, leaving the default `public` schema empty. `WORK_TIME_TRACKER_ENV` selects how the
+database is reached and defaults to `development`.
 
 - `development` — `DATABASE_URL` must point at `localhost`, another loopback address, or the
   compose hostname `db`; every other TCP host is rejected before connecting. The connection uses no
