@@ -100,7 +100,8 @@ application — beside `WorkTimeTracker.exe` on Windows and beside `WorkTimeTrac
 the file survives replacing the bundle. Copy the included `WorkTimeTracker.env.example`, fill in the
 settings of [`.env.example`](.env.example), and restrict the file to your account —
 `chmod 600 WorkTimeTracker.env` on macOS, and on Windows a permission list that names your account
-alone, which the first start writes and every later start checks; a relative `SUPABASE_DB_ROOT_CERT` path is resolved against that
+alone, which the first start writes and every later start checks, so the Windows archive needs a
+volume that keeps permissions rather than a FAT formatted stick; a relative `SUPABASE_DB_ROOT_CERT` path is resolved against that
 folder, so the pinned certificate authority travels with the archive. A value that the process
 environment already carries wins over the file, so a managed deployment can still override it.
 

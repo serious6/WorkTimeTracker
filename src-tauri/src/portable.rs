@@ -47,6 +47,7 @@ pub enum PortableError {
     NotStorable(&'static str),
     NotStored(&'static str),
     NotForgotten(&'static str),
+    Unprotectable,
 }
 
 impl std::fmt::Display for PortableError {
@@ -85,6 +86,10 @@ impl std::fmt::Display for PortableError {
             Self::NotStored(name) => write!(
                 formatter,
                 "{name} is marked as held by the credential store of this account, but no such credential exists; enter the connection again in {ENV_FILE_NAME}"
+            ),
+            Self::Unprotectable => write!(
+                formatter,
+                "the volume {ENV_FILE_NAME} sits on keeps no permissions, so the connection cannot be protected there; unpack the archive onto a volume that does"
             ),
             Self::NotForgotten(name) => write!(
                 formatter,
@@ -263,14 +268,17 @@ fn resolve(
 }
 
 /// Removes a secret of this folder from the credential store. A removal that
-/// fails is reported, because a secret that outlives its file is one the user
-/// believes to be gone.
+/// leaves the secret readable is reported, because a secret that outlives its
+/// file is one the user believes to be gone. A store this build cannot reach at
+/// all holds no secret of this folder either, so it does not fail the start of
+/// the installed builds that never wrote one.
 fn forget(
     store: &dyn SecretStore,
     directory: &Path,
     setting: &'static str,
 ) -> Result<(), PortableError> {
-    if store.forget(&credential_name(directory, setting)) {
+    let name = credential_name(directory, setting);
+    if store.forget(&name) || store.secret(&name).is_none() {
         Ok(())
     } else {
         Err(PortableError::NotForgotten(setting))
@@ -293,8 +301,10 @@ fn verify_owner_only(path: &Path) -> Result<(), PortableError> {
     }
     #[cfg(windows)]
     {
-        if windows_acl::reaches_beyond_owner(path).map_err(|_| PortableError::Unreadable)? {
-            return Err(PortableError::Permissions);
+        match windows_acl::permissions(path).map_err(|_| PortableError::Unreadable)? {
+            windows_acl::Permissions::OwnerOnly => {}
+            windows_acl::Permissions::Wider => return Err(PortableError::Permissions),
+            windows_acl::Permissions::Unsupported => return Err(PortableError::Unprotectable),
         }
     }
     #[cfg(not(any(unix, windows)))]
@@ -419,8 +429,13 @@ fn scrub(contents: &str, absorbed: &[&str]) -> String {
 /// file it replaces intact instead of a truncated one whose settings are gone.
 fn write_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
     let temporary = path.with_extension("env.replacement");
+    // The folder may be shared, so a leftover of an earlier run is removed
+    // rather than written into, and the replacement is only ever a file this
+    // start created: a link planted at that name would otherwise receive the
+    // settings and the restricted permissions of the replacement.
+    let _ = std::fs::remove_file(&temporary);
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).truncate(true).create(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -465,7 +480,10 @@ mod windows_acl {
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
 
-    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE, HLOCAL};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, LocalFree, ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED,
+        ERROR_NO_SECURITY_ON_OBJECT, ERROR_SUCCESS, HANDLE, HLOCAL,
+    };
     use windows_sys::Win32::Security::Authorization::{
         GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
     };
@@ -473,50 +491,89 @@ mod windows_acl {
         AddAccessAllowedAce, CreateWellKnownSid, EqualSid, GetAce, GetLengthSid,
         GetTokenInformation, InitializeAcl, TokenUser, WinBuiltinAdministratorsSid,
         WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_REVISION,
-        DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, PSID, TOKEN_QUERY,
-        TOKEN_USER, WELL_KNOWN_SID_TYPE,
+        DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+        PSID, TOKEN_QUERY, TOKEN_USER, WELL_KNOWN_SID_TYPE,
     };
     use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
-    /// The entry types of an access control list that hand out access. The
-    /// remaining ones deny it or only record it, so they never widen the file.
-    const GRANTING_ACE_TYPES: [u8; 4] = [0, 5, 9, 11];
+    /// The entry types of an access control list that hand out access to the
+    /// account named in the entry itself. The remaining ones deny access or
+    /// only record it, so they never widen the file.
+    const GRANTING_ACE_TYPES: [u8; 2] = [0, 9];
 
-    /// Whether the list of the file grants access to anyone but the account of
-    /// this process. The two authorities of the machine itself count as its
-    /// owner: they may take ownership of any file regardless of the list, so
-    /// refusing them would only make every ordinary folder unusable.
-    pub fn reaches_beyond_owner(path: &Path) -> Result<bool, ()> {
+    /// The entry types that hand out access to an account this code does not
+    /// read: they carry the account behind a variable number of identifiers.
+    /// A file object never carries them, and one that did would be wider than
+    /// this code can prove, so it counts as wider.
+    const OPAQUE_ACE_TYPES: [u8; 2] = [5, 11];
+
+    /// The answers of a volume that keeps no permissions at all.
+    const UNPROTECTABLE_STATUS: [u32; 3] = [
+        ERROR_NOT_SUPPORTED,
+        ERROR_INVALID_FUNCTION,
+        ERROR_NO_SECURITY_ON_OBJECT,
+    ];
+
+    /// What the file allows.
+    pub enum Permissions {
+        OwnerOnly,
+        Wider,
+        /// The volume keeps no permissions at all, as a FAT formatted stick
+        /// does. Nothing can be protected there, and nothing can be repaired
+        /// either, so it is worth its own message.
+        Unsupported,
+    }
+
+    /// Whether the file is owned by the account of this process and its list
+    /// grants access to no one else. The two authorities of the machine itself
+    /// count as its owner: they may take ownership of any file regardless of
+    /// the list, so refusing them would only make every ordinary folder
+    /// unusable.
+    pub fn permissions(path: &Path) -> Result<Permissions, ()> {
         let trusted = trusted_sids().ok_or(())?;
         let name = wide(path);
-        // SAFETY: the descriptor is filled in by the call, the list points into
-        // it, and both are read before it is released again.
+        // SAFETY: the descriptor is filled in by the call, the owner and the
+        // list point into it, and both are read before it is released again.
         unsafe {
+            let mut owner: PSID = std::ptr::null_mut();
             let mut list: *mut ACL = std::ptr::null_mut();
             let mut descriptor = std::ptr::null_mut();
             let status = GetNamedSecurityInfoW(
                 name.as_ptr(),
                 SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                std::ptr::null_mut(),
+                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+                &mut owner,
                 std::ptr::null_mut(),
                 &mut list,
                 std::ptr::null_mut(),
                 &mut descriptor,
             );
+            if UNPROTECTABLE_STATUS.contains(&status) {
+                return Ok(Permissions::Unsupported);
+            }
             if status != ERROR_SUCCESS {
                 return Err(());
             }
+            // The owner of a file may hand itself access back at any time, so
+            // a file owned by another account is as wide as one listed for it.
+            let owned_by_others = owner.is_null()
+                || !trusted
+                    .iter()
+                    .any(|known| EqualSid(owner, known.pointer()) != 0);
             let verdict = grants_beyond(list, &trusted);
             LocalFree(descriptor as HLOCAL);
-            verdict
+            match verdict? {
+                true => Ok(Permissions::Wider),
+                false if owned_by_others => Ok(Permissions::Wider),
+                false => Ok(Permissions::OwnerOnly),
+            }
         }
     }
 
     /// Walks the entries of the list. A file without a list at all is open to
     /// everyone, which is the widest case there is.
-    unsafe fn grants_beyond(list: *const ACL, trusted: &[Vec<u8>]) -> Result<bool, ()> {
+    unsafe fn grants_beyond(list: *const ACL, trusted: &[Sid]) -> Result<bool, ()> {
         if list.is_null() {
             return Ok(true);
         }
@@ -526,6 +583,9 @@ mod windows_acl {
                 return Err(());
             }
             let header = &*(entry as *const ACE_HEADER);
+            if OPAQUE_ACE_TYPES.contains(&header.AceType) {
+                return Ok(true);
+            }
             if !GRANTING_ACE_TYPES.contains(&header.AceType) {
                 continue;
             }
@@ -533,7 +593,7 @@ mod windows_acl {
             let sid = std::ptr::addr_of!(granted.SidStart) as PSID;
             if !trusted
                 .iter()
-                .any(|known| EqualSid(sid, known.as_ptr() as PSID) != 0)
+                .any(|known| EqualSid(sid, known.pointer()) != 0)
             {
                 return Ok(true);
             }
@@ -549,7 +609,7 @@ mod windows_acl {
             .ok_or_else(|| io::Error::other("the account of this process has no identifier"))?;
         let size = std::mem::size_of::<ACL>() + std::mem::size_of::<ACCESS_ALLOWED_ACE>()
             - std::mem::size_of::<u32>()
-            + owner.len();
+            + owner.length;
         // An access control list is read as words, so the buffer is one too.
         let mut buffer = vec![0u32; size.div_ceil(std::mem::size_of::<u32>())];
         let list = buffer.as_mut_ptr().cast::<ACL>();
@@ -558,8 +618,7 @@ mod windows_acl {
         // and the identifier outlives the call that copies it into the list.
         unsafe {
             if InitializeAcl(list, size as u32, ACL_REVISION) == 0
-                || AddAccessAllowedAce(list, ACL_REVISION, FILE_ALL_ACCESS, owner.as_ptr() as PSID)
-                    == 0
+                || AddAccessAllowedAce(list, ACL_REVISION, FILE_ALL_ACCESS, owner.pointer()) == 0
             {
                 return Err(io::Error::last_os_error());
             }
@@ -579,19 +638,45 @@ mod windows_acl {
         Ok(())
     }
 
+    /// An identifier of an account, held in a buffer of words so that it
+    /// carries the alignment the Win32 API reads it with.
+    struct Sid {
+        buffer: Vec<u32>,
+        length: usize,
+    }
+
+    impl Sid {
+        fn of_length(length: usize) -> Self {
+            Self {
+                buffer: vec![0; length.div_ceil(std::mem::size_of::<u32>()).max(1)],
+                length,
+            }
+        }
+
+        fn pointer(&self) -> PSID {
+            self.buffer.as_ptr() as PSID
+        }
+
+        fn pointer_mut(&mut self) -> PSID {
+            self.buffer.as_mut_ptr().cast()
+        }
+    }
+
     /// The account of this process, the local system and the administrators of
     /// the machine.
-    fn trusted_sids() -> Option<Vec<Vec<u8>>> {
-        let mut trusted = vec![current_user_sid()?];
-        trusted.push(well_known_sid(WinLocalSystemSid)?);
-        trusted.push(well_known_sid(WinBuiltinAdministratorsSid)?);
-        Some(trusted)
+    fn trusted_sids() -> Option<Vec<Sid>> {
+        Some(vec![
+            current_user_sid()?,
+            well_known_sid(WinLocalSystemSid)?,
+            well_known_sid(WinBuiltinAdministratorsSid)?,
+        ])
     }
 
     /// The identifier of the account this process runs as, read from its token.
-    fn current_user_sid() -> Option<Vec<u8>> {
-        // SAFETY: the token is closed again, and the buffer is filled with the
-        // length the first call reports.
+    fn current_user_sid() -> Option<Sid> {
+        // SAFETY: the token is closed again, and the information is read into a
+        // buffer of the length the first call reports and of the alignment the
+        // structure needs.
         unsafe {
             let mut token: HANDLE = std::ptr::null_mut();
             if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
@@ -599,7 +684,7 @@ mod windows_acl {
             }
             let mut length = 0u32;
             GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut length);
-            let mut buffer = vec![0u8; length as usize];
+            let mut buffer = vec![0u64; (length as usize).div_ceil(size_of::<u64>()).max(1)];
             let read = GetTokenInformation(
                 token,
                 TokenUser,
@@ -617,8 +702,9 @@ mod windows_acl {
     }
 
     /// The identifier of an authority every Windows installation knows.
-    fn well_known_sid(kind: WELL_KNOWN_SID_TYPE) -> Option<Vec<u8>> {
-        // SAFETY: the buffer is filled with the length the first call reports.
+    fn well_known_sid(kind: WELL_KNOWN_SID_TYPE) -> Option<Sid> {
+        // SAFETY: the identifier is written into a buffer of the length the
+        // first call reports.
         unsafe {
             let mut length = 0u32;
             CreateWellKnownSid(
@@ -627,23 +713,20 @@ mod windows_acl {
                 std::ptr::null_mut(),
                 &mut length,
             );
-            let mut buffer = vec![0u8; length as usize];
-            if CreateWellKnownSid(
-                kind,
-                std::ptr::null_mut(),
-                buffer.as_mut_ptr().cast(),
-                &mut length,
-            ) == 0
-            {
+            let mut sid = Sid::of_length(length as usize);
+            if CreateWellKnownSid(kind, std::ptr::null_mut(), sid.pointer_mut(), &mut length) == 0 {
                 return None;
             }
-            Some(buffer)
+            Some(sid)
         }
     }
 
     /// An identifier the caller owns, copied out of a structure it does not.
-    unsafe fn copy_sid(sid: PSID) -> Vec<u8> {
-        std::slice::from_raw_parts(sid.cast::<u8>(), GetLengthSid(sid) as usize).to_vec()
+    unsafe fn copy_sid(sid: PSID) -> Sid {
+        let length = GetLengthSid(sid) as usize;
+        let mut copy = Sid::of_length(length);
+        std::ptr::copy_nonoverlapping(sid.cast::<u8>(), copy.pointer_mut().cast::<u8>(), length);
+        copy
     }
 
     /// The path in the spelling the Win32 API reads, terminated by a zero.
@@ -773,6 +856,14 @@ mod tests {
                 keeps: true,
                 ..Self::default()
             }
+        }
+
+        /// Files a secret past `remember`, so that a store which refuses every
+        /// change still holds one.
+        fn keep(&self, name: &str, secret: &str) {
+            self.secrets
+                .borrow_mut()
+                .insert(name.to_owned(), secret.to_owned());
         }
     }
 
@@ -937,16 +1028,28 @@ mod tests {
     #[test]
     fn fails_when_a_secret_of_a_deleted_file_cannot_be_forgotten() {
         let folder = Folder::new("forget-failure");
+        let store = MemoryStore::forgetting_nothing();
+        store.keep(&credential_name(&folder.0, DATABASE_URL_ENV), REMOTE);
 
-        let error = resolve(
-            &folder.0,
-            HashMap::new(),
-            &MemoryStore::forgetting_nothing(),
-        )
-        .expect_err("a credential that survives its file must fail the start");
+        let error = resolve(&folder.0, HashMap::new(), &store)
+            .expect_err("a credential that survives its file must fail the start");
 
         assert_eq!(error, PortableError::NotForgotten(DATABASE_URL_ENV));
         assert!(error.to_string().contains(DATABASE_URL_ENV));
+    }
+
+    #[test]
+    fn a_store_without_a_secret_of_this_folder_does_not_fail_the_start() {
+        let folder = Folder::new("forget-nothing");
+
+        let settings = resolve(
+            &folder.0,
+            process(&[(DB_HOST_ENV, "db.example.org")]),
+            &MemoryStore::forgetting_nothing(),
+        )
+        .expect("a store that holds no secret of this folder is no failure");
+
+        assert_eq!(settings, process(&[(DB_HOST_ENV, "db.example.org")]));
     }
 
     #[test]
