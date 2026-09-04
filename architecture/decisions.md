@@ -60,14 +60,16 @@ Commands that need a user are generated with `authed_command!`; public commands 
 local compose database; production may use a managed database.
 
 **Decision:** `src-tauri/src/postgres_store.rs` is the native store. `drizzle/0000_init.sql` is the
-baseline for a fresh database; a schema change also adds an idempotent upgrade migration for
-existing databases. Both are registered in `MIGRATIONS`. Production processes verify migrations.
-Only the separate migration entry point `DbConfig::for_migration` may apply them, and only when
-`WORK_TIME_TRACKER_DB_MIGRATE=true`; `DbConfig::from_env` keeps application startup verify-only.
+baseline for a fresh database; before the first release, schema changes stay folded into that
+baseline. After a release, each schema change also adds an idempotent upgrade migration for existing
+databases. Every active migration is registered in `MIGRATIONS`. Production processes verify
+migrations. Only the separate migration entry point `DbConfig::for_migration` may apply them, and
+only when `WORK_TIME_TRACKER_DB_MIGRATE=true`; `DbConfig::from_env` keeps application startup
+verify-only.
 
-**Consequences:** Schema changes keep `drizzle/0000_init.sql`, the upgrade migration, `MIGRATIONS`,
-`src/db/schema.ts`, queries, models, and `docs/data-model.md` aligned. A production app start never
-mutates the shared schema.
+**Consequences:** Schema changes keep `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
+queries, models, `docs/data-model.md`, and any post-release upgrade migration aligned. A production
+app start never mutates the shared schema.
 
 ## Enforce ownership in storage queries
 
