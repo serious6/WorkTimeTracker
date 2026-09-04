@@ -123,6 +123,7 @@ erDiagram
     text name
     text description "nullable"
     boolean active "default true"
+    boolean archived "default false"
     text color
     text created_at
     text updated_at
@@ -242,6 +243,7 @@ erDiagram
 | `description` | TEXT | no | Trimmed, at most 500 characters, empty becomes `NULL` | — |
 | `color` | TEXT | yes | `#rrggbb`, new projects cycle through `PROJECT_COLORS` | — |
 | `active` | BOOLEAN | yes | Default `true` | — |
+| `archived` | BOOLEAN | yes | Default `false`; an archived project keeps its entries but is offered for tracking no more | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
 ### time_entries

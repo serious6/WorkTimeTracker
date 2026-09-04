@@ -4,6 +4,7 @@ import { useAbsenceIndex } from '@/features/absences/absence-queries'
 import { ABSENCE_TYPE_LABELS } from '@/features/absences/absence-schema'
 import { ProjectDialog } from '@/features/projects/components/project-dialog'
 import { useOvertimeEntries } from '@/features/overtime/overtime-queries'
+import { useProjectBudgets } from '@/features/budgets/budget-queries'
 import { useProjects } from '@/features/projects/project-queries'
 import {
   scheduledMinutesInRange,
@@ -34,6 +35,7 @@ export function DashboardPage() {
   const settings = useWorkSettings()
   const { data: entries = [], isError } = useTimeEntries()
   const { data: projects = [] } = useProjects()
+  const { data: budgets = [] } = useProjectBudgets()
   const absences = useAbsenceIndex()
   const { data: overtime = [] } = useOvertimeEntries()
   const navigate = useNavigationStore((state) => state.navigate)
@@ -117,6 +119,8 @@ export function DashboardPage() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="space-y-5">
           <CurrentlyTrackingCard
+            budgets={budgets}
+            entries={entries}
             now={now}
             onCreateProject={() => setProjectDialogOpen(true)}
             onPickerOpenChange={setPickerOpen}

@@ -59,6 +59,19 @@ describe('ProjectsPage', () => {
     await waitFor(() => expect(screen.queryByText('GoneProject')).not.toBeInTheDocument())
   })
 
+  it('archives a project and offers to restore it', async () => {
+    await seedProject('Archivable')
+    renderWithProviders(<ProjectsPage />)
+    await screen.findByText('Archivable')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Archive Archivable' }))
+    expect(await screen.findByText('Archived')).toBeInTheDocument()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Unarchive Archivable' }))
+    await waitFor(() => expect(screen.queryByText('Archived')).not.toBeInTheDocument())
+    expect(screen.getByText('Archivable')).toBeInTheDocument()
+  })
+
   it('creates a project from the dialog', async () => {
     renderWithProviders(<ProjectsPage />)
     fireEvent.click(await screen.findByRole('button', { name: /create project/i }))

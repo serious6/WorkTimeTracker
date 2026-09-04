@@ -1,27 +1,61 @@
 import { useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useNavigationStore } from '@/app/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { toast } from '@/components/ui/toast-store'
+import { errorToast, toast } from '@/components/ui/toast-store'
 import { projectTotals } from '@/features/dashboard/metrics'
 import { ProjectDialog } from '@/features/projects/components/project-dialog'
-import { useDeleteProject, useProjects } from '@/features/projects/project-queries'
+import {
+  useDeleteProject,
+  useProjects,
+  useUpdateProject,
+} from '@/features/projects/project-queries'
 import type { Project } from '@/features/projects/project-schema'
 import { useTimeEntries } from '@/features/time-entries/time-entry-queries'
 import { formatDuration } from '@/lib/date'
+import { errorMessage } from '@/lib/errors'
 
 export function ProjectsPage() {
   const { data: projects = [] } = useProjects()
   const { data: entries = [] } = useTimeEntries()
   const deleteProject = useDeleteProject()
+  const updateProject = useUpdateProject()
   const navigate = useNavigationStore((state) => state.navigate)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Project>()
   const [deleting, setDeleting] = useState<Project>()
 
   const totals = projectTotals(entries, projects)
+
+  /**
+   * Archiving only hides the project from the tracking selections. A running
+   * timer of that project keeps running, and its entries stay untouched.
+   */
+  function toggleArchived(project: Project) {
+    const archived = !project.archived
+    updateProject.mutate(
+      {
+        id: project.id,
+        input: {
+          name: project.name,
+          description: project.description,
+          color: project.color,
+          active: project.active,
+          archived,
+        },
+      },
+      {
+        onSuccess: () => toast(archived ? 'Project archived' : 'Project restored', project.name),
+        onError: (failure) =>
+          errorToast(
+            archived ? 'Project not archived' : 'Project not restored',
+            errorMessage(failure, 'The project could not be saved.'),
+          ),
+      },
+    )
+  }
 
   return (
     <div className="space-y-5">
@@ -69,11 +103,28 @@ export function ProjectsPage() {
                       <span className="ml-2 text-xs text-muted-foreground">{project.description}</span>
                     )}
                   </Button>
+                  {project.archived && (
+                    <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                      Archived
+                    </span>
+                  )}
                   <span className="tabular-nums text-muted-foreground">
                     {formatDuration(
                       totals.find((item) => item.projectId === project.id)?.minutes ?? 0,
                     )}
                   </span>
+                  <Button
+                    aria-label={`${project.archived ? 'Unarchive' : 'Archive'} ${project.name}`}
+                    onClick={() => toggleArchived(project)}
+                    size="icon"
+                    variant="ghost"
+                  >
+                    {project.archived ? (
+                      <ArchiveRestore className="size-4" />
+                    ) : (
+                      <Archive className="size-4" />
+                    )}
+                  </Button>
                   <Button
                     aria-label={`Edit ${project.name}`}
                     onClick={() => {

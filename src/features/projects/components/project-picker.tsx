@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useProjects } from '../project-queries'
+import { selectableProjects } from '../project-schema'
 import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 
 export function ProjectPicker({
@@ -52,7 +53,7 @@ export function ProjectPicker({
     }
   }, [open])
 
-  const matches = projects.filter(
+  const matches = selectableProjects(projects).filter(
     (project) => project.active && project.name.toLowerCase().includes(search.trim().toLowerCase()),
   )
 

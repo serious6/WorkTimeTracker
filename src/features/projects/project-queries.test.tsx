@@ -36,7 +36,7 @@ describe('useProjects', () => {
 describe('useCreateProject', () => {
   it('creates a project', async () => {
     const { result } = renderHook(() => useCreateProject(), { wrapper })
-    await result.current.mutateAsync({ name: 'New', color: '#22c55e', description: null, active: true })
+    await result.current.mutateAsync({ name: 'New', color: '#22c55e', description: null, active: true, archived: false })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })
 })
@@ -47,7 +47,7 @@ describe('useUpdateProject', () => {
     const { result } = renderHook(() => useUpdateProject(), { wrapper })
     await result.current.mutateAsync({
       id: project.id,
-      input: { name: 'NewName', color: '#22c55e', description: null, active: true },
+      input: { name: 'NewName', color: '#22c55e', description: null, active: true, archived: false },
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
   })

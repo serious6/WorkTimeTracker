@@ -5,7 +5,7 @@ import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { TimeByProjectCard } from './time-by-project-card'
 
 function project(id: number, name: string, color = '#22c55e'): Project {
-  return { id, name, description: null, color, active: true, createdAt: '', updatedAt: '' }
+  return { id, name, description: null, color, active: true, archived: false, createdAt: '', updatedAt: '' }
 }
 
 function entry(id: number, projectId: number, startIso: string, endIso: string): TimeEntry {

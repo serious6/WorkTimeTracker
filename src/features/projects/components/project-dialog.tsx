@@ -47,6 +47,7 @@ export function ProjectDialog({
       description: form.get('description') || undefined,
       color,
       active: true,
+      archived: project?.archived ?? false,
     })
     if (!result.success) {
       setError(result.error.issues[0]?.message)

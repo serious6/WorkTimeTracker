@@ -400,6 +400,7 @@ function projectPayload(project: Project): AuditPayload {
     description: project.description,
     color: project.color,
     active: project.active,
+    archived: project.archived,
   }
 }
 

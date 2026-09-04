@@ -238,6 +238,7 @@ const SECURITY_FIELD_LABELS: Record<string, string> = {
   description: 'Description',
   color: 'Color',
   active: 'Active',
+  archived: 'Archived',
   projectId: 'Project',
   budgetMinutes: 'Budget',
   dueDate: 'Due date',

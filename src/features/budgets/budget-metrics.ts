@@ -1,7 +1,15 @@
 import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import { entryMinutesInRange } from '@/features/dashboard/metrics'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
-import { addDays, DAY_MS, fromDateKey, startOfDay } from '@/lib/date'
+import {
+  addDays,
+  DAY_MS,
+  formatDay,
+  formatDuration,
+  fromDateKey,
+  startOfDay,
+  toDateKey,
+} from '@/lib/date'
 
 export type BudgetReport = {
   budgetMinutes: number
@@ -64,5 +72,50 @@ export function budgetReport(
     projectedMinutes,
     differenceMinutes: projectedMinutes - budget.budgetMinutes,
     willExceed: projectedMinutes > budget.budgetMinutes,
+  }
+}
+
+/** Why the budget of a project needs attention while time is booked on it. */
+export type OverdueBudget = {
+  budget: ProjectBudget
+  report: BudgetReport
+  /** The due date has passed. */
+  pastDue: boolean
+  /** More time is tracked than the budget allows. */
+  exceeded: boolean
+  message: string
+}
+
+function overdueMessage(budget: ProjectBudget, report: BudgetReport, pastDue: boolean): string {
+  const over = formatDuration(-report.remainingMinutes)
+  if (pastDue && report.exceeded) {
+    return `The budget was due on ${formatDay(fromDateKey(budget.dueDate))} and is exceeded by ${over}.`
+  }
+  if (pastDue) return `The budget was due on ${formatDay(fromDateKey(budget.dueDate))}.`
+  return `The budget is exceeded by ${over}.`
+}
+
+/**
+ * The budget of a project that is past its due date or already used up. The
+ * result only informs: tracking on such a project stays possible.
+ */
+export function overdueBudget(
+  budgets: ProjectBudget[],
+  entries: TimeEntry[],
+  projectId: number | null,
+  now = Date.now(),
+): OverdueBudget | null {
+  if (projectId === null) return null
+  const budget = budgets.find((candidate) => candidate.projectId === projectId)
+  if (!budget) return null
+  const report = budgetReport(budget, entries, now)
+  const pastDue = budget.dueDate < toDateKey(new Date(now))
+  if (!pastDue && !report.exceeded) return null
+  return {
+    budget,
+    report,
+    pastDue,
+    exceeded: report.exceeded,
+    message: overdueMessage(budget, report, pastDue),
   }
 }
