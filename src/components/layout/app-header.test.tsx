@@ -56,4 +56,20 @@ describe('AppHeader', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Third-Party Licenses' }))
     expect(useNavigationStore.getState().view).toBe('licenses')
   })
+
+  test('navigates to the terms of service from the account menu', async () => {
+    const user = await signIn('header-terms@example.com')
+    renderWithProviders(<AppHeader user={user} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Terms of Service' }))
+    expect(useNavigationStore.getState().view).toBe('terms')
+  })
+
+  test('navigates to the privacy policy from the account menu', async () => {
+    const user = await signIn('header-privacy@example.com')
+    renderWithProviders(<AppHeader user={user} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Privacy Policy' }))
+    expect(useNavigationStore.getState().view).toBe('privacy')
+  })
 })

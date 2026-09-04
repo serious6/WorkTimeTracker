@@ -56,6 +56,14 @@ the release section below for the secrets the workflow injects.
 Removing the `postgres_data` volume permanently deletes the local database. Database files of
 earlier versions are neither read nor migrated; export what you need before switching.
 
+## Legal documents
+
+The account menu of the header opens the terms of service, the privacy policy and the third-party
+license notices. Both legal texts live in
+[`src/features/legal/legal-documents.ts`](src/features/legal/legal-documents.ts) and carry their own
+version and date, so a wording change is a content change and the installed build always states the
+revision it shows.
+
 ## Logs
 
 Errors of the backend and of the user interface are appended to
