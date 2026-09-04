@@ -89,8 +89,8 @@ export function TimeEntryList({
               ) : (
                 <Button
                   aria-label={`Start timer for ${name}`}
-                  disabled={!project}
-                  onClick={() => project && onPlay(project.id)}
+                  disabled={!project || project.archived}
+                  onClick={() => project && !project.archived && onPlay(project.id)}
                   size="icon"
                   variant="subtle"
                 >

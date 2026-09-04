@@ -486,8 +486,9 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 
 ## Migration
 
-Because WorkTimeTracker has not been released yet, the native database starts from the complete
-baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies it in a single transaction that is
+A fresh native database starts from the complete baseline migration `drizzle/0000_init.sql`; every
+later migration upgrades a database that already recorded the baseline and stays idempotent.
+`PostgresStore::connect` applies the not yet recorded migrations in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
 directory.

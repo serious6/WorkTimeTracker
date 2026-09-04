@@ -68,8 +68,9 @@ See [`docs/development.md`](docs/development.md#repository-layout).
 - Documentation and comments stay concise and function-oriented: explain why, invariants, error
   cases, or domain rules, not what the code already says.
 - Do not weaken or delete existing tests to make a change pass.
-- Schema changes update `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
-  `docs/data-model.md`, and affected queries/models together.
+- Schema changes update `drizzle/0000_init.sql`, add an idempotent upgrade migration for existing
+  databases, and update `MIGRATIONS`, `src/db/schema.ts`, `docs/data-model.md`, and affected
+  queries/models together.
 - Commit messages and pull request titles follow Conventional Commits with a lower-case,
   imperative summary. Use `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `build`,
   `ci`, `style`, `revert`; mark breaking changes with `!` and a `BREAKING CHANGE:` footer.

@@ -141,6 +141,8 @@ test('P4: an archived project leaves the tracking selections and can be restored
   await gotoPage(page, 'Time Entries')
   await expect(page.locator('li').filter({ hasText: 'Archive Me' }).first()).toBeVisible()
   await expect(page.getByText('Total: 1h 00m')).toBeVisible()
+  // The entry stays, but it cannot start a new timer on the archived project.
+  await expect(page.getByRole('button', { name: 'Start timer for Archive Me' }).first()).toBeDisabled()
 
   await gotoPage(page, 'Projects')
   await page.getByRole('button', { name: 'Unarchive Archive Me' }).click()
@@ -156,8 +158,8 @@ test('P4: an archived project leaves the tracking selections and can be restored
 test('P5: an overdue budget warns during tracking without blocking it', async ({ page }) => {
   await createProject(page, 'Overdue Project')
   await createProject(page, 'Healthy Project')
-  // Early in the day, so the timer started below never overlaps this entry.
-  await addEntry(page, 'Overdue Project', '00:00', '00:30')
+  // On the previous day, so the timer started below never overlaps this entry.
+  await addEntry(page, 'Overdue Project', '09:00', '09:30', dateKey(-1))
 
   await gotoPage(page, 'Budgets')
   await createBudget(page, { project: 'Overdue Project', budgetHours: '0.25', dueDate: dateKey(30) })
