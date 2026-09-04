@@ -9,6 +9,7 @@ mod logging;
 mod models;
 mod portable;
 mod postgres_store;
+mod startup_failure;
 mod store;
 #[cfg(test)]
 mod test_support;
@@ -28,8 +29,41 @@ fn log_panics() {
             .map(|location| format!("{}:{}", location.file(), location.line()))
             .unwrap_or_else(|| "unknown location".to_owned());
         logging::error("panic", &format!("{location} {info}"));
+        let panic_error = startup_panic_error(info.payload());
+        startup_failure::report_startup_panic(&panic_error);
         previous(info);
     }));
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|message| (*message).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panic payload was not a string".to_owned())
+}
+
+fn panic_summary(message: &str) -> String {
+    let first_line = message.lines().next().unwrap_or(message).trim();
+    let summary = first_line
+        .split('{')
+        .next()
+        .unwrap_or(first_line)
+        .trim()
+        .trim_end_matches(':');
+    if summary.is_empty() {
+        "panic payload was not a string".to_owned()
+    } else {
+        summary.to_owned()
+    }
+}
+
+fn startup_panic_error(payload: &(dyn std::any::Any + Send)) -> std::io::Error {
+    let message = panic_payload_message(payload);
+    std::io::Error::other(format!(
+        "WorkTimeTracker stopped unexpectedly during startup: {}",
+        panic_summary(&message)
+    ))
 }
 
 /// Applies the schema migrations to the configured database. A deployed
@@ -52,74 +86,105 @@ pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
-            logging::init(&data_dir);
-            log_panics();
-            // A portable installation carries its settings next to the
-            // application; every other build resolves the process environment
-            // alone, which is what `portable::settings` returns without a file.
-            let settings = portable::settings()
-                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
-            let db_config = DbConfig::resolve(&settings)
-                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
-            let database = Database::open(&db_config)
-                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
-            app.manage(database);
-            app.manage(Sessions::default());
-            if let Some(window) = app.get_webview_window("main") {
-                window_state::restore(&window.as_ref().window_ref());
-            }
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::CloseRequested { .. }) {
-                window_state::save(window);
-            }
-        })
-        .invoke_handler(tauri::generate_handler![
-            commands::register,
-            commands::login,
-            commands::logout,
-            commands::current_session,
-            commands::list_projects,
-            commands::create_project,
-            commands::update_project,
-            commands::delete_project,
-            commands::list_time_entries,
-            commands::create_time_entry,
-            commands::update_time_entry,
-            commands::update_time_entry_note,
-            commands::switch_running_time_entry,
-            commands::delete_time_entry,
-            commands::list_time_entry_audits,
-            commands::list_audit_log,
-            commands::list_security_audits,
-            commands::list_project_budgets,
-            commands::create_project_budget,
-            commands::update_project_budget,
-            commands::delete_project_budget,
-            commands::list_absences,
-            commands::create_absence,
-            commands::update_absence,
-            commands::save_absences,
-            commands::delete_absence,
-            commands::list_absence_audits,
-            commands::list_overtime_entries,
-            commands::create_overtime_entry,
-            commands::update_overtime_entry,
-            commands::delete_overtime_entry,
-            commands::list_overtime_audits,
-            commands::get_work_settings,
-            commands::update_work_settings,
-            commands::delete_account,
-            commands::get_app_version,
-            commands::log_client_error
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running WorkTimeTracker");
+    log_panics();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tauri::Builder::default()
+            .plugin(tauri_plugin_dialog::init())
+            .setup(|app| {
+                startup_failure::remember_app_handle(app.handle().clone());
+                let data_dir = app
+                    .path()
+                    .app_data_dir()
+                    .inspect_err(|error| startup_failure::report(error))?;
+                std::fs::create_dir_all(&data_dir)
+                    .inspect_err(|error| startup_failure::report(error))?;
+                logging::init(&data_dir);
+                // A portable installation carries its settings next to the
+                // application; every other build resolves the process
+                // environment alone, which is what `portable::settings`
+                // returns without a file.
+                let settings = portable::settings()
+                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
+                    .inspect_err(|error| startup_failure::report(error))?;
+                let db_config = DbConfig::resolve(&settings)
+                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
+                    .inspect_err(|error| startup_failure::report(error))?;
+                let database = Database::open(&db_config)
+                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
+                    .inspect_err(|error| startup_failure::report(error))?;
+                app.manage(database);
+                app.manage(Sessions::default());
+                if let Some(window) = app.get_webview_window("main") {
+                    window_state::restore(&window.as_ref().window_ref());
+                }
+                startup_failure::mark_startup_complete();
+                Ok(())
+            })
+            .on_window_event(|window, event| {
+                if matches!(event, WindowEvent::CloseRequested { .. }) {
+                    window_state::save(window);
+                }
+            })
+            .invoke_handler(tauri::generate_handler![
+                commands::register,
+                commands::login,
+                commands::logout,
+                commands::current_session,
+                commands::list_projects,
+                commands::create_project,
+                commands::update_project,
+                commands::delete_project,
+                commands::list_time_entries,
+                commands::create_time_entry,
+                commands::update_time_entry,
+                commands::update_time_entry_note,
+                commands::switch_running_time_entry,
+                commands::delete_time_entry,
+                commands::list_time_entry_audits,
+                commands::list_audit_log,
+                commands::list_security_audits,
+                commands::list_project_budgets,
+                commands::create_project_budget,
+                commands::update_project_budget,
+                commands::delete_project_budget,
+                commands::list_absences,
+                commands::create_absence,
+                commands::update_absence,
+                commands::save_absences,
+                commands::delete_absence,
+                commands::list_absence_audits,
+                commands::list_overtime_entries,
+                commands::create_overtime_entry,
+                commands::update_overtime_entry,
+                commands::delete_overtime_entry,
+                commands::list_overtime_audits,
+                commands::get_work_settings,
+                commands::update_work_settings,
+                commands::delete_account,
+                commands::get_app_version,
+                commands::log_client_error
+            ])
+            .run(tauri::generate_context!())
+    }));
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => exit_after_startup_failure(&error),
+        Err(payload) => exit_after_startup_failure(&startup_panic_error(payload.as_ref())),
+    }
+}
+
+/// The exit code of a start that never reached the window, so that a shell or a
+/// launcher sees the failure the dialog reports.
+const FAILURE_EXIT_CODE: i32 = 1;
+
+/// Reports a failure that prevents the application from starting and ends the
+/// process. Reporting comes first, so the user is never left with a window that
+/// silently disappears.
+fn exit_after_startup_failure(error: &dyn std::error::Error) -> ! {
+    startup_failure::mark_startup_complete();
+    startup_failure::report(error);
+    std::process::exit(FAILURE_EXIT_CODE);
 }
 
 #[cfg(test)]
@@ -420,5 +485,96 @@ mod tests {
                 "the missing guard of {source:?} was not seen"
             );
         }
+    }
+
+    #[test]
+    fn panic_summary_keeps_the_first_line() {
+        assert_eq!(
+            super::panic_summary("startup failed\nwith details"),
+            "startup failed"
+        );
+    }
+
+    #[test]
+    fn panic_summary_drops_struct_tail_after_an_opening_brace() {
+        assert_eq!(
+            super::panic_summary("Failed: BoolError { message: \"x\" }"),
+            "Failed: BoolError"
+        );
+    }
+
+    #[test]
+    fn panic_summary_falls_back_for_an_empty_message() {
+        assert_eq!(
+            super::panic_summary("   "),
+            "panic payload was not a string".to_owned()
+        );
+    }
+
+    /// Set in the child process below, which reports a fatal startup instead of
+    /// running the test body.
+    const SUBPROCESS_ENV: &str = "WORK_TIME_TRACKER_FATAL_STARTUP_TEST";
+
+    /// Starts this test binary again, filtered down to `test`, so that the
+    /// child can end its process on the fatal startup path. Returns its exit
+    /// code and its stderr.
+    fn fatal_startup_child(test: &str) -> (Option<i32>, String) {
+        let binary = std::env::current_exe().expect("the test binary is known");
+        let output = std::process::Command::new(binary)
+            .args([&format!("tests::{test}"), "--exact", "--nocapture"])
+            .env(SUBPROCESS_ENV, "1")
+            .output()
+            .expect("the test binary starts itself");
+
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    fn is_fatal_startup_child() -> bool {
+        std::env::var_os(SUBPROCESS_ENV).is_some()
+    }
+
+    #[test]
+    fn a_failed_setup_is_reported_and_exits_non_zero() {
+        let secret = "top-secret-password";
+        if is_fatal_startup_child() {
+            super::exit_after_startup_failure(&std::io::Error::other(format!(
+                "the database is unreachable: postgresql://user:{secret}@localhost/work"
+            )));
+        }
+
+        let (code, stderr) = fatal_startup_child("a_failed_setup_is_reported_and_exits_non_zero");
+
+        assert_eq!(
+            code,
+            Some(super::FAILURE_EXIT_CODE),
+            "a failed start has to end with a non-zero exit code: {stderr}"
+        );
+        assert!(
+            stderr.contains("WorkTimeTracker could not start"),
+            "without a dialog the failure has to reach stderr: {stderr}"
+        );
+        assert!(stderr.contains("the database is unreachable"), "{stderr}");
+        assert!(!stderr.contains(secret), "{stderr}");
+    }
+
+    #[test]
+    fn a_panicking_setup_is_reported_and_exits_non_zero() {
+        if is_fatal_startup_child() {
+            let payload: Box<dyn std::any::Any + Send> = Box::new("the setup panicked".to_owned());
+            super::exit_after_startup_failure(&super::startup_panic_error(payload.as_ref()));
+        }
+
+        let (code, stderr) =
+            fatal_startup_child("a_panicking_setup_is_reported_and_exits_non_zero");
+
+        assert_eq!(code, Some(super::FAILURE_EXIT_CODE), "{stderr}");
+        assert!(
+            stderr.contains("stopped unexpectedly during startup"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("the setup panicked"), "{stderr}");
     }
 }
