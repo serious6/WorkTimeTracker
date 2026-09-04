@@ -275,7 +275,9 @@ The folder of such an installation may be copied or synchronised, so it holds no
 first start `DATABASE_URL` and `SUPABASE_DB_PASSWORD` are moved into the credential store of the
 user account - the Windows Credential Manager, which protects them with DPAPI in the scope of the
 current user, and the macOS Keychain, both of which work without administrator rights - and the
-file keeps a marker in their place; deleting the file forgets them again. A secret that can neither
+file keeps a marker in their place. They are filed under the folder of that installation, so a
+second copy keeps its own connection and a build that carries no file removes none; deleting the
+file forgets the secrets of that folder again. A secret that can neither
 be stored nor read back fails the start instead of staying readable in the folder, as does a file
 that others may read. The failures name the file and the setting, never a value, and the release
 job refuses to pack an archive whose env file carries a secret.

@@ -17,9 +17,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::config::{
-    env_vars, DATABASE_URL_ENV, DB_PASSWORD_ENV, DB_ROOT_CERT_ENV, ENV_KEYS, MIGRATE_ENV,
-};
+use crate::config::{env_vars, DATABASE_URL_ENV, DB_PASSWORD_ENV, DB_ROOT_CERT_ENV, ENV_KEYS};
 
 /// The configuration file, next to `WorkTimeTracker.exe` on Windows and next
 /// to `WorkTimeTracker.app` on macOS, so that it survives replacing the
@@ -227,10 +225,12 @@ fn resolve(
 ) -> Result<HashMap<String, String>, PortableError> {
     let path = directory.join(ENV_FILE_NAME);
     if !path.exists() {
-        // No portable configuration, so nothing may stay behind in the
-        // credential store either: removing the file forgets the connection.
-        for name in SECRET_KEYS {
-            store.forget(name);
+        // No configuration in this folder, so nothing of it may stay behind in
+        // the credential store either: removing the file forgets the
+        // connection. Another installation keeps its own secrets, which are
+        // filed under the folder they belong to.
+        for setting in SECRET_KEYS {
+            store.forget(&credential_name(directory, setting));
         }
         return Ok(process);
     }
@@ -238,12 +238,9 @@ fn resolve(
     let contents = std::fs::read_to_string(&path).map_err(|_| PortableError::Unreadable)?;
 
     let mut settings = parse(&contents)?;
-    protect_secrets(&path, &contents, &mut settings, store)?;
+    protect_secrets(directory, &path, &contents, &mut settings, store)?;
     absolute_root_cert(directory, &mut settings);
 
-    // A production installation is a client of a shared database; the schema
-    // is migrated by the deliberate release step, never by a portable copy.
-    settings.remove(MIGRATE_ENV);
     for (key, value) in process {
         settings.insert(key, value);
     }
@@ -313,26 +310,30 @@ fn unquote(value: &str) -> &str {
 /// reads back the ones that are already stored. A secret that can neither be
 /// stored nor read fails the start instead of being used from the folder.
 fn protect_secrets(
+    directory: &Path,
     path: &Path,
     contents: &str,
     settings: &mut HashMap<String, String>,
     store: &dyn SecretStore,
 ) -> Result<(), PortableError> {
     let mut absorbed = Vec::new();
-    for name in SECRET_KEYS {
-        let Some(value) = settings.get(name).cloned() else {
-            store.forget(name);
+    for setting in SECRET_KEYS {
+        let name = credential_name(directory, setting);
+        let Some(value) = settings.get(setting).cloned() else {
+            store.forget(&name);
             continue;
         };
         if value == STORED {
-            let secret = store.secret(name).ok_or(PortableError::NotStored(name))?;
-            settings.insert(name.to_owned(), secret);
+            let secret = store
+                .secret(&name)
+                .ok_or(PortableError::NotStored(setting))?;
+            settings.insert(setting.to_owned(), secret);
             continue;
         }
-        if !store.remember(name, &value) {
-            return Err(PortableError::NotStorable(name));
+        if !store.remember(&name, &value) {
+            return Err(PortableError::NotStorable(setting));
         }
-        absorbed.push(name);
+        absorbed.push(setting);
     }
     if absorbed.is_empty() {
         return Ok(());
@@ -362,8 +363,11 @@ fn scrub(contents: &str, absorbed: &[&str]) -> String {
     scrubbed
 }
 
-/// Writes the file back so that only its owner may read it.
+/// Writes the file back so that only its owner may read it. It is written
+/// beside the original and then renamed over it, so a failed write leaves the
+/// file it replaces intact instead of a truncated one whose settings are gone.
 fn write_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
+    let temporary = path.with_extension("env.replacement");
     let mut options = std::fs::OpenOptions::new();
     options.write(true).truncate(true).create(true);
     #[cfg(unix)]
@@ -372,8 +376,49 @@ fn write_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
 
         options.mode(0o600);
     }
-    let mut file = options.open(path)?;
-    std::io::Write::write_all(&mut file, contents.as_bytes())
+    let written = options
+        .open(&temporary)
+        .and_then(|mut file| std::io::Write::write_all(&mut file, contents.as_bytes()))
+        .and_then(|()| restrict(&temporary))
+        .and_then(|()| std::fs::rename(&temporary, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
+}
+
+/// Restricts a file to its owner, for the case that it existed already and the
+/// mode of `OpenOptions` therefore did not apply.
+fn restrict(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+/// The name a secret is filed under in the credential store: the setting and a
+/// fingerprint of the folder it was configured in. The store is shared by
+/// every installation of this user account, so without the folder an installed
+/// build that carries no file would remove the secrets of a portable one.
+fn credential_name(directory: &Path, setting: &str) -> String {
+    format!("{setting}@{}", fingerprint(directory))
+}
+
+/// FNV-1a over the folder, lower-cased because Windows and macOS reach the
+/// same folder under different spellings. It identifies an installation, it
+/// protects nothing, and the folder itself is no secret.
+fn fingerprint(directory: &Path) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in directory.to_string_lossy().to_lowercase().bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{hash:016x}")
 }
 
 /// Resolves a relative path of the pinned certificate authority against the
@@ -399,7 +444,7 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::HashMap as Map;
 
-    use crate::config::{DB_HOST_ENV, DB_USER_ENV, DEPLOYMENT_MODE_ENV};
+    use crate::config::{DbConfig, DB_HOST_ENV, DB_USER_ENV, DEPLOYMENT_MODE_ENV, MIGRATE_ENV};
 
     /// A credential store in memory, so the tests never touch the store of the
     /// machine they run on.
@@ -493,14 +538,15 @@ mod tests {
     fn without_a_file_the_process_environment_is_used_unchanged() {
         let folder = Folder::new("absent");
         let store = MemoryStore::default();
-        store.remember(DATABASE_URL_ENV, REMOTE);
+        let name = credential_name(&folder.0, DATABASE_URL_ENV);
+        store.remember(&name, REMOTE);
 
         let settings = resolve(&folder.0, process(&[(DATABASE_URL_ENV, "local")]), &store).unwrap();
 
         assert_eq!(settings, process(&[(DATABASE_URL_ENV, "local")]));
         // Removing the file is how a portable installation forgets its
-        // connection, so nothing may survive in the credential store.
-        assert_eq!(store.secret(DATABASE_URL_ENV), None);
+        // connection, so nothing of this folder may survive in the store.
+        assert_eq!(store.secret(&name), None);
     }
 
     #[test]
@@ -554,7 +600,12 @@ mod tests {
             settings.get(DATABASE_URL_ENV).map(String::as_str),
             Some(REMOTE)
         );
-        assert_eq!(store.secret(DB_PASSWORD_ENV).as_deref(), Some("secret"));
+        assert_eq!(
+            store
+                .secret(&credential_name(&folder.0, DB_PASSWORD_ENV))
+                .as_deref(),
+            Some("secret")
+        );
         let scrubbed = folder.read();
         assert!(
             !scrubbed.contains("secret") && !scrubbed.contains(REMOTE),
@@ -569,7 +620,7 @@ mod tests {
         let folder = Folder::new("stored");
         folder.write(&format!("{DATABASE_URL_ENV}={STORED}\n"));
         let store = MemoryStore::default();
-        store.remember(DATABASE_URL_ENV, REMOTE);
+        store.remember(&credential_name(&folder.0, DATABASE_URL_ENV), REMOTE);
 
         let settings = resolve(&folder.0, HashMap::new(), &store).unwrap();
 
@@ -662,12 +713,51 @@ mod tests {
     fn never_lets_the_file_migrate_a_database() {
         let folder = Folder::new("migrate");
         folder.write(&format!(
-            "{DEPLOYMENT_MODE_ENV}=production\n{MIGRATE_ENV}=true\n"
+            "{DEPLOYMENT_MODE_ENV}=production\n{MIGRATE_ENV}=true\n{DATABASE_URL_ENV}={STORED}\n"
         ));
+        let store = MemoryStore::default();
+        store.remember(&credential_name(&folder.0, DATABASE_URL_ENV), REMOTE);
 
-        let settings = resolve(&folder.0, HashMap::new(), &MemoryStore::default()).unwrap();
+        let settings = resolve(&folder.0, HashMap::new(), &store).unwrap();
 
-        assert_eq!(settings.get(MIGRATE_ENV), None);
+        assert!(!DbConfig::resolve(&settings).unwrap().run_migrations);
+    }
+
+    #[test]
+    fn a_second_installation_keeps_its_own_connection() {
+        let configured = Folder::new("first-copy");
+        configured.write(&format!("{DATABASE_URL_ENV}={REMOTE}\n"));
+        let store = MemoryStore::default();
+        resolve(&configured.0, HashMap::new(), &store).unwrap();
+
+        // A build without a file of its own - an installed one, or a copy that
+        // is not configured yet - must not remove what the first one stored.
+        let unconfigured = Folder::new("second-copy");
+        resolve(&unconfigured.0, HashMap::new(), &store).unwrap();
+
+        let settings = resolve(&configured.0, HashMap::new(), &store).unwrap();
+        assert_eq!(
+            settings.get(DATABASE_URL_ENV).map(String::as_str),
+            Some(REMOTE)
+        );
+    }
+
+    #[test]
+    fn keeps_the_settings_when_the_file_cannot_be_rewritten() {
+        let folder = Folder::new("write-failure");
+        let path = folder.write(&format!("{DATABASE_URL_ENV}={REMOTE}\n"));
+        // A replacement cannot be renamed over the original while a directory
+        // of that name is in the way, so the write fails.
+        std::fs::create_dir(path.with_extension("env.replacement")).unwrap();
+
+        let error = resolve(&folder.0, HashMap::new(), &MemoryStore::default())
+            .expect_err("a failed rewrite must fail the start");
+
+        assert_eq!(error, PortableError::Unreadable);
+        assert!(
+            folder.read().contains(REMOTE),
+            "the file that could not be replaced was lost"
+        );
     }
 
     #[cfg(unix)]

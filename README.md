@@ -105,8 +105,9 @@ The folder may be copied or synchronized, so it never keeps a secret. On the fir
 account — the Windows Credential Manager, which protects them with DPAPI in the scope of the
 current user, and the macOS Keychain, both available without administrator rights — and the file
 keeps the marker `stored-in-credential-store` in their place. Only the host, the port, the database
-name and the path of the certificate authority stay readable. Deleting the file forgets the
-connection: the next start removes the stored secrets as well. The application refuses to start on a
+name and the path of the certificate authority stay readable. The stored secrets belong to the
+folder the file sits in, so a second copy keeps its own connection. Deleting the file forgets that
+connection: the next start from that folder removes its stored secrets as well. The application refuses to start on a
 file that others may read, on a secret it can neither store nor read back, and on a certificate it
 cannot verify against the pinned authority; every message names the file and the setting, never a
 value. Application data and logs stay in the user profile directory, and a portable installation is
