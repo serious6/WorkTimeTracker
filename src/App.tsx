@@ -3,6 +3,7 @@ import { useNavigationStore } from '@/app/navigation'
 import { AppFooter } from '@/components/layout/app-footer'
 import { AppHeader } from '@/components/layout/app-header'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/toast'
 import { useSession } from '@/features/auth/session-queries'
 
@@ -70,17 +71,39 @@ function App() {
   const view = useNavigationStore((state) => state.view)
   const { data: user, isPending } = useSession()
   const [registering, setRegistering] = useState(false)
+  const [registrationLegalView, setRegistrationLegalView] = useState<'privacy' | 'terms' | null>(null)
   const Page = pages[view]
 
   if (isPending) return null
 
   if (!user) {
+    if (registrationLegalView) {
+      const LegalPage = pages[registrationLegalView]
+      return (
+        <>
+          <main className="min-h-screen bg-background p-5 text-foreground lg:p-6">
+            <div className="mx-auto max-w-4xl space-y-4">
+              <Button onClick={() => setRegistrationLegalView(null)} variant="outline">
+                Back to registration
+              </Button>
+              <Suspense fallback={null}>
+                <LegalPage />
+              </Suspense>
+            </div>
+          </main>
+          <Toaster />
+        </>
+      )
+    }
+
     return (
       <>
         <Suspense fallback={null}>
           {registering ? (
             <UserCreationPage
               onCancel={() => setRegistering(false)}
+              onShowPrivacy={() => setRegistrationLegalView('privacy')}
+              onShowTerms={() => setRegistrationLegalView('terms')}
               onSuccess={() => setRegistering(false)}
             />
           ) : (

@@ -68,6 +68,14 @@ test('blocks registration until both legal texts are accepted', async ({ page })
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Logout' }).click()
   await page.getByRole('button', { name: 'Register' }).click()
+
+  await page.getByRole('button', { name: 'Terms of Service' }).click()
+  await expect(page.getByRole('heading', { name: 'Terms of Service' })).toBeVisible()
+  await page.getByRole('button', { name: 'Back to registration' }).click()
+  await page.getByRole('button', { name: 'Privacy Policy' }).click()
+  await expect(page.getByRole('heading', { name: 'Privacy Policy' })).toBeVisible()
+  await page.getByRole('button', { name: 'Back to registration' }).click()
+
   await page.getByLabel('Email').fill('legal@example.com')
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
 

@@ -43,6 +43,22 @@ describe('App shell', () => {
     expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
 
+  test('opens legal texts from the registration view before sign-in', async () => {
+    renderApp()
+    await screen.findByRole('heading', { name: /sign in/i })
+    fireEvent.click(screen.getByRole('button', { name: 'Register' }))
+    await screen.findByRole('heading', { name: /create your account/i })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Terms of Service' }))
+    expect(await screen.findByRole('heading', { name: 'Terms of Service' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to registration' }))
+    expect(await screen.findByRole('heading', { name: /create your account/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy Policy' }))
+    expect(await screen.findByRole('heading', { name: 'Privacy Policy' })).toBeInTheDocument()
+  })
+
   test('shows app shell with sidebar after sign in', async () => {
     await signIn('app-test@example.com')
     renderApp()

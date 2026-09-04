@@ -10,11 +10,13 @@ import { useRegister } from './session-queries'
 
 interface UserCreationPageProps {
   onCancel: () => void
+  onShowPrivacy?: () => void
+  onShowTerms?: () => void
   onSuccess?: () => void
 }
 
 /** Registration page; the new account is signed in right away. */
-export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps) {
+export function UserCreationPage({ onCancel, onShowPrivacy, onShowTerms, onSuccess }: UserCreationPageProps) {
   const register = useRegister()
   const [password, setPassword] = useState('')
   const [error, setError] = useState<{ field: string | null; message: string }>()
@@ -64,6 +66,19 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
               />
             </Field>
             <PasswordPolicyChecklist password={password} />
+            {onShowTerms && onShowPrivacy && (
+              <p className="text-sm text-muted-foreground">
+                Read the{' '}
+                <Button onClick={onShowTerms} size="inline" variant="link">
+                  Terms of Service
+                </Button>{' '}
+                and{' '}
+                <Button onClick={onShowPrivacy} size="inline" variant="link">
+                  Privacy Policy
+                </Button>{' '}
+                before accepting them.
+              </p>
+            )}
             <Field
               error={error?.field === 'termsAccepted' ? error.message : undefined}
               label="I accept the Terms of Service"

@@ -51,6 +51,23 @@ describe('UserCreationPage', () => {
     expect(screen.getByRole('list', { name: 'Password policy' })).toBeInTheDocument()
   })
 
+  test('opens legal texts from the registration form', () => {
+    let opened: string | null = null
+    renderWithProviders(
+      <UserCreationPage
+        onCancel={() => {}}
+        onShowPrivacy={() => { opened = 'privacy' }}
+        onShowTerms={() => { opened = 'terms' }}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Terms of Service' }))
+    expect(opened).toBe('terms')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy Policy' }))
+    expect(opened).toBe('privacy')
+  })
+
   test('successful registration calls onSuccess', async () => {
     let succeeded = false
     renderWithProviders(<UserCreationPage onCancel={() => {}} onSuccess={() => { succeeded = true }} />)
