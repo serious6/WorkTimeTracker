@@ -105,7 +105,7 @@ export const privacyPolicy: LegalDocument = {
         'time entries and breaks, including a running timer',
         'absences such as vacation, sick leave, unpaid and half days, and explicit overtime records',
         'your working time settings, such as the weekly target, the working days and the compliance limits',
-        'an audit trail of the changes to your entries, so a correction stays traceable',
+        'audit trails for time entries, absences, overtime records and security-relevant actions; failed-login and lockout records are retained for 90 days, while the other audit records are append-only',
       ],
     },
     {
@@ -124,7 +124,8 @@ export const privacyPolicy: LegalDocument = {
     {
       heading: '5. Session handling',
       paragraphs: [
-        'After signing in, the session identifier of the desktop application is held in memory only. It is never written to a place a page script can read, so reloading the window signs you out and the abandoned session ends with its idle timeout.',
+        'In the desktop application the session identifier is held in memory only and is not written to browser-readable storage; reloading the window signs you out and the abandoned backend session ends with its idle timeout.',
+        'In the browser build the session token is stored in sessionStorage, and its timeout metadata is stored in localStorage under that token, so a reload keeps the session until it expires or you sign out.',
       ],
     },
     {
@@ -136,7 +137,9 @@ export const privacyPolicy: LegalDocument = {
     {
       heading: '7. Your data is in your hands',
       paragraphs: [
-        'You can view, correct and delete every record in the application, and export your monthly record as CSV or PDF. Deleting the database, or the browser storage of the browser build, removes the data permanently; the authors hold no copy that could be requested or erased.',
+        'You can view and correct all records, delete projects, budgets, time entries, absences and overtime records, and export your monthly record as CSV or PDF.',
+        'Audit trails are read-only: deleting a source record adds a delete audit row, and existing audit rows stay readable (except failed-login and lockout rows, which expire after 90 days).',
+        'Deleting the database, or clearing the browser storage of the browser build, removes the stored data permanently; the authors hold no copy that could be requested or erased.',
       ],
     },
     {

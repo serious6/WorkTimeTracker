@@ -336,7 +336,7 @@ Each document carries its own version and an ISO day. The day is shown as it is 
 being formatted for the locale of the reader: it identifies a revision of a text, not a moment in a
 timezone, and every timestamp the application derives from the clock is already timezone dependent
 enough. An installed build keeps the revision it was released with, so a user can tell which text
-they accepted.
+that build includes.
 
 Neither document is stored, acknowledged or synchronised. There is no service behind the
 application, so there is nothing to record consent with: the texts describe the licence, the
