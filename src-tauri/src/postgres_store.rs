@@ -3194,6 +3194,7 @@ mod tests {
                     description: None,
                     color: "#336699".into(),
                     active: true,
+                    archived: false,
                 },
             )
             .unwrap();
