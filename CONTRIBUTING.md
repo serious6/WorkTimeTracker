@@ -81,6 +81,12 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 - [ ] A schema change updates the migration in `drizzle/`.
 - [ ] The title follows Conventional Commits.
 
+## Code review
+
+Reviews - by humans or agents - follow
+[`.github/skills/code-review-and-quality/SKILL.md`](.github/skills/code-review-and-quality/SKILL.md):
+the review dimensions, severity levels, and output template.
+
 ## Project layout
 
 See [`docs/development.md`](docs/development.md#repository-layout) for the maintained repository map.

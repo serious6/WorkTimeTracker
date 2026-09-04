@@ -2,7 +2,8 @@
 
 Concise instructions for coding agents and automation. Human workflow details live in
 [`CONTRIBUTING.md`](CONTRIBUTING.md); setup, scripts, and local checks live in
-[`docs/development.md`](docs/development.md).
+[`docs/development.md`](docs/development.md). Every code review follows
+[`.github/skills/code-review-and-quality/SKILL.md`](.github/skills/code-review-and-quality/SKILL.md).
 
 ## Project purpose and hard constraints
 
