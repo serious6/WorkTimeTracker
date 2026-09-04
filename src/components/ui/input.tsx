@@ -66,11 +66,8 @@ type FieldControlProps = {
 }
 
 /**
- * Wraps an `Input`/`Select`/`Textarea` with a linked label, an optional hint and an optional
- * error. Generates a stable id with `useId()` (unless the control already has one), links it via
- * `htmlFor`, and — when `error` is set — marks the control `aria-invalid`, appends the error's id
- * to `aria-describedby` and announces the message through `role="alert"`. The primitives stay
- * usable standalone; `Field` is purely additive.
+ * Wraps a control with its label and optional hint or error, wiring the
+ * accessible ids without changing the standalone input primitives.
  */
 export function Field({
   label,
