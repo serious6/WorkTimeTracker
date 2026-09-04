@@ -2346,7 +2346,11 @@ mod tests {
             .into_iter()
             .map(|row| row.get(0))
             .collect();
-        assert_eq!(versions, ["0000_init"]);
+        let expected_versions: Vec<String> = MIGRATIONS
+            .iter()
+            .map(|(version, _)| (*version).to_owned())
+            .collect();
+        assert_eq!(versions, expected_versions);
     }
 
     /// A production client never migrates a shared database on its own: it
