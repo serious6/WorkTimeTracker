@@ -693,7 +693,7 @@ fn write_app_version(
 ) -> Result<(), StoreError> {
     client.execute(
         "INSERT INTO wtt.app_metadata (key, value) VALUES ($1, $2)
-         ON CONFLICT (key) DO UPDATE SET value = $2 WHERE wtt.app_metadata.value <> $2",
+         ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
         &[&APP_VERSION_KEY, &version],
     )?;
     Ok(())
@@ -2073,15 +2073,13 @@ mod tests {
 
     use crate::{
         config::DeploymentMode,
-        connection::SEARCH_PATH_OPTIONS,
+        connection::{search_path_options, APP_SCHEMA},
         models::{
             SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry,
             LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
         },
         test_support::{fresh_database, test_store, unique_email},
     };
-
-    const APP_SCHEMA: &str = "wtt";
 
     /// A remote host is rejected by `connection::plan`, whose own tests cover
     /// the rules; this one keeps the store honest about using it.
@@ -3243,7 +3241,7 @@ mod tests {
 
     fn connect_test_client(url: &str) -> postgres::Client {
         let mut config: postgres::Config = url.parse().expect("DATABASE_URL parses");
-        config.options(SEARCH_PATH_OPTIONS);
+        config.options(&search_path_options());
         config
             .connect(NoTls)
             .expect("test_store already connected to this server")
