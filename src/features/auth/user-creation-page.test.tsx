@@ -85,17 +85,20 @@ describe('UserCreationPage', () => {
   })
 
   test('requires both legal texts before registration', async () => {
+    let succeeded = false
     renderWithProviders(
-      <UserCreationPage onCancel={() => {}} onSuccess={() => { throw new Error('unexpected') }} {...legalTextHandlers} />,
+      <UserCreationPage onCancel={() => {}} onSuccess={() => { succeeded = true }} {...legalTextHandlers} />,
     )
     typeIntoForm('newuser@example.com', 'Str0ng-Passphrase!!x')
 
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('You must accept the terms of service')
+    expect(succeeded).toBe(false)
 
     fireEvent.click(screen.getByLabelText('I accept the Terms of Service'))
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('You must accept the privacy policy')
+    expect(succeeded).toBe(false)
   })
 
   test('shows error when email is already taken', async () => {

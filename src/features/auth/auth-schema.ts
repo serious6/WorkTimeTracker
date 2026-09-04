@@ -32,8 +32,8 @@ export const registrationSchema = z.object({
 })
 
 export const accountCreationSchema = registrationSchema.extend({
-  termsAccepted: z.boolean().refine((accepted) => accepted === true, TERMS_ACCEPTANCE_MESSAGE),
-  privacyAccepted: z.boolean().refine((accepted) => accepted === true, PRIVACY_ACCEPTANCE_MESSAGE),
+  termsAccepted: z.literal(true, { error: TERMS_ACCEPTANCE_MESSAGE }),
+  privacyAccepted: z.literal(true, { error: PRIVACY_ACCEPTANCE_MESSAGE }),
 })
 
 export type AuthUser = z.infer<typeof authUserSchema>
