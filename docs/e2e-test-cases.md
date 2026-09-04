@@ -141,7 +141,7 @@ timer on it.
 
 | #  | Test (`e2e/legal.spec.ts`) | Given | When | Then |
 |----|----------------------------|-------|------|------|
-| LG1 | `LG1: terms of service and privacy policy are reachable from the account menu` | The user is signed in | The user opens "Terms of Service" and then "Privacy Policy" from the account menu | Both pages show their heading, the revision line and their sections, and the main navigation still works afterwards |
+| LG1 | `LG1: terms of service and privacy policy are reachable from the account menu` | The user is signed in | The user opens "Terms of Service" and then "Privacy Policy" from the account menu | Both pages show their heading, the revision line and their sections, including the terms heading "5. No warranty" and the privacy headings "2. Where your data is stored" and "5. No tracking, and access by the authors", and the main navigation still works afterwards |
 | LG2 | `LG2: the legal documents stay reachable and are not restored after a reload` | The privacy policy is open | The user reloads and opens the terms of service from another view | The reload returns to the dashboard instead of restoring the policy, and the account menu opens the terms from any view |
 
 ## Content Security Policy

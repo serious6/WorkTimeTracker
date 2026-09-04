@@ -154,7 +154,9 @@ export function AppSidebar() {
           <span aria-hidden className="size-2 rounded-full bg-success" />
           <span className={cn(!sidebarExpanded && 'sr-only')}>Local data</span>
         </p>
-        {sidebarExpanded && <p className="pt-1">All data is stored locally on this device.</p>}
+        {sidebarExpanded && (
+          <p className="pt-1">All data is stored in the database this build is configured for.</p>
+        )}
       </div>
     </aside>
   )

@@ -20,7 +20,8 @@ test('LG1: terms of service and privacy policy are reachable from the account me
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Privacy Policy' }).click()
   await expectHeading(page, 'Privacy Policy')
-  await expect(page.getByRole('heading', { name: '4. No tracking and no transmission' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '2. Where your data is stored' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '5. No tracking, and access by the authors' })).toBeVisible()
 
   await gotoPage(page, 'Settings')
   await expectHeading(page, 'Settings')
