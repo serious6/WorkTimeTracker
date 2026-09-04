@@ -32,6 +32,11 @@ export function downloadUrl(value) {
     return null
   }
 }
+export function formatReleaseDate(value) {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(date)
+}
 export function releaseState(releases) {
   return Array.isArray(releases) && releases.length ? 'release' : 'empty'
 }

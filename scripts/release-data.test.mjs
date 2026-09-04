@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { CACHE_KEY, CACHE_TTL, RELEASES_URL, ReleaseRequestError, downloadUrl, formatBytes, inferPlatform, loadReleases, releaseState } from '../docs/site/release-data.js'
+import { CACHE_KEY, CACHE_TTL, RELEASES_URL, ReleaseRequestError, downloadUrl, formatBytes, formatReleaseDate, inferPlatform, loadReleases, releaseState } from '../docs/site/release-data.js'
 
 describe('release page helpers', () => {
   test('infers every supported installer platform', () => {
@@ -12,6 +12,7 @@ describe('release page helpers', () => {
     expect(formatBytes(-1)).toBe('Unknown size')
     expect(downloadUrl('https://github.com/serious6/WorkTimeTracker/releases/download/v1/app.msi')).toMatch(/app\.msi$/)
     expect(downloadUrl('javascript:alert(1)')).toBeNull()
+    expect(formatReleaseDate()).toBeNull()
     expect(releaseState([])).toBe('empty')
     expect(releaseState([{ tag_name: 'v1.0.0' }])).toBe('release')
   })
