@@ -11,7 +11,7 @@ export class ReleaseRequestError extends Error {
 }
 
 export function inferPlatform(name) {
-  const file = name.toLowerCase()
+  const file = String(name || '').toLowerCase()
   if (file.endsWith('.msi') || file.endsWith('.exe')) return 'Windows'
   if (file.endsWith('.dmg') || file.endsWith('.app.tar.gz')) return 'macOS'
   if (file.endsWith('.appimage') || file.endsWith('.deb') || file.endsWith('.rpm')) return 'Linux'
@@ -46,6 +46,10 @@ export async function loadReleases(fetcher, storage, now = Date.now()) {
     cached = JSON.parse(storage.getItem(CACHE_KEY) || 'null')
   } catch {
     storage.removeItem(CACHE_KEY)
+  }
+  if (cached && !Array.isArray(cached.releases)) {
+    storage.removeItem(CACHE_KEY)
+    cached = null
   }
   if (cached?.expiresAt > now && Array.isArray(cached.releases)) return { releases: cached.releases, stale: false }
   try {

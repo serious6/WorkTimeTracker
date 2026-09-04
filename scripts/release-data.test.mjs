@@ -6,6 +6,7 @@ describe('release page helpers', () => {
     expect(inferPlatform('tracker.msi')).toBe('Windows')
     expect(inferPlatform('tracker.app.tar.gz')).toBe('macOS')
     expect(inferPlatform('tracker.AppImage')).toBe('Linux')
+    expect(inferPlatform()).toBe('Download')
   })
   test('formats asset sizes and selects the empty state', () => {
     expect(formatBytes(1_572_864)).toBe('1.5 MB')
@@ -32,5 +33,11 @@ describe('release page helpers', () => {
     const storage = { getItem: () => null, removeItem: () => {} }
     await expect(loadReleases(async () => ({ ok: false, status: 403 }), storage)).rejects.toMatchObject({ status: 403 })
     await expect(loadReleases(async () => ({ ok: true, json: async () => ({}) }), storage)).rejects.toBeInstanceOf(ReleaseRequestError)
+  })
+  test('clears malformed cached data before requesting releases', async () => {
+    const removed = []
+    const storage = { getItem: () => JSON.stringify({ releases: {} }), removeItem: (key) => removed.push(key), setItem: () => {} }
+    await loadReleases(async () => ({ ok: true, json: async () => [] }), storage)
+    expect(removed).toEqual([CACHE_KEY])
   })
 })

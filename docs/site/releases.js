@@ -1,7 +1,8 @@
 import { RELEASES_PAGE, downloadUrl, formatBytes, formatReleaseDate, inferPlatform, loadReleases, releaseState } from './release-data.js'
 
 const content = document.querySelector('#release-content')
-const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character])
+const htmlEntities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => htmlEntities[character])
 
 function render(releases, stale) {
   content.setAttribute('aria-busy', 'false')
@@ -13,10 +14,11 @@ function render(releases, stale) {
   const publishedDate = formatReleaseDate(release.published_at)
   const assets = (Array.isArray(release.assets) ? release.assets : []).map((asset) => {
     const url = downloadUrl(asset.browser_download_url)
-    return url ? `<a class="asset" href="${escape(url)}"><span class="asset-icon" aria-hidden="true">↓</span><div><strong>${escape(inferPlatform(asset.name))} · ${escape(asset.name)}</strong><span class="asset-meta">${formatBytes(asset.size)} · ${asset.download_count} download${asset.download_count === 1 ? '' : 's'}</span></div><span class="download-arrow" aria-hidden="true">↓</span></a>` : ''
+    const downloads = Number.isFinite(asset.download_count) ? ` · ${asset.download_count} download${asset.download_count === 1 ? '' : 's'}` : ''
+    return url ? `<a class="asset" href="${escapeHtml(url)}"><span class="asset-icon" aria-hidden="true">↓</span><div><strong>${escapeHtml(inferPlatform(asset.name))} · ${escapeHtml(asset.name || 'Installer')}</strong><span class="asset-meta">${formatBytes(asset.size)}${downloads}</span></div><span class="download-arrow" aria-hidden="true">↓</span></a>` : ''
   }).join('')
-  const notes = release.body ? `<p class="release-notes">${escape(release.body.slice(0, 320))}${release.body.length > 320 ? '…' : ''}</p>` : ''
-  content.innerHTML = `<div class="release-head"><div><h3>Latest release: ${escape(release.tag_name)}</h3>${publishedDate ? `<p class="release-meta">Published ${publishedDate}</p>` : ''}</div>${stale ? '<span class="release-meta">Showing saved results</span>' : ''}</div>${notes}${assets ? `<div class="asset-list">${assets}</div>` : '<p class="release-meta">This release does not include downloadable assets yet.</p>'}<a class="older-link" href="${RELEASES_PAGE}">View all releases on GitHub →</a>`
+  const notes = release.body ? `<p class="release-notes">${escapeHtml(release.body.slice(0, 320))}${release.body.length > 320 ? '…' : ''}</p>` : ''
+  content.innerHTML = `<div class="release-head"><div><h3>Latest release: ${escapeHtml(release.tag_name)}</h3>${publishedDate ? `<p class="release-meta">Published ${publishedDate}</p>` : ''}</div>${stale ? '<span class="release-meta">Showing saved results</span>' : ''}</div>${notes}${assets ? `<div class="asset-list">${assets}</div>` : '<p class="release-meta">This release does not include downloadable assets yet.</p>'}<a class="older-link" href="${RELEASES_PAGE}">View all releases on GitHub →</a>`
 }
 function renderError(error) {
   content.setAttribute('aria-busy', 'false')
