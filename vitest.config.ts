@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 // `.tsx` tests render React and stay in jsdom by glob. Keep `.ts` tests here
 // only when they use DOM/browser events or Testing Library renderHook.
@@ -28,7 +28,7 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
-          exclude: jsdomTestFiles,
+          exclude: [...configDefaults.exclude, ...jsdomTestFiles],
         },
       },
       {

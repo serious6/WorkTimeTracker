@@ -1,5 +1,10 @@
 import { expect, type Page } from '@playwright/test'
-import { SESSION_TIMEOUT_MINUTES } from '../src/features/auth/security-policy'
+import {
+  AUTH_STORAGE_KEYS,
+  seededAuthUser,
+  seededRegistrationAudit,
+  seededSession,
+} from '../src/test/auth-fixture'
 
 export function dialog(page: Page) {
   return page.getByRole('dialog')
@@ -106,46 +111,34 @@ export async function downloadText(page: Page, button: string) {
 }
 
 export const PASSWORD = 'Str0ng-Passphrase!!x'
-// Valid PBKDF2-SHA256 hash of PASSWORD with the app's test salt; regenerate if
-// PASSWORD or PBKDF2_ITERATIONS changes.
-const PASSWORD_HASH =
-  'pbkdf2-sha256$210000$d29yay10aW1lLXRlc3QtMQ==$9WatE7lxQeDr47my/+676IM7dG0Neb4WKkD3V/MVUZw='
 
 export async function startSignedInSession(page: Page, email = 'first@example.com') {
-  await page.addInitScript(
-    ({ accountEmail, passwordHash, sessionTimeoutMinutes }) => {
-      if (localStorage.getItem('work-time-tracker.users')) return
-      const now = Date.now()
-      const createdAt = new Date(now).toISOString()
-      const user = { id: 1, email: accountEmail, createdAt, passwordHash }
-      const token = 'test-session-1'
-      localStorage.setItem('work-time-tracker.users', JSON.stringify([user]))
-      localStorage.setItem(
-        'work-time-tracker.1.security-audits',
-        JSON.stringify([
-          {
-            id: 1,
-            entity: 'user',
-            entityId: 1,
-            action: 'user.registered',
-            actor: accountEmail,
-            oldValue: null,
-            newValue: JSON.stringify({ email: accountEmail }),
-            recordedAt: createdAt,
-          },
-        ]),
-      )
-      localStorage.setItem(
-        'work-time-tracker.sessions',
-        JSON.stringify({
-          [token]: { userId: 1, startedAt: now, expiresAt: now + sessionTimeoutMinutes * 60_000 },
-        }),
-      )
-      sessionStorage.setItem('work-time-tracker.session', token)
-    },
-    { accountEmail: email, passwordHash: PASSWORD_HASH, sessionTimeoutMinutes: SESSION_TIMEOUT_MINUTES },
-  )
+  const createdAt = new Date().toISOString()
+  const { session, token } = seededSession(1, Date.now())
   await page.goto('/')
+  await page.evaluate(
+    ({ keys, registrationAudit, sessionDuration, token, user }) => {
+      const now = Date.now()
+      localStorage.setItem(keys.users, JSON.stringify([user]))
+      localStorage.setItem(
+        `work-time-tracker.${user.id}.security-audits`,
+        JSON.stringify([registrationAudit]),
+      )
+      localStorage.setItem(
+        keys.sessions,
+        JSON.stringify({ [token]: { userId: user.id, startedAt: now, expiresAt: now + sessionDuration } }),
+      )
+      sessionStorage.setItem(keys.session, token)
+    },
+    {
+      keys: AUTH_STORAGE_KEYS,
+      registrationAudit: seededRegistrationAudit(1, email, createdAt),
+      sessionDuration: session.expiresAt - session.startedAt,
+      token,
+      user: seededAuthUser(1, email, createdAt),
+    },
+  )
+  await page.reload()
   await expectHeading(page, 'Dashboard')
 }
 

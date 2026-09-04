@@ -4,7 +4,6 @@ import type { ReactElement } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { useToastStore } from '@/components/ui/toast-store'
 import type { AuthUser } from '@/features/auth/auth-schema'
-import { SESSION_TIMEOUT_MINUTES } from '@/features/auth/security-policy'
 import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
 import type { OvertimeEntry, SaveOvertimeEntry } from '@/features/overtime/overtime-schema'
@@ -13,16 +12,15 @@ import { createLocalRepository } from '@/features/storage/local-repository'
 import type { EntryType, TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { useTimerStore } from '@/features/timer/timer-store'
 import { toDateKey } from '@/lib/date'
+import {
+  AUTH_STORAGE_KEYS,
+  seededAuthUser,
+  seededRegistrationAudit,
+  seededSession,
+} from './auth-fixture'
 
 /** Satisfies the password policy, so registrations succeed. */
 export const TEST_PASSWORD = 'Str0ng-Passphrase!!x'
-// Valid PBKDF2-SHA256 hash of TEST_PASSWORD with the app's test salt; regenerate
-// if TEST_PASSWORD or PBKDF2_ITERATIONS changes.
-const TEST_PASSWORD_HASH =
-  'pbkdf2-sha256$210000$d29yay10aW1lLXRlc3QtMQ==$9WatE7lxQeDr47my/+676IM7dG0Neb4WKkD3V/MVUZw='
-const USERS_KEY = 'work-time-tracker.users'
-const SESSION_KEY = 'work-time-tracker.session'
-const SESSIONS_KEY = 'work-time-tracker.sessions'
 
 export function createTestQueryClient(): QueryClient {
   return new QueryClient({
@@ -52,38 +50,23 @@ export async function resetAppState(): Promise<void> {
 }
 
 export async function signIn(email = 'tester@example.com'): Promise<AuthUser> {
-  const users = JSON.parse(globalThis.localStorage?.getItem(USERS_KEY) ?? '[]') as Array<
+  const users = JSON.parse(globalThis.localStorage?.getItem(AUTH_STORAGE_KEYS.users) ?? '[]') as Array<
     AuthUser & { passwordHash: string }
   >
   const user = { id: nextId(users), email, createdAt: new Date().toISOString() }
   globalThis.localStorage?.setItem(
-    USERS_KEY,
-    JSON.stringify([...users, { ...user, passwordHash: TEST_PASSWORD_HASH }]),
+    AUTH_STORAGE_KEYS.users,
+    JSON.stringify([...users, seededAuthUser(user.id, user.email, user.createdAt)]),
   )
   globalThis.localStorage?.setItem(
     `work-time-tracker.${user.id}.security-audits`,
-    JSON.stringify([
-      {
-        id: 1,
-        entity: 'user',
-        entityId: user.id,
-        action: 'user.registered',
-        actor: email,
-        oldValue: null,
-        newValue: JSON.stringify({ email }),
-        recordedAt: user.createdAt,
-      },
-    ]),
+    JSON.stringify([seededRegistrationAudit(user.id, email, user.createdAt)]),
   )
-  const token = `test-session-${user.id}`
   const startedAt = Date.now()
-  globalThis.localStorage?.setItem(
-    SESSIONS_KEY,
-    JSON.stringify({
-      [token]: { userId: user.id, startedAt, expiresAt: startedAt + SESSION_TIMEOUT_MINUTES * 60_000 },
-    }),
-  )
-  globalThis.sessionStorage?.setItem(SESSION_KEY, token)
+  const { token, session } = seededSession(user.id, startedAt)
+  const sessions = JSON.parse(globalThis.localStorage?.getItem(AUTH_STORAGE_KEYS.sessions) ?? '{}')
+  globalThis.localStorage?.setItem(AUTH_STORAGE_KEYS.sessions, JSON.stringify({ ...sessions, [token]: session }))
+  globalThis.sessionStorage?.setItem(AUTH_STORAGE_KEYS.session, token)
   return user
 }
 
