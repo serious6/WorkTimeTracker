@@ -5,7 +5,7 @@
 //! the same way. Foreign and unknown ids both return [`StoreError::NotFound`].
 //! Statements without a `user_id` predicate either run before a session exists
 //! (`users`, `login_attempts`, auth audit inserts) or describe database
-//! state (`app_metadata`, `schema_migrations`).
+//! state (`wtt.app_metadata`, `wtt.schema_migrations`).
 
 use std::time::Duration;
 
@@ -39,7 +39,7 @@ const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Ordered migrations, applied exactly once each and tracked in
-/// `schema_migrations`. `0000_init` is the complete current baseline schema for
+/// `wtt.schema_migrations`. `0000_init` is the complete current baseline schema for
 /// a fresh database; every later migration upgrades a database that already
 /// recorded the baseline and must therefore stay idempotent.
 /// `migrate` runs them inside one transaction, so a migration must not use a
@@ -627,23 +627,33 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
 fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
     let mut transaction = client.transaction()?;
     transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
-    transaction.batch_execute(
-        "CREATE TABLE IF NOT EXISTS schema_migrations (
-           version TEXT PRIMARY KEY,
-           applied_at TEXT NOT NULL
+    transaction.batch_execute(&format!(
+        "CREATE SCHEMA IF NOT EXISTS {schema};
+         CREATE TABLE IF NOT EXISTS {schema}.schema_migrations (
+          version TEXT PRIMARY KEY,
+          applied_at TEXT NOT NULL
          )",
-    )?;
+        schema = connection::APP_SCHEMA
+    ))?;
     for (version, sql) in MIGRATIONS {
         let applied: bool = transaction
             .query_one(
-                "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)",
+                &format!(
+                    "SELECT EXISTS (
+                      SELECT 1 FROM {schema}.schema_migrations WHERE version = $1
+                    )",
+                    schema = connection::APP_SCHEMA
+                ),
                 &[version],
             )?
             .get(0);
         if !applied {
             transaction.batch_execute(sql)?;
             transaction.execute(
-                "INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)",
+                &format!(
+                    "INSERT INTO {schema}.schema_migrations (version, applied_at) VALUES ($1, $2)",
+                    schema = connection::APP_SCHEMA
+                ),
                 &[version, &now_iso()],
             )?;
         }
@@ -656,12 +666,19 @@ fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
 /// step, so a starting client only checks that the schema it expects is
 /// already there instead of changing a shared database on its own.
 fn verify_migrations(client: &mut postgres::Client) -> Result<(), StoreError> {
+    let migrations_table = format!("{}.schema_migrations", connection::APP_SCHEMA);
     let recorded: bool = client
-        .query_one("SELECT to_regclass('schema_migrations') IS NOT NULL", &[])?
+        .query_one("SELECT to_regclass($1) IS NOT NULL", &[&migrations_table])?
         .get(0);
     let missing: Vec<&str> = if recorded {
         let applied: Vec<String> = client
-            .query("SELECT version FROM schema_migrations", &[])?
+            .query(
+                &format!(
+                    "SELECT version FROM {schema}.schema_migrations",
+                    schema = connection::APP_SCHEMA
+                ),
+                &[],
+            )?
             .iter()
             .map(|row| row.get(0))
             .collect();
@@ -688,8 +705,11 @@ fn write_app_version(
     version: &str,
 ) -> Result<(), StoreError> {
     client.execute(
-        "INSERT INTO app_metadata (key, value) VALUES ($1, $2)
-         ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
+        &format!(
+            "INSERT INTO {schema}.app_metadata (key, value) VALUES ($1, $2)
+             ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
+            schema = connection::APP_SCHEMA
+        ),
         &[&APP_VERSION_KEY, &version],
     )?;
     Ok(())
@@ -2069,6 +2089,7 @@ mod tests {
 
     use crate::{
         config::DeploymentMode,
+        connection::{search_path_options, APP_SCHEMA},
         models::{
             SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry,
             LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
@@ -2353,10 +2374,13 @@ mod tests {
             "concurrent migrations failed: {failures:?}"
         );
 
-        let mut client = postgres::Client::connect(url, NoTls).unwrap();
+        let mut client = connect_test_client(url);
         let versions: Vec<String> = client
             .query(
-                "SELECT version FROM schema_migrations ORDER BY version",
+                &format!(
+                    "SELECT version FROM {schema}.schema_migrations ORDER BY version",
+                    schema = connection::APP_SCHEMA
+                ),
                 &[],
             )
             .unwrap()
@@ -2364,6 +2388,50 @@ mod tests {
             .map(|row| row.get(0))
             .collect();
         assert_eq!(versions, ["0000_init"]);
+    }
+
+    #[test]
+    fn migrates_application_tables_into_the_wtt_schema_only() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let _store = PostgresStore::connect(database.url()).unwrap();
+        let mut client = connect_test_client(database.url());
+
+        let expected_tables: Vec<String> = APPLICATION_TABLES
+            .iter()
+            .map(|table| (*table).to_owned())
+            .collect();
+        let wtt_tables: Vec<String> = client
+            .query(
+                "SELECT table_name FROM information_schema.tables
+                 WHERE table_schema = $1 AND table_type = 'BASE TABLE'
+                 ORDER BY table_name COLLATE \"C\"",
+                &[&APP_SCHEMA],
+            )
+            .unwrap()
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        assert_eq!(wtt_tables, expected_tables);
+
+        let public_tables: Vec<String> = client
+            .query(
+                "SELECT table_name FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                   AND table_type = 'BASE TABLE'
+                   AND table_name = ANY($1)
+                 ORDER BY table_name COLLATE \"C\"",
+                &[&expected_tables],
+            )
+            .unwrap()
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+        assert!(
+            public_tables.is_empty(),
+            "application tables must not be created in public: {public_tables:?}"
+        );
     }
 
     /// A production client never migrates a shared database on its own: it
@@ -3149,6 +3217,25 @@ mod tests {
         assert_eq!(store.list_project_budgets(user).unwrap(), [other.budget]);
     }
 
+    /// Every native application table, including migration bookkeeping. A table
+    /// added later must be listed here so its schema placement is asserted.
+    const APPLICATION_TABLES: &[&str] = &[
+        "absence_audits",
+        "absences",
+        "app_metadata",
+        "login_attempts",
+        "overtime_audits",
+        "overtime_entries",
+        "project_budgets",
+        "projects",
+        "schema_migrations",
+        "security_audits",
+        "time_entries",
+        "time_entry_audits",
+        "users",
+        "work_settings",
+    ];
+
     /// Every table that carries a `user_id`. A table added later without being
     /// registered here fails `every_user_owned_table_is_registered`, so the
     /// erasure below is asserted table by table instead of for a handful of
@@ -3168,7 +3255,15 @@ mod tests {
 
     fn test_client() -> postgres::Client {
         let url = std::env::var("DATABASE_URL").expect("test_store checked DATABASE_URL");
-        postgres::Client::connect(&url, NoTls).expect("test_store already connected to this server")
+        connect_test_client(&url)
+    }
+
+    fn connect_test_client(url: &str) -> postgres::Client {
+        let mut config: postgres::Config = url.parse().expect("DATABASE_URL parses");
+        config.options(&search_path_options());
+        config
+            .connect(NoTls)
+            .expect("test_store already connected to this server")
     }
 
     fn rows_of_user(client: &mut postgres::Client, table: &str, user_id: i64) -> i64 {
@@ -3278,9 +3373,9 @@ mod tests {
         let found: Vec<String> = client
             .query(
                 "SELECT table_name FROM information_schema.columns
-                 WHERE table_schema = 'public' AND column_name = 'user_id'
+                 WHERE table_schema = $1 AND column_name = 'user_id'
                  ORDER BY table_name",
-                &[],
+                &[&APP_SCHEMA],
             )
             .unwrap()
             .iter()
@@ -3393,7 +3488,7 @@ mod tests {
         };
         let store = PostgresStore::connect(database.url()).unwrap();
         let user = seed_account(&store);
-        let mut client = postgres::Client::connect(database.url(), NoTls).unwrap();
+        let mut client = connect_test_client(database.url());
         client
             .batch_execute(
                 "CREATE FUNCTION refuse_delete() RETURNS TRIGGER AS $$

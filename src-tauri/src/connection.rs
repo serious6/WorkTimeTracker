@@ -21,6 +21,26 @@ pub const COMPOSE_ENV: &str = "WORK_TIME_TRACKER_COMPOSE";
 const COMPOSE_HOST: &str = "db";
 const VERIFY_FULL: &str = "verify-full";
 const DISABLE: &str = "disable";
+pub(crate) const APP_SCHEMA: &str = "wtt";
+/// Pinned at connection startup because the store uses unqualified SQL; direct
+/// test clients must set the same option when they query application tables.
+/// The path intentionally excludes `public` for the Supabase defense-in-depth
+/// boundary, so future extension function calls must be schema-qualified.
+pub(crate) fn search_path_options() -> String {
+    format!("-c search_path={APP_SCHEMA}")
+}
+
+fn options_with_search_path(existing: Option<&str>) -> String {
+    match existing.filter(|options| !options.trim().is_empty()) {
+        Some(options) => format!("{options} {}", search_path_options()),
+        None => search_path_options(),
+    }
+}
+
+fn pin_search_path(config: &mut postgres::Config) {
+    let startup_options = options_with_search_path(config.get_options());
+    config.options(&startup_options);
+}
 
 /// How a connection is protected. `Disabled` is the local development case,
 /// which matches the plain connection the compose database offers.
@@ -134,6 +154,7 @@ pub fn plan(
         // The driver only has to insist on TLS; the chain and the host name
         // are verified by the connector built from `root_cert`.
         config.ssl_mode(SslMode::Require);
+        pin_search_path(&mut config);
         Ok(Plan {
             config,
             tls: TlsPlan::Verified { root_cert },
@@ -146,6 +167,7 @@ pub fn plan(
             });
         }
         config.ssl_mode(SslMode::Disable);
+        pin_search_path(&mut config);
         Ok(Plan {
             config,
             tls: TlsPlan::Disabled,
@@ -384,9 +406,11 @@ mod tests {
     fn accepts_supported_local_database_hosts() {
         for url in LOCAL_URLS {
             let plan = development(url).unwrap_or_else(|error| panic!("{url}: {error}"));
+            let options = search_path_options();
 
             assert_eq!(plan.tls, TlsPlan::Disabled);
             assert_eq!(plan.config.get_ssl_mode(), SslMode::Disable);
+            assert_eq!(plan.config.get_options(), Some(options.as_str()));
         }
     }
 
@@ -417,6 +441,7 @@ mod tests {
         for url in REMOTE_URLS {
             let url = with(url, &format!("sslmode={VERIFY_FULL}"));
             let plan = production(&url).unwrap_or_else(|error| panic!("{url}: {error}"));
+            let options = search_path_options();
 
             assert_eq!(
                 plan.tls,
@@ -425,6 +450,7 @@ mod tests {
                 }
             );
             assert_eq!(plan.config.get_ssl_mode(), SslMode::Require);
+            assert_eq!(plan.config.get_options(), Some(options.as_str()));
         }
     }
 
@@ -525,6 +551,19 @@ mod tests {
                 // separately configured authority, and is percent-decoded.
                 root_cert: "/tmp/ca file.crt".to_owned()
             }
+        );
+    }
+
+    #[test]
+    fn appends_the_schema_to_existing_startup_options() {
+        let plan = development(
+            "postgresql://user@localhost/database?options=-c%20statement_timeout%3D5000",
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan.config.get_options(),
+            Some("-c statement_timeout=5000 -c search_path=wtt")
         );
     }
 

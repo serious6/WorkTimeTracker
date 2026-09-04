@@ -4,16 +4,18 @@
 -- (e.g. "2024-01-01T12:34:56.789Z"), written by the application layer
 -- (see src-tauri/src/postgres_store.rs).
 
-CREATE TABLE IF NOT EXISTS users (
+CREATE SCHEMA IF NOT EXISTS wtt;
+
+CREATE TABLE IF NOT EXISTS wtt.users (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS projects (
+CREATE TABLE IF NOT EXISTS wtt.projects (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT REFERENCES wtt.users (id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
   color TEXT NOT NULL,
@@ -23,12 +25,12 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS projects_user_id ON projects (user_id);
+CREATE INDEX IF NOT EXISTS projects_user_id ON wtt.projects (user_id);
 
-CREATE TABLE IF NOT EXISTS time_entries (
+CREATE TABLE IF NOT EXISTS wtt.time_entries (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT REFERENCES users (id) ON DELETE CASCADE,
-  project_id BIGINT REFERENCES projects (id) ON DELETE SET NULL,
+  user_id BIGINT REFERENCES wtt.users (id) ON DELETE CASCADE,
+  project_id BIGINT REFERENCES wtt.projects (id) ON DELETE SET NULL,
   start_time TEXT NOT NULL,
   end_time TEXT,
   entry_type TEXT NOT NULL DEFAULT 'work' CHECK (entry_type IN ('work', 'break')),
@@ -39,24 +41,24 @@ CREATE TABLE IF NOT EXISTS time_entries (
     CHECK (entry_type <> 'break' OR project_id IS NULL)
 );
 
-CREATE INDEX IF NOT EXISTS time_entries_start_time ON time_entries (start_time);
-CREATE INDEX IF NOT EXISTS time_entries_user_id ON time_entries (user_id);
+CREATE INDEX IF NOT EXISTS time_entries_start_time ON wtt.time_entries (start_time);
+CREATE INDEX IF NOT EXISTS time_entries_user_id ON wtt.time_entries (user_id);
 
-CREATE TABLE IF NOT EXISTS project_budgets (
+CREATE TABLE IF NOT EXISTS wtt.project_budgets (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT REFERENCES users (id) ON DELETE CASCADE,
-  project_id BIGINT NOT NULL UNIQUE REFERENCES projects (id) ON DELETE CASCADE,
+  user_id BIGINT REFERENCES wtt.users (id) ON DELETE CASCADE,
+  project_id BIGINT NOT NULL UNIQUE REFERENCES wtt.projects (id) ON DELETE CASCADE,
   budget_minutes BIGINT NOT NULL CHECK (budget_minutes > 0),
   due_date TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS project_budgets_user_id ON project_budgets (user_id);
+CREATE INDEX IF NOT EXISTS project_budgets_user_id ON wtt.project_budgets (user_id);
 
-CREATE TABLE IF NOT EXISTS work_settings (
+CREATE TABLE IF NOT EXISTS wtt.work_settings (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT UNIQUE REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT UNIQUE REFERENCES wtt.users (id) ON DELETE CASCADE,
   weekly_target_minutes BIGINT NOT NULL,
   working_days TEXT NOT NULL,
   week_starts_on TEXT NOT NULL,
@@ -70,7 +72,7 @@ CREATE TABLE IF NOT EXISTS work_settings (
   min_rest_minutes BIGINT NOT NULL DEFAULT 660
 );
 
-CREATE TABLE IF NOT EXISTS app_metadata (
+CREATE TABLE IF NOT EXISTS wtt.app_metadata (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
@@ -78,9 +80,9 @@ CREATE TABLE IF NOT EXISTS app_metadata (
 -- Append-only trail of every change to a time entry; replaces the older
 -- generic audit_log table (still exposed to the frontend as legacy shape via
 -- PostgresStore::list_audit_log, derived from this table).
-CREATE TABLE IF NOT EXISTS time_entry_audits (
+CREATE TABLE IF NOT EXISTS wtt.time_entry_audits (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES wtt.users (id) ON DELETE CASCADE,
   time_entry_id BIGINT NOT NULL,
   action TEXT NOT NULL,
   actor TEXT NOT NULL,
@@ -89,15 +91,15 @@ CREATE TABLE IF NOT EXISTS time_entry_audits (
   recorded_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS time_entry_audits_user_id ON time_entry_audits (user_id, id);
+CREATE INDEX IF NOT EXISTS time_entry_audits_user_id ON wtt.time_entry_audits (user_id, id);
 
 -- Absences (UC-4): days that are excused from the working-time target.
 --
 -- One record per calendar day, so a range is stored as several rows and the
 -- unique constraint guarantees that a day can never carry two absences.
-CREATE TABLE IF NOT EXISTS absences (
+CREATE TABLE IF NOT EXISTS wtt.absences (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES wtt.users (id) ON DELETE CASCADE,
   absence_type TEXT NOT NULL CHECK (absence_type IN ('vacation', 'sick', 'unpaid', 'halfDay')),
   absence_date TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -105,13 +107,13 @@ CREATE TABLE IF NOT EXISTS absences (
   CONSTRAINT absences_day_unique UNIQUE (user_id, absence_date)
 );
 
-CREATE INDEX IF NOT EXISTS absences_user_id ON absences (user_id, absence_date);
+CREATE INDEX IF NOT EXISTS absences_user_id ON wtt.absences (user_id, absence_date);
 
 -- Append-only trail of every change to an absence, kept after the absence is
 -- deleted so the record stays defensible.
-CREATE TABLE IF NOT EXISTS absence_audits (
+CREATE TABLE IF NOT EXISTS wtt.absence_audits (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES wtt.users (id) ON DELETE CASCADE,
   absence_id BIGINT NOT NULL,
   action TEXT NOT NULL,
   actor TEXT NOT NULL,
@@ -120,18 +122,18 @@ CREATE TABLE IF NOT EXISTS absence_audits (
   recorded_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS absence_audits_user_id ON absence_audits (user_id, id);
+CREATE INDEX IF NOT EXISTS absence_audits_user_id ON wtt.absence_audits (user_id, id);
 
 -- Failed logins per email, persisted so that restarting the application does
 -- not clear a lockout. Expired rows are deleted on the next login attempt, so
 -- the table cannot grow without bound.
-CREATE TABLE IF NOT EXISTS login_attempts (
+CREATE TABLE IF NOT EXISTS wtt.login_attempts (
   email TEXT PRIMARY KEY,
   failures BIGINT NOT NULL,
   last_failure TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS login_attempts_last_failure ON login_attempts (last_failure);
+CREATE INDEX IF NOT EXISTS login_attempts_last_failure ON wtt.login_attempts (last_failure);
 
 -- Explicit overtime records (UC-5): the balance carried over from before the
 -- application was used, absolute corrections and deltas.
@@ -142,9 +144,9 @@ CREATE INDEX IF NOT EXISTS login_attempts_last_failure ON login_attempts (last_f
 -- how a row came to be: a row written by the application from time entries is
 -- `automatic`, a row entered or edited by the user is `manual` and is never
 -- overwritten by the automatic calculation again.
-CREATE TABLE IF NOT EXISTS overtime_entries (
+CREATE TABLE IF NOT EXISTS wtt.overtime_entries (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES wtt.users (id) ON DELETE CASCADE,
   effective_date TEXT NOT NULL,
   minutes BIGINT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('opening', 'balance', 'adjustment')),
@@ -155,20 +157,20 @@ CREATE TABLE IF NOT EXISTS overtime_entries (
   CONSTRAINT overtime_entries_day_unique UNIQUE (user_id, effective_date)
 );
 
-CREATE INDEX IF NOT EXISTS overtime_entries_user_id ON overtime_entries (user_id, effective_date);
+CREATE INDEX IF NOT EXISTS overtime_entries_user_id ON wtt.overtime_entries (user_id, effective_date);
 
 -- Only one opening balance per user. The database enforces it, so two
 -- concurrent writers cannot both pass an application side check and commit a
 -- second opening balance.
 CREATE UNIQUE INDEX IF NOT EXISTS overtime_entries_opening_unique
-  ON overtime_entries (user_id)
+  ON wtt.overtime_entries (user_id)
   WHERE kind = 'opening';
 
 -- Append-only trail of every change to an overtime record, kept after the
 -- record is deleted so the balance stays defensible.
-CREATE TABLE IF NOT EXISTS overtime_audits (
+CREATE TABLE IF NOT EXISTS wtt.overtime_audits (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES wtt.users (id) ON DELETE CASCADE,
   overtime_entry_id BIGINT NOT NULL,
   action TEXT NOT NULL,
   actor TEXT NOT NULL,
@@ -177,7 +179,7 @@ CREATE TABLE IF NOT EXISTS overtime_audits (
   recorded_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS overtime_audits_user_id ON overtime_audits (user_id, id);
+CREATE INDEX IF NOT EXISTS overtime_audits_user_id ON wtt.overtime_audits (user_id, id);
 
 -- Append-only trail of the identity and configuration changes that carry no
 -- trail of their own: account creation, failed logins and lockouts, and the
@@ -189,9 +191,9 @@ CREATE INDEX IF NOT EXISTS overtime_audits_user_id ON overtime_audits (user_id, 
 -- records that name no row, such as the work settings or an auth event.
 -- Credentials are never written here: `old_value` and `new_value` carry the
 -- changed fields of the audited record and never a password or a hash.
-CREATE TABLE IF NOT EXISTS security_audits (
+CREATE TABLE IF NOT EXISTS wtt.security_audits (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT REFERENCES users (id) ON DELETE CASCADE,
+  user_id BIGINT REFERENCES wtt.users (id) ON DELETE CASCADE,
   entity TEXT NOT NULL,
   entity_id BIGINT,
   action TEXT NOT NULL,
@@ -202,9 +204,9 @@ CREATE TABLE IF NOT EXISTS security_audits (
 );
 
 CREATE INDEX IF NOT EXISTS security_audits_user_recorded_at
-  ON security_audits (user_id, recorded_at);
+  ON wtt.security_audits (user_id, recorded_at);
 
 -- The retention job deletes the auth events of the `auth` entity only, so the
 -- configuration records stay for as long as the domain trails do.
 CREATE INDEX IF NOT EXISTS security_audits_entity_recorded_at
-  ON security_audits (entity, recorded_at);
+  ON wtt.security_audits (entity, recorded_at);

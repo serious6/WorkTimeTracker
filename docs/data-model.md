@@ -33,18 +33,18 @@ written as a CSV or PDF file by the user.
 
 ```mermaid
 flowchart TB
-  subgraph postgres["Postgres database (native app)"]
-    users_t["users"]
-    projects_t["projects"]
-    entries_t["time_entries"]
-    budgets_t["project_budgets"]
-    audits_t["time_entry_audits"]
-    absences_t["absences"]
-    absence_audits_t["absence_audits"]
-    overtime_t["overtime_entries"]
-    overtime_audits_t["overtime_audits"]
-    settings_t["work_settings"]
-    meta_t["app_metadata"]
+  subgraph postgres["Postgres database (native app, `wtt` schema)"]
+    users_t["wtt.users"]
+    projects_t["wtt.projects"]
+    entries_t["wtt.time_entries"]
+    budgets_t["wtt.project_budgets"]
+    audits_t["wtt.time_entry_audits"]
+    absences_t["wtt.absences"]
+    absence_audits_t["wtt.absence_audits"]
+    overtime_t["wtt.overtime_entries"]
+    overtime_audits_t["wtt.overtime_audits"]
+    settings_t["wtt.work_settings"]
+    meta_t["wtt.app_metadata"]
   end
 
   subgraph browser["Browser storage (fallback)"]
@@ -66,15 +66,15 @@ flowchart TB
 
 | Container | Holds | Source |
 | --- | --- | --- |
-| `users`, `projects`, `time_entries`, `project_budgets`, `work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `absences` | One row per absent calendar day, scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `absence_audits` | Append-only trail of every change to an absence | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `overtime_audits` | Append-only trail of every change to an overtime record | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `app_metadata` | Key/value pairs, today only the `app_version` the migration step recorded | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
+| `wtt.users`, `wtt.projects`, `wtt.time_entries`, `wtt.project_budgets`, `wtt.work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.absences` | One row per absent calendar day, scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.absence_audits` | Append-only trail of every change to an absence | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.overtime_audits` | Append-only trail of every change to an overtime record | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.login_attempts` | Failed logins per email behind the lockout, evicted when expired | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.app_metadata` | Key/value pairs, today only the `app_version` the migration step recorded | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.schema_migrations` | Applied migration versions, one row per file in `MIGRATIONS` | `src-tauri/src/postgres_store.rs` |
 | `work-time-tracker.users` | Browser fallback accounts including the PBKDF2 hash | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.<userId>.<store>` | Browser fallback copies of projects, time entries, budgets, settings, absences, overtime | `src/features/storage/local-repository.ts` (`scopedKey`) |
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with its start and its idle expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
@@ -220,7 +220,7 @@ erDiagram
 
 `APP_METADATA` has no relationship to the other entities, it is a standalone key/value store.
 
-### users
+### wtt.users
 
 `drizzle/0000_init.sql`, `src/db/schema.ts`, `src-tauri/src/models.rs`
 
@@ -231,14 +231,14 @@ erDiagram
 | `password_hash` | TEXT | yes | Argon2id on the desktop, `pbkdf2-sha256$…` in the browser fallback | — |
 | `created_at` | TEXT | yes | ISO 8601 UTC | — |
 
-### projects
+### wtt.projects
 
 `drizzle/0000_init.sql`, `src/features/projects/project-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | nullable | Owner; `NULL` rows can be claimed by the first registered user | FK to `users.id` ON DELETE CASCADE, index `projects_user_id` |
+| `user_id` | BIGINT | nullable | Owner; `NULL` rows can be claimed by the first registered user | FK to `wtt.users.id` ON DELETE CASCADE, index `projects_user_id` |
 | `name` | TEXT | yes | Trimmed, 1 to 100 characters | — |
 | `description` | TEXT | no | Trimmed, at most 500 characters, empty becomes `NULL` | — |
 | `color` | TEXT | yes | `#rrggbb`, new projects cycle through `PROJECT_COLORS` | — |
@@ -246,29 +246,29 @@ erDiagram
 | `archived` | BOOLEAN | yes | Default `false`; an archived project keeps its entries but is offered for tracking no more | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
-### time_entries
+### wtt.time_entries
 
 `drizzle/0000_init.sql`, `src/features/time-entries/time-entry-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | nullable | Owner | FK to `users.id` ON DELETE CASCADE, index `time_entries_user_id` |
-| `project_id` | BIGINT | no | Booked project; becomes `NULL` when the project is deleted, the entry is kept | FK to `projects.id` ON DELETE SET NULL |
+| `user_id` | BIGINT | nullable | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `time_entries_user_id` |
+| `project_id` | BIGINT | no | Booked project; becomes `NULL` when the project is deleted, the entry is kept | FK to `wtt.projects.id` ON DELETE SET NULL |
 | `start_time` | TEXT | yes | Canonical ISO 8601 UTC with milliseconds, for example `2026-08-27T08:00:00.000Z` | index `time_entries_start_time` |
 | `end_time` | TEXT | no | Same format, `NULL` marks the running entry | — |
 | `entry_type` | TEXT | yes | `work` or `break` (`CHECK`), default `work`; a break carries no project | — |
 | `note` | TEXT | no | Trimmed, at most 500 characters | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
-### time_entry_audits
+### wtt.time_entry_audits
 
 `drizzle/0000_init.sql`, `src/features/time-entries/audit-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `time_entry_audits_user_id` |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `time_entry_audits_user_id` |
 | `time_entry_id` | BIGINT | yes | Changed entry; no foreign key, so the trail outlives a deleted entry | — |
 | `action` | TEXT | yes | `created`, `updated` or `deleted` | — |
 | `actor` | TEXT | yes | E-mail of the signed-in user | — |
@@ -280,26 +280,26 @@ two years (`RETENTION_YEARS` in `src/features/compliance/compliance-rules.ts`). 
 account (`delete_account`) is the one exception, see
 [Erasure of an account](#erasure-of-an-account).
 
-### absences
+### wtt.absences
 
 `drizzle/0000_init.sql`, `src/features/absences/absence-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `absences_user_id` |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `absences_user_id` |
 | `absence_date` | TEXT | yes | Calendar date `YYYY-MM-DD`; a range is stored as one row per day | UNIQUE with `user_id` (`absences_day_unique`) |
 | `absence_type` | TEXT | yes | `vacation`, `sick`, `unpaid` or `halfDay` (`CHECK`) | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
-### absence_audits
+### wtt.absence_audits
 
 `drizzle/0000_init.sql`, `src/features/absences/absence-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `absence_audits_user_id` |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `absence_audits_user_id` |
 | `absence_id` | BIGINT | yes | Changed absence; no foreign key, so the trail outlives a deleted absence | — |
 | `action` | TEXT | yes | `created`, `updated` or `deleted` | — |
 | `actor` | TEXT | yes | E-mail of the signed-in user | — |
@@ -311,14 +311,14 @@ the one exception, see [Erasure of an account](#erasure-of-an-account). `list_ab
 the trail of one user in a `recorded_at` window (`ListRange`), newest first and bounded by the list
 limits.
 
-### overtime_entries
+### wtt.overtime_entries
 
 `drizzle/0000_init.sql`, `src/features/overtime/overtime-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `overtime_entries_user_id` |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `overtime_entries_user_id` |
 | `effective_date` | TEXT | yes | Calendar date `YYYY-MM-DD` the record takes effect on | UNIQUE with `user_id` (`overtime_entries_day_unique`) |
 | `minutes` | BIGINT | yes | Overtime in minutes, negative records undertime, at most a year of minutes | — |
 | `kind` | TEXT | yes | `opening`, `balance` or `adjustment` (`CHECK`) | Partial UNIQUE on `user_id` WHERE `kind = 'opening'` (`overtime_entries_opening_unique`) |
@@ -334,14 +334,14 @@ record is added on top of it. The effective date of the newest `opening` or `bal
 where the derived part starts to accrue, so the target of the days after it counts even before the
 first entry is tracked.
 
-### overtime_audits
+### wtt.overtime_audits
 
 `drizzle/0000_init.sql`, `src/features/overtime/overtime-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | yes | Owner | FK to `users.id` ON DELETE CASCADE, index `overtime_audits_user_id` |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `overtime_audits_user_id` |
 | `overtime_entry_id` | BIGINT | yes | Changed record; no foreign key, so the trail outlives a deleted record | — |
 | `action` | TEXT | yes | `created`, `updated` or `deleted` | — |
 | `actor` | TEXT | yes | E-mail of the signed-in user | — |
@@ -353,27 +353,27 @@ the one exception, see [Erasure of an account](#erasure-of-an-account). `list_ov
 the trail of one user in a `recorded_at` window (`ListRange`), newest first and bounded by the list
 limits.
 
-### project_budgets
+### wtt.project_budgets
 
 `drizzle/0000_init.sql`, `src/features/budgets/budget-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | nullable | Owner | FK to `users.id` ON DELETE CASCADE, index `project_budgets_user_id` |
-| `project_id` | BIGINT | yes | Budgeted project, at most one budget per project | FK to `projects.id` ON DELETE CASCADE, UNIQUE |
+| `user_id` | BIGINT | nullable | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `project_budgets_user_id` |
+| `project_id` | BIGINT | yes | Budgeted project, at most one budget per project | FK to `wtt.projects.id` ON DELETE CASCADE, UNIQUE |
 | `budget_minutes` | BIGINT | yes | Greater than zero (`CHECK`), entered in hours in the UI | — |
 | `due_date` | TEXT | yes | Calendar date `YYYY-MM-DD` | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
-### work_settings
+### wtt.work_settings
 
 `drizzle/0000_init.sql`, `src/features/settings/work-settings-schema.ts`
 
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | nullable | Owner, one row per user | FK to `users.id` ON DELETE CASCADE, UNIQUE |
+| `user_id` | BIGINT | nullable | Owner, one row per user | FK to `wtt.users.id` ON DELETE CASCADE, UNIQUE |
 | `weekly_target_minutes` | BIGINT | yes | 1 to 10080, default 2400 | — |
 | `working_days` | TEXT | yes | Comma-separated weekdays, default `monday,tuesday,wednesday,thursday,friday` | — |
 | `week_starts_on` | TEXT | yes | `monday` or `sunday`, default `monday` | — |
@@ -382,7 +382,7 @@ limits.
 A user without a row reads `DEFAULT_WORK_SETTINGS`, the row is written on the first save
 (`read_settings` and `write_settings` in `src-tauri/src/postgres_store.rs`).
 
-### security_audits
+### wtt.security_audits
 
 `drizzle/0000_init.sql`, `src/features/audit/security-audit-schema.ts`
 
@@ -392,7 +392,7 @@ their own.
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | no | Owner; `NULL` for a failed login of an unknown e-mail, which belongs to no account and is therefore never listed | FK to `users.id` ON DELETE CASCADE, index `security_audits_user_recorded_at` on `(user_id, recorded_at)` |
+| `user_id` | BIGINT | no | Owner; `NULL` for a failed login of an unknown e-mail, which belongs to no account and is therefore never listed | FK to `wtt.users.id` ON DELETE CASCADE, index `security_audits_user_recorded_at` on `(user_id, recorded_at)` |
 | `entity` | TEXT | yes | `user`, `auth`, `project`, `budget` or `workSettings` | index `security_audits_entity_recorded_at` on `(entity, recorded_at)` |
 | `entity_id` | BIGINT | no | Changed row; no foreign key, so the trail outlives a deleted project or budget. `NULL` where the action names no row, such as the work settings | — |
 | `action` | TEXT | yes | See the policy below | — |
@@ -423,7 +423,7 @@ Deliberately **not** recorded, so the trail stays evidence instead of a stream o
 - successful logins and logouts,
 - any read, list, query, export or navigation,
 - the ticks of a running timer — only the start and the stop of an entry appear, in
-  `time_entry_audits`,
+  `wtt.time_entry_audits`,
 - a save that changes no field: the recording helper compares the audited fields and suppresses the
   record when the difference is empty,
 - the repeated attempts a running lockout rejects: `auth.locked_out` is recorded once per lockout
@@ -433,12 +433,12 @@ Deliberately **not** recorded, so the trail stays evidence instead of a stream o
 
 | Trail | Retention |
 | --- | --- |
-| `security_audits` with `entity = 'auth'` | 90 days (`AUTH_AUDIT_RETENTION_DAYS`), pruned when the next auth event is recorded |
-| All other `security_audits` records | kept, like the domain trails |
-| `time_entry_audits`, `absence_audits`, `overtime_audits` | kept at least `RETENTION_YEARS` (`src/features/compliance/compliance-rules.ts`) |
+| `wtt.security_audits` with `entity = 'auth'` | 90 days (`AUTH_AUDIT_RETENTION_DAYS`), pruned when the next auth event is recorded |
+| All other `wtt.security_audits` records | kept, like the domain trails |
+| `wtt.time_entry_audits`, `wtt.absence_audits`, `wtt.overtime_audits` | kept at least `RETENTION_YEARS` (`src/features/compliance/compliance-rules.ts`) |
 
 The prune deletes rows of the `auth` entity only, so the compliance and configuration trails are
-never touched by it. `login_attempts` is not a trail: it holds the counter of the lockout and is
+never touched by it. `wtt.login_attempts` is not a trail: it holds the counter of the lockout and is
 evicted as soon as the lockout is served, which is why the auth events are recorded separately.
 
 ### Erasure of an account
@@ -448,17 +448,17 @@ from the settings menu (GDPR Art. 17, `delete_account` in `src-tauri/src/command
 `src-tauri/src/postgres_store.rs`), and that erasure is the second deliberate exception next to the
 retention of the auth events.
 
-- One statement, `DELETE FROM users WHERE id = $1`, inside one transaction: every table that
-  references `users.id` does so `ON DELETE CASCADE`, so the projects, budgets, time entries,
+- One statement, `DELETE FROM wtt.users WHERE id = $1`, inside one transaction: every table that
+  references `wtt.users.id` does so `ON DELETE CASCADE`, so the projects, budgets, time entries,
   absences, overtime records, work settings and **all** trails of the account go with the row. A
   failure anywhere leaves the account and all of its data intact.
 - The lockout counter of the account is keyed by e-mail instead of by `user_id` and is deleted in
   the same transaction, so the address does not survive the erasure either.
-- Records in `security_audits` with `user_id IS NULL` — failed logins of an unknown e-mail — belong
+- Records in `wtt.security_audits` with `user_id IS NULL` — failed logins of an unknown e-mail — belong
   to no account and are deliberately kept.
 - No record of the deletion is written: it would itself be personal data of an erased account.
 
-### app_metadata
+### wtt.app_metadata
 
 `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs`
 
@@ -477,8 +477,8 @@ Validation, overlap detection, and the security limits are defined once in
   write that names a project checks that the project belongs to the caller. A read, an update and a
   delete of a record of another account answer `notFound`, like an unknown id, and a delete that
   matches no row answers `notFound` instead of reporting success. Only the account lookups of a sign
-  in, the lockout counters, the `auth` records of `security_audits` and the installation metadata
-  (`app_metadata`, `schema_migrations`) are intentionally not user-scoped; the module documentation
+  in, the lockout counters, the `auth` records of `wtt.security_audits` and the installation metadata
+  (`wtt.app_metadata`, `wtt.schema_migrations`) are intentionally not user-scoped; the module documentation
   of `src-tauri/src/postgres_store.rs` names them with the reason each is safe.
 - Time entries of one user must not overlap. A running entry (`end_time IS NULL`) counts as open
   ended, and switching projects reuses one timestamp so that no gap or overlap appears.
@@ -513,7 +513,7 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 A fresh native database starts from the complete baseline migration `drizzle/0000_init.sql`; every
 later migration upgrades a database that already recorded the baseline and stays idempotent.
 `PostgresStore::connect` applies the not yet recorded migrations in a single transaction that is
-guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
+guarded by an advisory lock and records every applied version in the `wtt.schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
 directory.
 
