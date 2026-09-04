@@ -66,16 +66,20 @@ export function UserCreationPage({ onCancel, onShowPrivacy, onShowTerms, onSucce
               />
             </Field>
             <PasswordPolicyChecklist password={password} />
-            {onShowTerms && onShowPrivacy && (
+            {(onShowTerms || onShowPrivacy) && (
               <p className="text-sm text-muted-foreground">
-                Read the{' '}
-                <Button onClick={onShowTerms} size="inline" variant="link">
-                  Terms of Service
-                </Button>{' '}
-                and{' '}
-                <Button onClick={onShowPrivacy} size="inline" variant="link">
-                  Privacy Policy
-                </Button>{' '}
+                Read{' '}
+                {onShowTerms && (
+                  <Button onClick={onShowTerms} size="inline" type="button" variant="link">
+                    Terms of Service
+                  </Button>
+                )}
+                {onShowTerms && onShowPrivacy ? ' and ' : ''}
+                {onShowPrivacy && (
+                  <Button onClick={onShowPrivacy} size="inline" type="button" variant="link">
+                    Privacy Policy
+                  </Button>
+                )}{' '}
                 before accepting them.
               </p>
             )}

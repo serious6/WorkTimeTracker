@@ -101,10 +101,16 @@ function App() {
         <Suspense fallback={null}>
           {registering ? (
             <UserCreationPage
-              onCancel={() => setRegistering(false)}
+              onCancel={() => {
+                setRegistrationLegalView(null)
+                setRegistering(false)
+              }}
               onShowPrivacy={() => setRegistrationLegalView('privacy')}
               onShowTerms={() => setRegistrationLegalView('terms')}
-              onSuccess={() => setRegistering(false)}
+              onSuccess={() => {
+                setRegistrationLegalView(null)
+                setRegistering(false)
+              }}
             />
           ) : (
             <LoginPage onRegister={() => setRegistering(true)} />
