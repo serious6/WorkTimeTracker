@@ -74,6 +74,11 @@ function App() {
   const [registrationLegalView, setRegistrationLegalView] = useState<'privacy' | 'terms' | null>(null)
   const Page = pages[view]
 
+  function closeRegistration() {
+    setRegistrationLegalView(null)
+    setRegistering(false)
+  }
+
   if (isPending) return null
 
   if (!user) {
@@ -101,16 +106,10 @@ function App() {
         <Suspense fallback={null}>
           {registering ? (
             <UserCreationPage
-              onCancel={() => {
-                setRegistrationLegalView(null)
-                setRegistering(false)
-              }}
+              onCancel={closeRegistration}
               onShowPrivacy={() => setRegistrationLegalView('privacy')}
               onShowTerms={() => setRegistrationLegalView('terms')}
-              onSuccess={() => {
-                setRegistrationLegalView(null)
-                setRegistering(false)
-              }}
+              onSuccess={closeRegistration}
             />
           ) : (
             <LoginPage onRegister={() => setRegistering(true)} />

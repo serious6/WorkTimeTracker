@@ -57,20 +57,20 @@ describe('UserCreationPage', () => {
   })
 
   test('opens legal texts from the registration form', () => {
-    let opened: string | null = null
+    const opened: string[] = []
     renderWithProviders(
       <UserCreationPage
         onCancel={() => {}}
-        onShowPrivacy={() => { opened = 'privacy' }}
-        onShowTerms={() => { opened = 'terms' }}
+        onShowPrivacy={() => { opened.push('privacy') }}
+        onShowTerms={() => { opened.push('terms') }}
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Terms of Service' }))
-    expect(opened).toBe('terms')
+    expect(opened).toEqual(['terms'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Privacy Policy' }))
-    expect(opened).toBe('privacy')
+    expect(opened).toEqual(['terms', 'privacy'])
   })
 
   test('successful registration calls onSuccess', async () => {
