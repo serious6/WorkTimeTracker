@@ -276,10 +276,9 @@ timezone, and every timestamp the application derives from the clock is already 
 enough. An installed build keeps the revision it was released with, so a user can tell which text
 that build includes.
 
-Neither document is stored, acknowledged or synchronised. The application implements no
-acknowledgment or consent flow: the texts describe the license, the absence of a warranty and where
-the data is kept, and they are reachable from the account menu next to the third-party license
-notices.
+Neither document is stored or synchronised, and the acceptance itself is not persisted. The
+registration form requires accepting both texts before it creates an account; after sign-in, the
+texts remain reachable from the account menu next to the third-party license notices.
 
 Because decision 16 gives the application two storage modes, both texts name them instead of
 promising a single one: desktop development builds, browser development or test runs, and
