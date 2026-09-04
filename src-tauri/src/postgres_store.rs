@@ -45,13 +45,7 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// `migrate` runs them inside one transaction, so a migration must not use a
 /// statement that Postgres refuses in a transaction block, such as
 /// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
-const MIGRATIONS: &[(&str, &str)] = &[
-    ("0000_init", include_str!("../../drizzle/0000_init.sql")),
-    (
-        "0001_projects_archived",
-        include_str!("../../drizzle/0001_projects_archived.sql"),
-    ),
-];
+const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
 
 /// Arbitrary but stable key for the advisory lock that serializes `migrate`.
 const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
@@ -2346,11 +2340,7 @@ mod tests {
             .into_iter()
             .map(|row| row.get(0))
             .collect();
-        let expected_versions: Vec<String> = MIGRATIONS
-            .iter()
-            .map(|(version, _)| (*version).to_owned())
-            .collect();
-        assert_eq!(versions, expected_versions);
+        assert_eq!(versions, ["0000_init"]);
     }
 
     /// A production client never migrates a shared database on its own: it
