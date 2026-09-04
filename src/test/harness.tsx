@@ -12,6 +12,13 @@ import { createLocalRepository } from '@/features/storage/local-repository'
 import type { EntryType, TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { useTimerStore } from '@/features/timer/timer-store'
 import { toDateKey } from '@/lib/date'
+import {
+  AUTH_STORAGE_KEYS,
+  securityAuditsKey,
+  seededAuthUser,
+  seededRegistrationAudit,
+  seededSession,
+} from './auth-fixture'
 
 /** Satisfies the password policy, so registrations succeed. */
 export const TEST_PASSWORD = 'Str0ng-Passphrase!!x'
@@ -44,7 +51,24 @@ export async function resetAppState(): Promise<void> {
 }
 
 export async function signIn(email = 'tester@example.com'): Promise<AuthUser> {
-  return createLocalRepository().register({ email, password: TEST_PASSWORD })
+  const users = JSON.parse(globalThis.localStorage?.getItem(AUTH_STORAGE_KEYS.users) ?? '[]') as Array<
+    AuthUser & { passwordHash: string }
+  >
+  const user = { id: nextId(users), email, createdAt: new Date().toISOString() }
+  globalThis.localStorage?.setItem(
+    AUTH_STORAGE_KEYS.users,
+    JSON.stringify([...users, seededAuthUser(user.id, user.email, user.createdAt)]),
+  )
+  globalThis.localStorage?.setItem(
+    securityAuditsKey(user.id),
+    JSON.stringify([seededRegistrationAudit(user.id, email, user.createdAt)]),
+  )
+  const startedAt = Date.now()
+  const { token, session } = seededSession(user.id, startedAt)
+  const sessions = JSON.parse(globalThis.localStorage?.getItem(AUTH_STORAGE_KEYS.sessions) ?? '{}')
+  globalThis.localStorage?.setItem(AUTH_STORAGE_KEYS.sessions, JSON.stringify({ ...sessions, [token]: session }))
+  globalThis.sessionStorage?.setItem(AUTH_STORAGE_KEYS.session, token)
+  return user
 }
 
 export async function seedProject(
@@ -101,6 +125,10 @@ export async function seedOvertimeEntry(
 
 function toIsoString(value: Date | string): string {
   return typeof value === 'string' ? value : value.toISOString()
+}
+
+function nextId(records: { id: number }[]): number {
+  return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
 }
 
 /** A date at the given local time of day, relative to `reference`. */

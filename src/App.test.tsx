@@ -79,7 +79,7 @@ describe('App shell', () => {
     renderApp()
     await screen.findByRole('navigation', { name: 'Main' })
     useNavigationStore.getState().navigate('week')
-    expect(await screen.findByRole('heading', { name: /week/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Week', level: 1 })).toBeInTheDocument()
   })
 
   test('navigating to Calendar shows the calendar page', async () => {

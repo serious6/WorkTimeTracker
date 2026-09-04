@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
-import { addEntry, createProject, expectHeading, gotoPage, register } from './helpers'
+import { addEntry, createProject, gotoPage, startSignedInSession } from './helpers'
 
 declare global {
   interface Window {
@@ -57,9 +57,7 @@ test('SEC1: the shipped policy states the protective directives and allows no in
 // SEC2 in docs/e2e-test-cases.md
 test('SEC2: the application renders under the production policy without a violation', async ({ page, baseURL }) => {
   await serveWithCsp(page, baseURL)
-  await page.goto('/')
-  await register(page, 'first@example.com')
-  await expectHeading(page, 'Dashboard')
+  await startSignedInSession(page)
 
   await createProject(page, 'Website')
   await addEntry(page, 'Website', '09:00', '10:30')
@@ -85,9 +83,7 @@ test('SEC2: the application renders under the production policy without a violat
 // SEC3 in docs/e2e-test-cases.md
 test('SEC3: the policy blocks an injected stylesheet and an injected script', async ({ page, baseURL }) => {
   await serveWithCsp(page, baseURL)
-  await page.goto('/')
-  await register(page, 'first@example.com')
-  await expectHeading(page, 'Dashboard')
+  await startSignedInSession(page)
 
   const applied = await page.evaluate(() => {
     const style = document.createElement('style')

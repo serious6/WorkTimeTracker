@@ -1,10 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { dateKey, dialog, expectHeading, gotoPage, markAbsence, register } from './helpers'
+import { dateKey, dialog, gotoPage, markAbsence, startSignedInSession } from './helpers'
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
-  await register(page, 'first@example.com')
-  await expectHeading(page, 'Dashboard')
+  await startSignedInSession(page)
 })
 
 // A1 in docs/e2e-test-cases.md

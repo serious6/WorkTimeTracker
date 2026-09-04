@@ -1,5 +1,15 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
+
+// `.tsx` tests render React and stay in jsdom by glob. Keep `.ts` tests here
+// only when they use DOM/browser events or Testing Library renderHook.
+const jsdomTestFiles = [
+  'src/lib/global-errors.test.ts',
+  'src/features/auth/session-queries.test.ts',
+  'src/features/storage/tauri-repository.test.ts',
+  'src/features/dashboard/use-keyboard-shortcuts.test.ts',
+  'src/features/timer/use-ticker.test.ts',
+]
 
 export default defineConfig({
   plugins: [react()],
@@ -9,9 +19,27 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
+    pool: 'threads',
     setupFiles: ['./src/test/setup.ts'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+          exclude: [...configDefaults.exclude, ...jsdomTestFiles],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'jsdom',
+          environment: 'jsdom',
+          include: ['src/**/*.test.tsx', ...jsdomTestFiles],
+        },
+      },
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

@@ -1,4 +1,12 @@
 import { expect, type Page } from '@playwright/test'
+import {
+  AUTH_STORAGE_KEYS,
+  SEEDED_AUTH_USER_ID,
+  securityAuditsKey,
+  seededAuthUser,
+  seededRegistrationAudit,
+  seededSession,
+} from '../src/test/auth-fixture'
 
 export function dialog(page: Page) {
   return page.getByRole('dialog')
@@ -106,6 +114,34 @@ export async function downloadText(page: Page, button: string) {
 }
 
 export const PASSWORD = 'Str0ng-Passphrase!!x'
+
+export async function startSignedInSession(page: Page, email = 'first@example.com') {
+  const createdAt = new Date().toISOString()
+  const { session, token } = seededSession(SEEDED_AUTH_USER_ID, Date.now())
+  await page.goto('/')
+  await page.evaluate(
+    ({ auditKey, keys, registrationAudit, sessionDuration, token, user }) => {
+      const now = Date.now()
+      localStorage.setItem(keys.users, JSON.stringify([user]))
+      localStorage.setItem(auditKey, JSON.stringify([registrationAudit]))
+      localStorage.setItem(
+        keys.sessions,
+        JSON.stringify({ [token]: { userId: user.id, startedAt: now, expiresAt: now + sessionDuration } }),
+      )
+      sessionStorage.setItem(keys.session, token)
+    },
+    {
+      auditKey: securityAuditsKey(SEEDED_AUTH_USER_ID),
+      keys: AUTH_STORAGE_KEYS,
+      registrationAudit: seededRegistrationAudit(SEEDED_AUTH_USER_ID, email, createdAt),
+      sessionDuration: session.expiresAt - session.startedAt,
+      token,
+      user: seededAuthUser(SEEDED_AUTH_USER_ID, email, createdAt),
+    },
+  )
+  await page.reload()
+  await expectHeading(page, 'Dashboard')
+}
 
 export async function register(page: Page, email: string, password = PASSWORD) {
   await page.getByRole('button', { name: 'Register' }).click()
