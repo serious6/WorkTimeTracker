@@ -31,9 +31,10 @@ export async function createProject(page: Page, name: string) {
   await expect(dialog(page)).toBeHidden()
 }
 
-export async function addEntry(page: Page, project: string, start: string, end: string) {
+export async function addEntry(page: Page, project: string, start: string, end: string, date?: string) {
   await page.getByRole('button', { name: 'Add time entry' }).click()
   await dialog(page).getByLabel('Project').selectOption({ label: project })
+  if (date) await dialog(page).getByLabel('Date').fill(date)
   await dialog(page).getByLabel('Start time').fill(start)
   await dialog(page).getByLabel('End time').fill(end)
   await dialog(page).getByRole('button', { name: 'Add entry' }).click()

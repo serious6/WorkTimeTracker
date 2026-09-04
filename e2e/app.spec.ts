@@ -538,12 +538,17 @@ test('returns to the login page when the session expires', async ({ page }) => {
   await createProject(page, 'Session Project')
 
   await ageSession(page, 'idle')
-  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Budgets' }).click()
+  // Audit Trails reads records the dashboard never loads, so the expired
+  // session is noticed on the request instead of served from the cache.
+  await page
+    .getByRole('navigation', { name: 'Main' })
+    .getByRole('button', { name: 'Audit Trails' })
+    .click()
   await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
 
   // Signing in again continues on the view the expiry interrupted.
   await login(page, 'first@example.com')
-  await expect(page.getByRole('heading', { name: 'Budgets', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Audit Trails', level: 1 })).toBeVisible()
 
   // The session was used a moment ago, so only its absolute lifetime ends it.
   // The dialog carries unsaved input, which the rejected submit does not store.

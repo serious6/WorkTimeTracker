@@ -104,7 +104,9 @@ build, and both repeat the paths of the in-app `AppLogo`. After changing the sou
 - Keep documentation concise.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- `drizzle/0000_init.sql` is the current baseline migration. Schema changes keep it,
-  `MIGRATIONS` in `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and the queries in
-  `src-tauri/src/postgres_store.rs` in sync.
+- `drizzle/0000_init.sql` is the baseline migration for a fresh database. Before the first release,
+  schema changes stay folded into that baseline. After a release, schema changes also add an
+  idempotent migration that upgrades existing databases. Keep `MIGRATIONS` in
+  `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and the queries in
+  `src-tauri/src/postgres_store.rs` aligned.
 - UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md).

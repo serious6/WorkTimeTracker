@@ -6,7 +6,7 @@ import { renderWithProviders } from '@/test/harness'
 import { DayEntriesCard } from './day-entries-card'
 
 function project(id: number, name: string): Project {
-  return { id, name, description: null, color: '#22c55e', active: true, createdAt: '', updatedAt: '' }
+  return { id, name, description: null, color: '#22c55e', active: true, archived: false, createdAt: '', updatedAt: '' }
 }
 
 function entry(id: number, projectId: number, startOffset: number, endOffset: number): TimeEntry {

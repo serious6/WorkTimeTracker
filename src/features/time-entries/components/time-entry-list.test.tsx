@@ -95,6 +95,21 @@ describe('TimeEntryList', () => {
     expect(onPlay).toHaveBeenCalledWith(project.id)
   })
 
+  it('disables the play button for an archived project', async () => {
+    const onPlay = vi.fn()
+    const { project, entry } = await setup()
+    renderList([entry], [{ ...project, archived: true }], onPlay)
+    expect(screen.getByRole('button', { name: /start timer for alpha/i })).toBeDisabled()
+  })
+
+  it('keeps pausing a running entry of an archived project', async () => {
+    const onPause = vi.fn()
+    const { project, entry } = await setup()
+    renderList([{ ...entry, endTime: null }], [{ ...project, archived: true }], vi.fn(), onPause)
+    fireEvent.click(screen.getByRole('button', { name: /pause timer/i }))
+    expect(onPause).toHaveBeenCalled()
+  })
+
   it('opens edit dialog via menu', async () => {
     const { project, entry } = await setup()
     renderList([entry], [project])

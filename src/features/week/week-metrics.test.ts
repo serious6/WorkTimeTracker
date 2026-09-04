@@ -13,6 +13,7 @@ function project(id: number, name: string, overrides: Partial<Project> = {}): Pr
     description: null,
     color: '#22c55e',
     active: true,
+    archived: false,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
     ...overrides,

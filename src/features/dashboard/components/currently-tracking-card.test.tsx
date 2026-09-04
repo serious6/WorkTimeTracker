@@ -8,7 +8,7 @@ import { combineDateAndTime, toDateKey, toTimeKey } from '@/lib/date'
 import { CurrentlyTrackingCard } from './currently-tracking-card'
 
 function project(id: number, name: string, color = '#22c55e'): Project {
-  return { id, name, description: null, color, active: true, createdAt: '', updatedAt: '' }
+  return { id, name, description: null, color, active: true, archived: false, createdAt: '', updatedAt: '' }
 }
 
 function makeTimer(overrides: Partial<ReturnType<typeof useTimer>> = {}): ReturnType<typeof useTimer> {

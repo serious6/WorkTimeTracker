@@ -59,14 +59,17 @@ Commands that need a user are generated with `authed_command!`; public commands 
 **Context:** The desktop application stores durable data in Postgres. Development and tests use the
 local compose database; production may use a managed database.
 
-**Decision:** `src-tauri/src/postgres_store.rs` is the native store. The current pre-release baseline
-is `drizzle/0000_init.sql`, registered in `MIGRATIONS`. Production processes verify migrations.
-Only the separate migration entry point `DbConfig::for_migration` may apply them, and only when
-`WORK_TIME_TRACKER_DB_MIGRATE=true`; `DbConfig::from_env` keeps application startup verify-only.
+**Decision:** `src-tauri/src/postgres_store.rs` is the native store. `drizzle/0000_init.sql` is the
+baseline for a fresh database; before the first release, schema changes stay folded into that
+baseline. After a release, each schema change also adds an idempotent upgrade migration for existing
+databases. Every active migration is registered in `MIGRATIONS`. Production processes verify
+migrations. Only the separate migration entry point `DbConfig::for_migration` may apply them, and
+only when `WORK_TIME_TRACKER_DB_MIGRATE=true`; `DbConfig::from_env` keeps application startup
+verify-only.
 
 **Consequences:** Schema changes keep `drizzle/0000_init.sql`, `MIGRATIONS`, `src/db/schema.ts`,
-queries, models, and `docs/data-model.md` aligned. A production app start never mutates the shared
-schema.
+queries, models, `docs/data-model.md`, and any post-release upgrade migration aligned. A production
+app start never mutates the shared schema.
 
 ## Enforce ownership in storage queries
 
@@ -277,3 +280,23 @@ Neither document is stored, acknowledged or synchronised. There is no service be
 application, so there is nothing to record consent with: the texts describe the license, the
 absence of a warranty and the local-first handling of the data, and they are reachable from the
 account menu next to the third-party license notices.
+
+## 18. Archiving retires a project, it never touches its records
+
+A project that is no longer worked on is archived instead of deleted: deletion detaches its entries
+(`project_id` becomes `NULL`) and the past reads as "Deleted project", which loses information the
+monthly record needs. The `archived` flag only removes the project from the selections that create
+time: the tracking picker, the time entry dialog and the quick add of the Time Management and Week
+views. It stays on the Projects page with an `archived` marker, keeps its total, and its entries,
+reports and exports are unchanged. A selection that already names an archived project — the edit of
+an existing entry, the budget of that project — keeps offering it, so an edit cannot silently drop
+the booked project.
+
+Archiving is therefore allowed while the timer runs on that project: the running entry is a normal
+row and stopping it must not fail because of a configuration change. The card keeps naming the
+project until the user stops or switches; the archived project is only gone from the picker list.
+
+An overdue budget follows the same idea. Once the due date has passed or the tracked time exceeds
+the budget, selecting or tracking the project shows a status message next to the picker. It names
+the reason in text with an icon, never by colour alone, and it never blocks starting, switching or
+stopping the timer: recording what actually happened outweighs the plan.

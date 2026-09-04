@@ -4,6 +4,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Input, Select } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast-store'
 import { useProjects } from '@/features/projects/project-queries'
+import { selectableProjects } from '@/features/projects/project-schema'
 import { errorMessage } from '@/lib/errors'
 import { useCreateProjectBudget, useUpdateProjectBudget } from '../budget-queries'
 import {
@@ -72,7 +73,7 @@ export function BudgetDialog({
             <option disabled value="">
               Select a project
             </option>
-            {projects.map((project) => (
+            {selectableProjects(projects, budget?.projectId ?? null).map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>

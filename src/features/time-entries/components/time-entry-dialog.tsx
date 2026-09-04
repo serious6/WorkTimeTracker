@@ -4,6 +4,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast-store'
 import { useProjects } from '@/features/projects/project-queries'
+import { selectableProjects } from '@/features/projects/project-schema'
 import { combineDateAndTime, formatDuration, toDateKey, toTimeKey } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { useCreateTimeEntry, useUpdateTimeEntry } from '../time-entry-queries'
@@ -143,7 +144,7 @@ export function TimeEntryDialog({
             value={values.projectId}
           >
             <option value="">{isBreakEntry ? 'No project' : 'Select a project'}</option>
-            {projects.map((project) => (
+            {selectableProjects(projects, Number(values.projectId) || null).map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>

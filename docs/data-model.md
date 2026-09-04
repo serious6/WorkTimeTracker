@@ -123,6 +123,7 @@ erDiagram
     text name
     text description "nullable"
     boolean active "default true"
+    boolean archived "default false"
     text color
     text created_at
     text updated_at
@@ -242,6 +243,7 @@ erDiagram
 | `description` | TEXT | no | Trimmed, at most 500 characters, empty becomes `NULL` | — |
 | `color` | TEXT | yes | `#rrggbb`, new projects cycle through `PROJECT_COLORS` | — |
 | `active` | BOOLEAN | yes | Default `true` | — |
+| `archived` | BOOLEAN | yes | Default `false`; an archived project keeps its entries but is offered for tracking no more | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
 ### time_entries
@@ -508,8 +510,9 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 
 ## Migration
 
-Because WorkTimeTracker has not been released yet, the native database starts from the complete
-baseline migration `drizzle/0000_init.sql`. `PostgresStore::connect` applies it in a single transaction that is
+A fresh native database starts from the complete baseline migration `drizzle/0000_init.sql`; every
+later migration upgrades a database that already recorded the baseline and stays idempotent.
+`PostgresStore::connect` applies the not yet recorded migrations in a single transaction that is
 guarded by an advisory lock and records every applied version in the `schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
 directory.

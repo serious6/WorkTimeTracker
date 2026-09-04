@@ -39,7 +39,9 @@ const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Ordered migrations, applied exactly once each and tracked in
-/// `schema_migrations`. `0000_init` is the complete current baseline schema.
+/// `schema_migrations`. `0000_init` is the complete current baseline schema for
+/// a fresh database; every later migration upgrades a database that already
+/// recorded the baseline and must therefore stay idempotent.
 /// `migrate` runs them inside one transaction, so a migration must not use a
 /// statement that Postgres refuses in a transaction block, such as
 /// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
@@ -157,8 +159,9 @@ fn project_from_row(row: &postgres::Row) -> Project {
         description: row.get(2),
         color: row.get(3),
         active: row.get(4),
-        created_at: row.get(5),
-        updated_at: row.get(6),
+        archived: row.get(5),
+        created_at: row.get(6),
+        updated_at: row.get(7),
     }
 }
 
@@ -234,7 +237,8 @@ fn recorded_at_filter<'a>(range: &'a ListRange, params: &mut Params<'a>) -> Stri
     filter
 }
 
-const PROJECT_COLUMNS: &str = "id, name, description, color, active, created_at, updated_at";
+const PROJECT_COLUMNS: &str =
+    "id, name, description, color, active, archived, created_at, updated_at";
 const ENTRY_COLUMNS: &str =
     "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
 const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
@@ -448,6 +452,7 @@ fn project_payload(project: &Project) -> serde_json::Value {
         "description": project.description,
         "color": project.color,
         "active": project.active,
+        "archived": project.archived,
     })
 }
 
@@ -947,8 +952,8 @@ impl Store for PostgresStore {
         let now = now_iso();
         let row = transaction.query_one(
             &format!(
-                "INSERT INTO projects (user_id, name, description, color, active, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $6) RETURNING {PROJECT_COLUMNS}"
+                "INSERT INTO projects (user_id, name, description, color, active, archived, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING {PROJECT_COLUMNS}"
             ),
             &[
                 &user_id,
@@ -956,6 +961,7 @@ impl Store for PostgresStore {
                 &input.description,
                 &input.color,
                 &input.active,
+                &input.archived,
                 &now,
             ],
         )?;
@@ -987,7 +993,7 @@ impl Store for PostgresStore {
         let row = transaction
             .query_opt(
                 &format!(
-                    "UPDATE projects SET name = $3, description = $4, color = $5, active = $6, updated_at = $7
+                    "UPDATE projects SET name = $3, description = $4, color = $5, active = $6, archived = $7, updated_at = $8
                      WHERE id = $1 AND user_id = $2 RETURNING {PROJECT_COLUMNS}"
                 ),
                 &[
@@ -997,6 +1003,7 @@ impl Store for PostgresStore {
                     &input.description,
                     &input.color,
                     &input.active,
+                    &input.archived,
                     &now_iso(),
                 ],
             )?
@@ -2252,6 +2259,7 @@ mod tests {
                     description: None,
                     color: "#112233".into(),
                     active: true,
+                    archived: false,
                 },
             )
             .unwrap();
@@ -2399,15 +2407,49 @@ mod tests {
                     description: None,
                     color: "#336699".into(),
                     active: true,
+                    archived: false,
                 },
             )
             .unwrap();
         assert_eq!(created.name, "Postgres project");
+        assert!(!created.archived);
         // ISO 8601 UTC with milliseconds.
         assert!(created.created_at.ends_with('Z'));
 
         let listed = store.list_projects(user.id).unwrap();
         assert!(listed.iter().any(|project| project.id == created.id));
+
+        // Archiving is a normal update and stays readable, including its undo.
+        let archived = store
+            .update_project(
+                created.id,
+                user.id,
+                &SaveProject {
+                    name: created.name.clone(),
+                    description: None,
+                    color: created.color.clone(),
+                    active: true,
+                    archived: true,
+                },
+            )
+            .unwrap();
+        assert!(archived.archived);
+        assert!(store.list_projects(user.id).unwrap()[0].archived);
+
+        let restored = store
+            .update_project(
+                created.id,
+                user.id,
+                &SaveProject {
+                    name: created.name.clone(),
+                    description: None,
+                    color: created.color.clone(),
+                    active: true,
+                    archived: false,
+                },
+            )
+            .unwrap();
+        assert!(!restored.archived);
 
         store.delete_project(created.id, user.id).unwrap();
         assert!(store.list_projects(user.id).unwrap().is_empty());
@@ -2427,6 +2469,7 @@ mod tests {
                     description: None,
                     color: "#336699".into(),
                     active: true,
+                    archived: false,
                 },
             )
             .unwrap();
@@ -2465,6 +2508,7 @@ mod tests {
             description: None,
             color: "#112233".into(),
             active: true,
+            archived: false,
         }
     }
 
@@ -3150,6 +3194,7 @@ mod tests {
                     description: None,
                     color: "#336699".into(),
                     active: true,
+                    archived: false,
                 },
             )
             .unwrap();

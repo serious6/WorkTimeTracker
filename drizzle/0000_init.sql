@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS projects (
   description TEXT,
   color TEXT NOT NULL,
   active BOOLEAN NOT NULL DEFAULT TRUE,
+  archived BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );

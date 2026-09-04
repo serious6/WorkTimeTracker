@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
-import { budgetReport } from './budget-metrics'
+import { budgetReport, overdueBudget } from './budget-metrics'
 
 function entry(id: number, projectId: number | null, start: Date, end: Date | null): TimeEntry {
   return {
@@ -98,5 +98,46 @@ describe('budgetReport', () => {
     const report = budgetReport(budget(600), [entry(1, 1, at(26, 9), null)], at(26, 12).getTime())
 
     expect(report.trackedMinutes).toBe(180)
+  })
+})
+
+describe('overdueBudget', () => {
+  it('stays silent without a project or without a budget', () => {
+    expect(overdueBudget([budget(600)], entries, null, at(26, 12).getTime())).toBeNull()
+    expect(overdueBudget([], entries, 1, at(26, 12).getTime())).toBeNull()
+  })
+
+  it('stays silent while the budget holds and the due date is ahead', () => {
+    expect(overdueBudget([budget(600)], entries, 1, at(26, 12).getTime())).toBeNull()
+  })
+
+  it('warns once the tracked time exceeds the budget', () => {
+    const overdue = overdueBudget([budget(180)], entries, 1, at(26, 12).getTime())
+
+    expect(overdue?.exceeded).toBe(true)
+    expect(overdue?.pastDue).toBe(false)
+    expect(overdue?.message).toBe('The budget is exceeded by 1h 00m.')
+  })
+
+  it('warns after the due date has passed', () => {
+    const overdue = overdueBudget([budget(600, '2026-08-25')], entries, 1, at(26, 12).getTime())
+
+    expect(overdue?.pastDue).toBe(true)
+    expect(overdue?.exceeded).toBe(false)
+    expect(overdue?.message).toContain('was due on')
+  })
+
+  it('names both reasons when the budget is late and exceeded', () => {
+    const overdue = overdueBudget([budget(60, '2026-08-25')], entries, 1, at(26, 12).getTime())
+
+    expect(overdue?.pastDue).toBe(true)
+    expect(overdue?.exceeded).toBe(true)
+    expect(overdue?.message).toContain('exceeded by')
+  })
+
+  it('takes the budget of the selected project only', () => {
+    const other = { ...budget(60, '2026-08-25'), id: 2, projectId: 2 }
+
+    expect(overdueBudget([other], entries, 1, at(26, 12).getTime())).toBeNull()
   })
 })

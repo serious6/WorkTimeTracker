@@ -30,7 +30,7 @@ async function register(email: string, password = PASSWORD) {
 }
 
 function projectInput(name = 'Website Redesign') {
-  return { name, description: null, color: '#22c55e', active: true }
+  return { name, description: null, color: '#22c55e', active: true, archived: false }
 }
 
 async function createProject(name: string) {
@@ -218,6 +218,7 @@ describe('local repository authentication', () => {
           description: null,
           color: '#22c55e',
           active: true,
+          archived: false,
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
         },
@@ -260,13 +261,13 @@ describe('local repository projects', () => {
 
   it('rejects a project without a name', async () => {
     await expect(
-      createLocalRepository().createProject({ name: '  ', description: null, color: '#22c55e', active: true }),
+      createLocalRepository().createProject({ name: '  ', description: null, color: '#22c55e', active: true, archived: false }),
     ).rejects.toThrow('Project name is required')
   })
 
   it('rejects a color that is no hex value', async () => {
     await expect(
-      createLocalRepository().createProject({ name: 'Website', description: null, color: 'green', active: true }),
+      createLocalRepository().createProject({ name: 'Website', description: null, color: 'green', active: true, archived: false }),
     ).rejects.toThrow('Choose a project color')
   })
 
@@ -278,6 +279,7 @@ describe('local repository projects', () => {
       description: 'Second iteration',
       color: '#3b82f6',
       active: false,
+      archived: false,
     })
 
     expect(updated).toMatchObject({
@@ -286,6 +288,7 @@ describe('local repository projects', () => {
       description: 'Second iteration',
       color: '#3b82f6',
       active: false,
+      archived: false,
       createdAt: project.createdAt,
     })
   })
@@ -297,6 +300,7 @@ describe('local repository projects', () => {
         description: null,
         color: '#22c55e',
         active: true,
+        archived: false,
       }),
     ).rejects.toThrow('Project not found')
   })

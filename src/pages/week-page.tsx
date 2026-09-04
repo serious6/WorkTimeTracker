@@ -12,6 +12,7 @@ import { dayRange, entriesInRange } from '@/features/dashboard/metrics'
 import { useDashboardStore, useSelectedDate } from '@/features/dashboard/dashboard-store'
 import { useOvertimeEntries } from '@/features/overtime/overtime-queries'
 import { useProjects } from '@/features/projects/project-queries'
+import { selectableProjects } from '@/features/projects/project-schema'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import { useWorkSettings } from '@/features/settings/work-settings-queries'
 import { TimeEntryDialog } from '@/features/time-entries/components/time-entry-dialog'
@@ -308,7 +309,7 @@ export function WeekPage() {
                   value={projectValue}
                 >
                   <option value="">Select a project</option>
-                  {projects.map((project) => (
+                  {selectableProjects(projects).map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
                     </option>
