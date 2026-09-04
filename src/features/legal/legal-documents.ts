@@ -108,7 +108,7 @@ export const privacyPolicy: LegalDocument = {
         'The application always writes to one database, but which one depends on the build you run.',
         'Local, development, self-hosted and browser builds: the data never leaves your machine or the database you configured. The connection is restricted to loopback hosts, and the browser build keeps everything in the storage of that browser profile.',
         'The released production build: the data is stored in a Postgres database operated by Supabase, Inc. on infrastructure located in the European Union. Supabase is the hosting provider of that database and processes the data only to run it. The connection is encrypted with TLS, and both the certificate chain and the host name are verified (sslmode=verify-full) against a pinned certificate authority; a certificate that cannot be verified aborts the start instead of falling back to an unencrypted connection.',
-        'Everything listed under "What is stored" below is held in that hosted database when you use a released production build.',
+        'Everything listed under "3. What is stored" below is held in that hosted database when you use a released production build.',
         'The connection details are configuration, not part of the repository. A self-built or self-hosted deployment can point the application at any Postgres database it controls instead.',
       ],
     },

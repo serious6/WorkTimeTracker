@@ -106,7 +106,7 @@ test('keeps the data of every user separate', async ({ page }) => {
 test('shows the dashboard with empty states', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
-  await expect(page.getByText('Local data')).toBeVisible()
+  await expect(page.getByText('Data storage')).toBeVisible()
   await expect(page.getByText('Tracked Today', { exact: true })).toBeVisible()
   await expect(page.getByText('No time tracked today')).toBeVisible()
   await expect(page.getByText('Create your first project to start tracking.')).toBeVisible()
