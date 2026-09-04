@@ -106,7 +106,7 @@ export const privacyPolicy: LegalDocument = {
       heading: '2. Where your data is stored',
       paragraphs: [
         'The application always writes to one storage backend, but which one depends on the build and deployment mode.',
-        'Desktop development builds use the local Postgres database configured by the developer. Browser development and test runs keep everything in the storage of that browser profile.',
+        'Desktop development builds use the local Postgres database configured by the developer. Self-hosted production deployments use the Postgres database configured by the operator. Browser development and test runs keep everything in the storage of that browser profile.',
         'The released production build: the data is stored in a Postgres database operated by Supabase, Inc. on infrastructure located in the European Union. Supabase is the hosting provider of that database and processes the data only to run it. The connection is encrypted with TLS, and both the certificate chain and the host name are verified (sslmode=verify-full) against a pinned certificate authority; a certificate that cannot be verified aborts the start instead of falling back to an unencrypted connection.',
         'Everything listed under "3. What is stored" below is held in that hosted database when you use a released production build.',
         'The connection details are configuration, not part of the repository. A self-hosted production deployment can use a remote Postgres database controlled by its operator when the connection uses sslmode=verify-full with a pinned certificate authority; production mode rejects local database hosts, and non-production desktop modes reject remote hosts.',

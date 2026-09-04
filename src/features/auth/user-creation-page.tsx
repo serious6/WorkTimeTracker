@@ -25,8 +25,8 @@ export function UserCreationPage({ onCancel, onSuccess }: UserCreationPageProps)
     const result = accountCreationSchema.safeParse({
       email: form.get('email'),
       password,
-      termsAccepted: form.get('termsAccepted') === 'on',
-      privacyAccepted: form.get('privacyAccepted') === 'on',
+      termsAccepted: form.get('termsAccepted') !== null,
+      privacyAccepted: form.get('privacyAccepted') !== null,
     })
     if (!result.success) {
       const issue = result.error.issues[0]

@@ -59,6 +59,24 @@ describe('registrationSchema', () => {
 })
 
 describe('accountCreationSchema', () => {
+  test('accepts compliant credentials with both legal texts accepted', () => {
+    const result = accountCreationSchema.safeParse({
+      email: 'User@Example.com',
+      password: 'Str0ng-Passphrase!!x',
+      termsAccepted: true,
+      privacyAccepted: true,
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        email: 'user@example.com',
+        password: 'Str0ng-Passphrase!!x',
+        termsAccepted: true,
+        privacyAccepted: true,
+      })
+    }
+  })
+
   test('requires both legal texts to be accepted', () => {
     const result = accountCreationSchema.safeParse({
       email: 'user@example.com',
