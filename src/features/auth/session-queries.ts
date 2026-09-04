@@ -82,3 +82,19 @@ export function useLogout() {
     },
   })
 }
+
+/**
+ * Erases the account and everything of it (GDPR Art. 17). The session ends
+ * like on a logout and the cache is dropped with it, so no data of the deleted
+ * account is left readable in memory.
+ */
+export function useDeleteAccount() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => getRepository().deleteAccount(),
+    onSuccess: () => {
+      expiredUserId = null
+      applySession(queryClient, null)
+    },
+  })
+}

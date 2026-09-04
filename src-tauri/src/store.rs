@@ -236,7 +236,9 @@ pub trait Store: LoginAttemptStore {
     ) -> Result<WorkSettings, StoreError>;
 
     /// The identity and configuration records of the signed in user. The trail
-    /// is append-only: no method of this trait updates or deletes a record.
+    /// is append-only for the lifetime of the account: no method of this trait
+    /// updates a record, and only the retention of the auth events and
+    /// [`Store::delete_account`] remove one.
     fn list_security_audits(
         &self,
         user_id: i64,
@@ -249,6 +251,12 @@ pub trait Store: LoginAttemptStore {
     fn read_user(&self, id: i64) -> Result<Option<User>, StoreError>;
     fn read_password_hash(&self, email: &str) -> Result<Option<(i64, String)>, StoreError>;
     fn register_user(&self, email: &str, password_hash: &str) -> Result<User, StoreError>;
+    /// Erases the account and everything that belongs to it, the audit trails
+    /// included (GDPR Art. 17). This is the deliberate exception to the
+    /// append-only trails, which are append-only for the lifetime of the
+    /// account. Runs in one transaction, so a failure leaves the account and
+    /// all of its data intact.
+    fn delete_account(&self, user_id: i64) -> Result<(), StoreError>;
 }
 
 /// Failure while opening the configured database at startup.

@@ -1,16 +1,22 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { QueryClient } from '@tanstack/react-query'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { useToastStore } from '@/components/ui/toast-store'
 import {
   BREAK_ORDER_MESSAGE,
   GERMAN_COMPLIANCE_LIMITS,
 } from '@/features/settings/work-settings-schema'
+import { setRepository } from '@/features/storage'
 import { createLocalRepository } from '@/features/storage/local-repository'
-import { renderWithProviders, resetAppState, signIn } from '@/test/harness'
+import { createTestQueryClient, renderWithProviders, resetAppState, seedProject, signIn } from '@/test/harness'
 import { SettingsPage } from './settings-page'
+
+const EMAIL = 'tester@example.com'
 
 beforeEach(async () => {
   await resetAppState()
-  await signIn()
+  await signIn(EMAIL)
+  await seedProject('Erasure')
 })
 
 describe('SettingsPage', () => {
@@ -135,5 +141,117 @@ describe('SettingsPage', () => {
     const error = await screen.findByRole('alert')
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(input).toHaveAttribute('aria-describedby', error.id)
+  })
+})
+
+describe('SettingsPage – danger zone', () => {
+  /** Counts the calls of the erasure without changing its behaviour. */
+  const deleteAccount = vi.fn(() => createLocalRepository().deleteAccount())
+
+  beforeEach(() => {
+    deleteAccount.mockClear()
+    setRepository({ ...createLocalRepository(), deleteAccount })
+  })
+
+  afterEach(() => {
+    setRepository(null)
+  })
+
+  /** Opens the deletion dialog of the signed-in account. */
+  async function openDeleteDialog(queryClient?: QueryClient) {
+    const rendered = queryClient
+      ? renderWithProviders(<SettingsPage />, queryClient)
+      : renderWithProviders(<SettingsPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete account' }))
+    return { ...rendered, dialog: await screen.findByRole('dialog') }
+  }
+
+  function confirmButton() {
+    return within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete account' })
+  }
+
+  function typeConfirmation(value: string) {
+    fireEvent.change(screen.getByLabelText(/type .* to confirm/i), { target: { value } })
+  }
+
+  test('separates the deletion into a danger zone', async () => {
+    renderWithProviders(<SettingsPage />)
+    expect(await screen.findByText('Danger zone')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete account' })).toBeInTheDocument()
+  })
+
+  test('keeps the confirmation disabled until the exact email is typed', async () => {
+    await openDeleteDialog()
+    expect(confirmButton()).toBeDisabled()
+
+    typeConfirmation('tester')
+    expect(confirmButton()).toBeDisabled()
+
+    typeConfirmation('other@example.com')
+    expect(confirmButton()).toBeDisabled()
+
+    typeConfirmation('  TESTER@Example.com  ')
+    expect(confirmButton()).toBeEnabled()
+  })
+
+  /** The account survives everything that is not the confirmed deletion. */
+  async function expectNothingDeleted() {
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(deleteAccount).not.toHaveBeenCalled()
+    expect(await createLocalRepository().currentSession()).not.toBeNull()
+    expect(await createLocalRepository().listProjects()).toHaveLength(1)
+  }
+
+  test('deletes nothing when the dialog is cancelled', async () => {
+    await openDeleteDialog()
+    typeConfirmation(EMAIL)
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+
+    await expectNothingDeleted()
+  })
+
+  test('deletes nothing when escape closes the dialog', async () => {
+    await openDeleteDialog()
+    typeConfirmation(EMAIL)
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await expectNothingDeleted()
+  })
+
+  test('deletes nothing when the dialog is closed', async () => {
+    await openDeleteDialog()
+    typeConfirmation(EMAIL)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+
+    await expectNothingDeleted()
+  })
+
+  test('forgets the typed confirmation when the dialog is reopened', async () => {
+    await openDeleteDialog()
+    typeConfirmation(EMAIL)
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await openDeleteDialog()
+
+    expect(confirmButton()).toBeDisabled()
+  })
+
+  test('erases the account, ends the session and clears the cache', async () => {
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(['projects'], [{ id: 1 }])
+    await openDeleteDialog(queryClient)
+    typeConfirmation(EMAIL)
+
+    fireEvent.click(confirmButton())
+
+    await waitFor(async () =>
+      expect(await createLocalRepository().currentSession()).toBeNull(),
+    )
+    expect(queryClient.getQueryData(['projects'])).toBeUndefined()
+    expect(useToastStore.getState().toasts[0]?.title).toBe('Account deleted')
   })
 })

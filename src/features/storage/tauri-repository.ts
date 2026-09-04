@@ -76,6 +76,12 @@ export const tauriRepository: Repository = {
       forgetSession()
     }
   },
+  deleteAccount: async () => {
+    await run('delete_account')
+    // The command ends the session itself; the window gives its token up too,
+    // so nothing can be read for the erased account any more.
+    forgetSession()
+  },
   listProjects: () => call('list_projects', {}, projectSchema.array()),
   createProject: (input) => call('create_project', { input }, projectSchema),
   updateProject: (id, input) => call('update_project', { id, input }, projectSchema),

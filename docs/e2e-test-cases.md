@@ -122,6 +122,13 @@ timer on it.
 | R2 | `R2: opening reports after using a project link keeps that project pre-selected` | A project has a budget | The user opens Time Entries from a project link and then opens Reports | The same project remains selected in the budget project selector on Reports |
 | S1 | `S1: week start and compliance validations are enforced and settings survive reload` | Settings page is open | The user switches week start, triggers break-order + invalid-limit validation, then reloads | Week start is reflected in Week/Calendar/Reports, invalid settings are blocked with messages, and saved settings persist after reload |
 
+## Account deletion
+
+| #   | Test (`e2e/account-deletion.spec.ts`) | Given | When | Then |
+|-----|---------------------------------------|-------|------|------|
+| AD1 | `AD1: deleting the account erases its data and all of its audit trails` | A registered user with a project, a time entry, an absence, an overtime record and five audit records | The user confirms the deletion in the settings danger zone by typing the own e-mail | The user lands on the login screen with an "Account deleted" notice, the old credentials no longer sign in, and registering the same e-mail again starts an empty account whose Audit Trails page holds only its own registration |
+| AD2 | `AD2: a cancelled confirmation deletes nothing` | A registered user with a project and the confirmation typed into the dialog | The user cancels the dialog | Nothing is deleted and the project is still listed |
+
 ## Licenses
 
 | #  | Test (`e2e/licenses.spec.ts`) | Given | When | Then |
