@@ -19,9 +19,10 @@ pub const DB_PASSWORD_ENV: &str = "SUPABASE_DB_PASSWORD";
 pub const DB_NAME_ENV: &str = "SUPABASE_DB_NAME";
 pub const DB_ROOT_CERT_ENV: &str = "SUPABASE_DB_ROOT_CERT";
 
-/// Every variable the resolution reads, so `from_env` never copies the rest of
-/// the process environment.
-const ENV_KEYS: [&str; 9] = [
+/// Every variable the resolution reads: `env_vars` copies only these out of the
+/// process environment, and `portable.rs` accepts only these names in
+/// `WorkTimeTracker.env`.
+pub const ENV_KEYS: [&str; 9] = [
     DATABASE_URL_ENV,
     DEPLOYMENT_MODE_ENV,
     MIGRATE_ENV,
@@ -137,13 +138,6 @@ impl std::fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 impl DbConfig {
-    /// Resolves the configuration of an application process from the real
-    /// process environment. Such a process never migrates a production
-    /// database, whatever the environment asks for.
-    pub fn from_env() -> Result<Self, ConfigError> {
-        Self::resolve(&env_vars())
-    }
-
     /// The configuration of the separate migration step, the only place that
     /// may authorize applying the migrations to a production database
     /// (`WORK_TIME_TRACKER_DB_MIGRATE=true`, see `examples/migrate.rs`).
@@ -182,7 +176,7 @@ impl DbConfig {
 }
 
 /// The variables of the resolution, copied out of the process environment.
-fn env_vars() -> HashMap<String, String> {
+pub fn env_vars() -> HashMap<String, String> {
     ENV_KEYS
         .into_iter()
         .filter_map(|key| std::env::var(key).ok().map(|value| (key.to_owned(), value)))

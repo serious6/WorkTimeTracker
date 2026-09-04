@@ -7,6 +7,7 @@ mod contract;
 mod error;
 mod logging;
 mod models;
+mod portable;
 mod postgres_store;
 mod startup_failure;
 mod store;
@@ -98,7 +99,14 @@ pub fn run() {
                 std::fs::create_dir_all(&data_dir)
                     .inspect_err(|error| startup_failure::report(error))?;
                 logging::init(&data_dir);
-                let db_config = DbConfig::from_env()
+                // A portable installation carries its settings next to the
+                // application; every other build resolves the process
+                // environment alone, which is what `portable::settings`
+                // returns without a file.
+                let settings = portable::settings()
+                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
+                    .inspect_err(|error| startup_failure::report(error))?;
+                let db_config = DbConfig::resolve(&settings)
                     .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
                     .inspect_err(|error| startup_failure::report(error))?;
                 let database = Database::open(&db_config)

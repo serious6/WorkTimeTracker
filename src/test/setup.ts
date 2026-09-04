@@ -34,6 +34,44 @@ if (!globalThis.ResizeObserver) {
 }
 
 /**
+ * jsdom lays nothing out, so every element measures 0x0 and the responsive
+ * charts refuse to draw with a warning on stderr. A fixed size lets them
+ * render; no test asserts on these numbers.
+ */
+const LAYOUT_WIDTH = 400
+const LAYOUT_HEIGHT = 400
+
+if (typeof HTMLElement !== 'undefined') {
+  for (const [property, value] of [
+    ['offsetWidth', LAYOUT_WIDTH],
+    ['offsetHeight', LAYOUT_HEIGHT],
+    ['clientWidth', LAYOUT_WIDTH],
+    ['clientHeight', LAYOUT_HEIGHT],
+  ] as const) {
+    Object.defineProperty(HTMLElement.prototype, property, {
+      configurable: true,
+      get() {
+        return value
+      },
+    })
+  }
+
+  HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
+    return {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: LAYOUT_WIDTH,
+      bottom: LAYOUT_HEIGHT,
+      width: LAYOUT_WIDTH,
+      height: LAYOUT_HEIGHT,
+      toJSON: () => ({}),
+    } as DOMRect
+  }
+}
+
+/**
  * Node 26 owns storage globals that stay undefined without CLI storage files
  * and hide the ones jsdom provides.
  */

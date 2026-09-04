@@ -91,6 +91,7 @@ contract/           Shared domain and entity contracts
 docs/               Development guide, data model, e2e cases, and UI docs
 drizzle/            Postgres migration baseline
 e2e/                Playwright specs and helpers
+portable/           Example configuration shipped with the portable archives
 scripts/            Repository tooling
 src/                React app: app, components, db, features, lib, pages, test
 src-tauri/src/      Rust backend: auth, commands, config, connection, contract, models, store
@@ -102,3 +103,23 @@ The manual `Release` workflow verifies that `package.json`, `src-tauri/Cargo.tom
 `src-tauri/tauri.conf.json` declare the same version. It runs lint, typecheck, unit tests, the
 architecture check, build, Rust format and tests, license checks, the e2e suite, and then bundles
 Windows and macOS installers.
+
+### Portable archives
+
+The `bundle` job packs the same build a second time as
+`windows-x86_64-WorkTimeTracker-portable.zip` and `macos-aarch64-WorkTimeTracker-portable.zip`,
+each with `WorkTimeTracker.env.example` from `portable/`, for users who may not install anything.
+`npm run portable:assert-env -- portable/staging` runs before the archive is packed and fails
+the job when an env file in it names a filled-in configuration or carries a value for
+`DATABASE_URL` or `SUPABASE_DB_PASSWORD`. It prints file and setting names only.
+
+`bundle.windows.webviewInstallMode` stays at the default bootstrapper: the fixed runtime would add
+well over 100 MB to every artifact of the release and has to be raised by hand for each WebView2
+security update, while the evergreen runtime ships with Windows 11 and reaches most Windows 10
+machines through Edge. A portable archive therefore documents WebView2 as a requirement instead of
+shipping it, and the README names the per-user bootstrapper for the managed and LTSC images that
+carry no runtime.
+
+The Windows archive is unsigned and the macOS archive is neither signed nor notarized, so SmartScreen
+and Gatekeeper warn about them; the README describes how a user gets past that. Portable archives are
+updated by hand: they carry no updater.

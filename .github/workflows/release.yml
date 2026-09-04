@@ -147,6 +147,37 @@ jobs:
           workspaces: src-tauri
       - run: npm ci --prefer-offline
       - run: npm run tauri build
+      # The installers need administrator rights, so the same build is also
+      # shipped as an archive that runs from a folder of the user profile. It
+      # carries the documented example configuration, never a connection.
+      - name: Assemble the portable archive
+        shell: bash
+        run: |
+          mkdir -p portable/staging
+          cp portable/WorkTimeTracker.env.example portable/staging/
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            for candidate in WorkTimeTracker.exe work-time-tracker.exe; do
+              if [ -f "src-tauri/target/release/$candidate" ]; then
+                cp "src-tauri/target/release/$candidate" portable/staging/WorkTimeTracker.exe
+              fi
+            done
+            test -f portable/staging/WorkTimeTracker.exe || {
+              echo "::error::the build produced no portable executable"
+              exit 1
+            }
+          else
+            cp -R src-tauri/target/release/bundle/macos/WorkTimeTracker.app portable/staging/
+          fi
+      - name: Verify the portable archive carries no configured connection
+        run: npm run portable:assert-env -- portable/staging
+      - name: Pack the portable archive (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path portable/staging/* -DestinationPath portable/WorkTimeTracker-portable.zip
+      # `ditto` keeps the symbolic links and the executable bits of the
+      # application bundle, which a plain `zip` of the folder would lose.
+      - name: Pack the portable archive (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc portable/staging portable/WorkTimeTracker-portable.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bundle-${{ matrix.name }}
@@ -154,6 +185,7 @@ jobs:
             src-tauri/target/release/bundle/**/*.dmg
             src-tauri/target/release/bundle/**/*.msi
             src-tauri/target/release/bundle/**/*.exe
+            portable/WorkTimeTracker-portable.zip
           if-no-files-found: error
           retention-days: 7
 

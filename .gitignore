@@ -18,6 +18,10 @@ coverage
 .likec4
 .env
 
+# Portable archives, assembled by the release workflow
+portable/staging
+portable/*.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
