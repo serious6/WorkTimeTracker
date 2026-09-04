@@ -2377,7 +2377,10 @@ mod tests {
         let mut client = connect_test_client(url);
         let versions: Vec<String> = client
             .query(
-                "SELECT version FROM wtt.schema_migrations ORDER BY version",
+                &format!(
+                    "SELECT version FROM {schema}.schema_migrations ORDER BY version",
+                    schema = connection::APP_SCHEMA
+                ),
                 &[],
             )
             .unwrap()
