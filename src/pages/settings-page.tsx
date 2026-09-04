@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog } from '@/components/ui/dialog'
 import { Checkbox, Field, Input, Select } from '@/components/ui/input'
 import { errorToast, toast } from '@/components/ui/toast-store'
+import { useDeleteAccount, useSession } from '@/features/auth/session-queries'
 import { dailyTargetMinutes } from '@/features/settings/work-schedule'
 import {
   useUpdateWorkSettings,
@@ -249,8 +251,98 @@ function GeneralSettingsForm({ settings }: { settings: WorkSettings }) {
   )
 }
 
+/**
+ * Erasure of the account (GDPR Art. 17). The deletion is immediate and takes
+ * every record of the account with it, the audit trails included, so it is
+ * separated from the rest of the settings and asks for the e-mail of the
+ * signed-in account before it is offered at all. The comparison trims and
+ * ignores case, the way the login normalises an address.
+ */
+function DangerZone({ email }: { email: string }) {
+  const [open, setOpen] = useState(false)
+  const [confirmation, setConfirmation] = useState('')
+  const deleteAccount = useDeleteAccount()
+
+  const confirmed = confirmation.trim().toLowerCase() === email.trim().toLowerCase()
+
+  function close() {
+    setOpen(false)
+    setConfirmation('')
+  }
+
+  // mutateAsync, because the successful deletion ends the session and unmounts
+  // this page before mutate() would run its callbacks.
+  async function confirm() {
+    if (!confirmed) return
+    try {
+      await deleteAccount.mutateAsync()
+      close()
+      toast('Account deleted', 'Your account and all of its data were deleted.')
+    } catch (failure) {
+      errorToast(
+        'Account not deleted',
+        errorMessage(failure, 'The account could not be deleted. Nothing was deleted.'),
+      )
+    }
+  }
+
+  return (
+    <Card className="border-destructive/40">
+      <CardHeader>
+        <CardTitle className="text-destructive">Danger zone</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Deleting your account removes it and all of its data from this device and the database,
+          including every audit trail. This cannot be undone.
+        </p>
+        <Button onClick={() => setOpen(true)} variant="destructive">
+          Delete account
+        </Button>
+      </CardContent>
+
+      <Dialog
+        description="This deletes your account immediately and permanently. It cannot be undone."
+        onClose={close}
+        open={open}
+        title="Delete account?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            All projects, time entries, absences, overtime records and settings of this account are
+            deleted, together with every audit trail of it. Nothing is kept and nothing can be
+            restored.
+          </p>
+          <Field label={`Type ${email} to confirm`}>
+            <Input
+              autoComplete="off"
+              name="deleteAccountConfirmation"
+              onChange={(event) => setConfirmation(event.target.value)}
+              type="email"
+              value={confirmation}
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button onClick={close} variant="outline">
+              Cancel
+            </Button>
+            <Button
+              disabled={!confirmed || deleteAccount.isPending}
+              onClick={confirm}
+              variant="destructive"
+            >
+              Delete account
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </Card>
+  )
+}
+
 export function SettingsPage() {
   const { data, isError, isPending, isFetching, refetch } = useWorkSettingsQuery()
+  const { data: user } = useSession()
 
   return (
     <div className="space-y-5">
@@ -288,6 +380,8 @@ export function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {user && <DangerZone email={user.email} />}
     </div>
   )
 }

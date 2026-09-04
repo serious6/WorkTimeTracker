@@ -196,12 +196,14 @@ fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
 /// window that session belongs to. The body only runs for a live session of the
 /// calling webview, so an authorisation check cannot be forgotten. A command
 /// that runs without a session has to be written by hand and named in
-/// [`PUBLIC_COMMANDS`].
+/// [`PUBLIC_COMMANDS`]. A third binding is handed out on request: the session
+/// registry itself, which only the erasure of an account needs to sign every
+/// window of that user out.
 macro_rules! authed_command {
     (
         $(#[$meta:meta])*
         fn $name:ident($($params:tt)*) -> $ret:ty,
-        |$db:ident, $user:ident| $body:expr
+        |$db:ident, $user:ident $(, $sessions:ident)?| $body:expr
     ) => {
         $(#[$meta])*
         #[tauri::command]
@@ -213,12 +215,10 @@ macro_rules! authed_command {
             $($params)*
         ) -> AppResult<$ret> {
             logging::logged(stringify!($name), || {
-                let $user = current_user(
-                    &sessions,
-                    &SessionId::from(session_id),
-                    webview.label(),
-                )?;
+                let id = SessionId::from(session_id);
+                let $user = current_user(&sessions, &id, webview.label())?;
                 let $db = &database;
+                $(let $sessions = &*sessions;)?
                 $body
             })
         }
@@ -315,7 +315,8 @@ authed_command!(
 );
 
 authed_command!(
-    /// The audit trail is read only, it has no command that changes or removes it.
+    /// The audit trail is append-only for the lifetime of the account: no
+    /// command changes a record, and only `delete_account` removes one.
     fn list_time_entry_audits(range: Option<ListRange>) -> Vec<TimeEntryAudit>,
     |db, user| {
         let range = list_range(range)?;
@@ -413,7 +414,8 @@ authed_command!(
 );
 
 authed_command!(
-    /// The audit trail is read only, it has no command that changes or removes it.
+    /// The audit trail is append-only for the lifetime of the account: no
+    /// command changes a record, and only `delete_account` removes one.
     fn list_absence_audits(range: Option<ListRange>) -> Vec<AbsenceAudit>,
     |db, user| {
         let range = list_range(range)?;
@@ -450,7 +452,8 @@ authed_command!(
 );
 
 authed_command!(
-    /// The audit trail is read only, it has no command that changes or removes it.
+    /// The audit trail is append-only for the lifetime of the account: no
+    /// command changes a record, and only `delete_account` removes one.
     fn list_overtime_audits(range: Option<ListRange>) -> Vec<OvertimeAudit>,
     |db, user| {
         let range = list_range(range)?;
@@ -469,6 +472,19 @@ authed_command!(
         settings.validate()?;
         Ok(db.0.write_settings(user, &settings)?)
     }
+);
+
+authed_command!(
+    /// Erases the account of the signed in user and every record of it, the
+    /// audit trails included (GDPR Art. 17). The trails are append-only for the
+    /// lifetime of the account: apart from the retention of the auth events,
+    /// this is the only path that removes a record from them, and it keeps no
+    /// record of the deletion, because such a record would itself be personal
+    /// data of an erased account. Every session of the user ends with the
+    /// deletion, this window and any other one, so no further command can run
+    /// against a deleted user.
+    fn delete_account() -> (),
+    |db, user, sessions| sessions.end_all_of_user(user, || Ok(db.0.delete_account(user)?))
 );
 
 /// The version of the running binary. A deployed database is shared by every

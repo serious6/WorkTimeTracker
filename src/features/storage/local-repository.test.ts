@@ -1115,3 +1115,123 @@ describe('local repository identity and configuration trail', () => {
     expect(await records()).toEqual(before)
   })
 })
+
+describe('local repository account erasure', () => {
+  /** One account with a record of every kind the fallback stores. */
+  async function seedAccount(email: string, password = PASSWORD) {
+    const user = await register(email, password)
+    const project = await createProject('Erasure')
+    await createLocalRepository().createProjectBudget({
+      projectId: project.id,
+      budgetMinutes: 600,
+      dueDate: '2026-12-31',
+    })
+    await createLocalRepository().createTimeEntry({
+      projectId: project.id,
+      startTime: '2026-08-27T08:00:00.000Z',
+      endTime: '2026-08-27T09:00:00.000Z',
+      note: null,
+    })
+    await createLocalRepository().createAbsence({ type: 'vacation', date: '2026-08-28' })
+    await createLocalRepository().createOvertimeEntry({
+      effectiveDate: '2026-08-29',
+      minutes: 30,
+      kind: 'adjustment',
+      origin: 'manual',
+      note: null,
+    })
+    await createLocalRepository().updateWorkSettings({
+      ...DEFAULT_WORK_SETTINGS,
+      weeklyTargetMinutes: 2_100,
+    })
+    return user
+  }
+
+  /** Every stored key that belongs to the account of this id. */
+  function storedKeysOf(userId: number): string[] {
+    const storage = globalThis.localStorage
+    return Array.from({ length: storage?.length ?? 0 }, (_, index) => storage?.key(index) ?? '')
+      .filter((key) => key.startsWith(`work-time-tracker.${userId}.`))
+  }
+
+  it('erases the account, its data and all of its trails', async () => {
+    const user = await seedAccount('first@example.com')
+    expect(storedKeysOf(user.id).length).toBeGreaterThan(0)
+    expect(await createLocalRepository().listSecurityAudits()).not.toEqual([])
+
+    await createLocalRepository().deleteAccount()
+
+    expect(storedKeysOf(user.id)).toEqual([])
+    expect(globalThis.localStorage?.getItem('work-time-tracker.users')).toBe('[]')
+    expect(await createLocalRepository().currentSession()).toBeNull()
+  })
+
+  it('lets the erased email register again with an empty account', async () => {
+    await seedAccount('first@example.com')
+
+    await createLocalRepository().deleteAccount()
+    await register('first@example.com')
+
+    expect(await createLocalRepository().listProjects()).toEqual([])
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(await createLocalRepository().listAbsences()).toEqual([])
+    expect(await createLocalRepository().listOvertimeEntries()).toEqual([])
+    expect(await createLocalRepository().listTimeEntryAudits()).toEqual([])
+    // Only the registration of the new account, nothing of the erased one.
+    expect(await createLocalRepository().listSecurityAudits()).toHaveLength(1)
+  })
+
+  it('keeps the data of the other accounts', async () => {
+    const kept = await seedAccount('second@example.com', OTHER_PASSWORD)
+    const keptKeys = storedKeysOf(kept.id).map(
+      (key) => [key, globalThis.localStorage?.getItem(key)] as const,
+    )
+    const deleted = await seedAccount('first@example.com')
+
+    await createLocalRepository().deleteAccount()
+
+    expect(storedKeysOf(deleted.id)).toEqual([])
+    expect(
+      storedKeysOf(kept.id).map((key) => [key, globalThis.localStorage?.getItem(key)] as const),
+    ).toEqual(keptKeys)
+    await createLocalRepository().login({ email: 'second@example.com', password: OTHER_PASSWORD })
+    expect(await createLocalRepository().listProjects()).toHaveLength(1)
+    expect(await createLocalRepository().listTimeEntries()).toHaveLength(1)
+  })
+
+  it('keeps the account when ending the session fails', async () => {
+    const user = await seedAccount('first@example.com')
+    const real = globalThis.localStorage
+    // The session is written inside the erasure; a rejected write must leave
+    // the account and its data behind instead of half erasing them.
+    const failing: Storage = {
+      get length() {
+        return real.length
+      },
+      key: (index) => real.key(index),
+      getItem: (key) => real.getItem(key),
+      setItem: (key, value) => {
+        if (key.endsWith('sessions')) throw new Error('quota exceeded')
+        real.setItem(key, value)
+      },
+      removeItem: (key) => real.removeItem(key),
+      clear: () => real.clear(),
+    }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: failing })
+
+    await expect(createLocalRepository().deleteAccount()).rejects.toThrow('quota exceeded')
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: real })
+
+    expect(storedKeysOf(user.id).length).toBeGreaterThan(0)
+    expect(await createLocalRepository().currentSession()).not.toBeNull()
+    expect(await createLocalRepository().listProjects()).toHaveLength(1)
+  })
+
+  it('refuses to erase an account without a session', async () => {
+    await seedAccount('first@example.com')
+    await createLocalRepository().logout()
+
+    await expect(createLocalRepository().deleteAccount()).rejects.toThrow(NOT_SIGNED_IN_MESSAGE)
+    expect(globalThis.localStorage?.getItem('work-time-tracker.users')).not.toBe('[]')
+  })
+})
