@@ -627,25 +627,33 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
 fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
     let mut transaction = client.transaction()?;
     transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
-    // Keep the schema name aligned with `connection::APP_SCHEMA` and the baseline.
-    transaction.batch_execute(
-        "CREATE SCHEMA IF NOT EXISTS wtt;
-         CREATE TABLE IF NOT EXISTS wtt.schema_migrations (
+    transaction.batch_execute(&format!(
+        "CREATE SCHEMA IF NOT EXISTS {schema};
+         CREATE TABLE IF NOT EXISTS {schema}.schema_migrations (
           version TEXT PRIMARY KEY,
           applied_at TEXT NOT NULL
          )",
-    )?;
+        schema = connection::APP_SCHEMA
+    ))?;
     for (version, sql) in MIGRATIONS {
         let applied: bool = transaction
             .query_one(
-                "SELECT EXISTS (SELECT 1 FROM wtt.schema_migrations WHERE version = $1)",
+                &format!(
+                    "SELECT EXISTS (
+                      SELECT 1 FROM {schema}.schema_migrations WHERE version = $1
+                    )",
+                    schema = connection::APP_SCHEMA
+                ),
                 &[version],
             )?
             .get(0);
         if !applied {
             transaction.batch_execute(sql)?;
             transaction.execute(
-                "INSERT INTO wtt.schema_migrations (version, applied_at) VALUES ($1, $2)",
+                &format!(
+                    "INSERT INTO {schema}.schema_migrations (version, applied_at) VALUES ($1, $2)",
+                    schema = connection::APP_SCHEMA
+                ),
                 &[version, &now_iso()],
             )?;
         }
@@ -658,15 +666,19 @@ fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
 /// step, so a starting client only checks that the schema it expects is
 /// already there instead of changing a shared database on its own.
 fn verify_migrations(client: &mut postgres::Client) -> Result<(), StoreError> {
+    let migrations_table = format!("{}.schema_migrations", connection::APP_SCHEMA);
     let recorded: bool = client
-        .query_one(
-            "SELECT to_regclass('wtt.schema_migrations') IS NOT NULL",
-            &[],
-        )?
+        .query_one("SELECT to_regclass($1) IS NOT NULL", &[&migrations_table])?
         .get(0);
     let missing: Vec<&str> = if recorded {
         let applied: Vec<String> = client
-            .query("SELECT version FROM wtt.schema_migrations", &[])?
+            .query(
+                &format!(
+                    "SELECT version FROM {schema}.schema_migrations",
+                    schema = connection::APP_SCHEMA
+                ),
+                &[],
+            )?
             .iter()
             .map(|row| row.get(0))
             .collect();
@@ -693,8 +705,11 @@ fn write_app_version(
     version: &str,
 ) -> Result<(), StoreError> {
     client.execute(
-        "INSERT INTO wtt.app_metadata (key, value) VALUES ($1, $2)
-         ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
+        &format!(
+            "INSERT INTO {schema}.app_metadata (key, value) VALUES ($1, $2)
+             ON CONFLICT (key) DO UPDATE SET value = $2 WHERE app_metadata.value <> $2",
+            schema = connection::APP_SCHEMA
+        ),
         &[&APP_VERSION_KEY, &version],
     )?;
     Ok(())
