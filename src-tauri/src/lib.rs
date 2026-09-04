@@ -8,6 +8,7 @@ mod error;
 mod logging;
 mod models;
 mod postgres_store;
+mod startup_failure;
 mod store;
 #[cfg(test)]
 mod test_support;
@@ -27,8 +28,41 @@ fn log_panics() {
             .map(|location| format!("{}:{}", location.file(), location.line()))
             .unwrap_or_else(|| "unknown location".to_owned());
         logging::error("panic", &format!("{location} {info}"));
+        let panic_error = startup_panic_error(info.payload());
+        startup_failure::report_startup_panic(&panic_error);
         previous(info);
     }));
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|message| (*message).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "panic payload was not a string".to_owned())
+}
+
+fn panic_summary(message: &str) -> String {
+    let first_line = message.lines().next().unwrap_or(message).trim();
+    let summary = first_line
+        .split('{')
+        .next()
+        .unwrap_or(first_line)
+        .trim()
+        .trim_end_matches(':');
+    if summary.is_empty() {
+        "panic payload was not a string".to_owned()
+    } else {
+        summary.to_owned()
+    }
+}
+
+fn startup_panic_error(payload: &(dyn std::any::Any + Send)) -> std::io::Error {
+    let message = panic_payload_message(payload);
+    std::io::Error::other(format!(
+        "WorkTimeTracker stopped unexpectedly during startup: {}",
+        panic_summary(&message)
+    ))
 }
 
 /// Applies the schema migrations to the configured database. A deployed
@@ -51,69 +85,95 @@ pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
-            logging::init(&data_dir);
-            log_panics();
-            let db_config = DbConfig::from_env()
-                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
-            let database = Database::open(&db_config)
-                .inspect_err(|error| logging::error("setup", &format!("database: {error}")))?;
-            app.manage(database);
-            app.manage(Sessions::default());
-            if let Some(window) = app.get_webview_window("main") {
-                window_state::restore(&window.as_ref().window_ref());
-            }
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if matches!(event, WindowEvent::CloseRequested { .. }) {
-                window_state::save(window);
-            }
-        })
-        .invoke_handler(tauri::generate_handler![
-            commands::register,
-            commands::login,
-            commands::logout,
-            commands::current_session,
-            commands::list_projects,
-            commands::create_project,
-            commands::update_project,
-            commands::delete_project,
-            commands::list_time_entries,
-            commands::create_time_entry,
-            commands::update_time_entry,
-            commands::update_time_entry_note,
-            commands::switch_running_time_entry,
-            commands::delete_time_entry,
-            commands::list_time_entry_audits,
-            commands::list_audit_log,
-            commands::list_security_audits,
-            commands::list_project_budgets,
-            commands::create_project_budget,
-            commands::update_project_budget,
-            commands::delete_project_budget,
-            commands::list_absences,
-            commands::create_absence,
-            commands::update_absence,
-            commands::save_absences,
-            commands::delete_absence,
-            commands::list_absence_audits,
-            commands::list_overtime_entries,
-            commands::create_overtime_entry,
-            commands::update_overtime_entry,
-            commands::delete_overtime_entry,
-            commands::list_overtime_audits,
-            commands::get_work_settings,
-            commands::update_work_settings,
-            commands::delete_account,
-            commands::get_app_version,
-            commands::log_client_error
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running WorkTimeTracker");
+    log_panics();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        tauri::Builder::default()
+            .plugin(tauri_plugin_dialog::init())
+            .setup(|app| {
+                startup_failure::remember_app_handle(app.handle().clone());
+                let data_dir = app
+                    .path()
+                    .app_data_dir()
+                    .inspect_err(|error| startup_failure::report(error))?;
+                startup_failure::remember_log_file_path(logging::log_file_path_for(&data_dir));
+                std::fs::create_dir_all(&data_dir)
+                    .inspect_err(|error| startup_failure::report(error))?;
+                logging::init(&data_dir);
+                let db_config = DbConfig::from_env()
+                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
+                    .inspect_err(|error| startup_failure::report(error))?;
+                let database = Database::open(&db_config)
+                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
+                    .inspect_err(|error| startup_failure::report(error))?;
+                app.manage(database);
+                app.manage(Sessions::default());
+                if let Some(window) = app.get_webview_window("main") {
+                    window_state::restore(&window.as_ref().window_ref());
+                }
+                startup_failure::mark_startup_complete();
+                Ok(())
+            })
+            .on_window_event(|window, event| {
+                if matches!(event, WindowEvent::CloseRequested { .. }) {
+                    window_state::save(window);
+                }
+            })
+            .invoke_handler(tauri::generate_handler![
+                commands::register,
+                commands::login,
+                commands::logout,
+                commands::current_session,
+                commands::list_projects,
+                commands::create_project,
+                commands::update_project,
+                commands::delete_project,
+                commands::list_time_entries,
+                commands::create_time_entry,
+                commands::update_time_entry,
+                commands::update_time_entry_note,
+                commands::switch_running_time_entry,
+                commands::delete_time_entry,
+                commands::list_time_entry_audits,
+                commands::list_audit_log,
+                commands::list_security_audits,
+                commands::list_project_budgets,
+                commands::create_project_budget,
+                commands::update_project_budget,
+                commands::delete_project_budget,
+                commands::list_absences,
+                commands::create_absence,
+                commands::update_absence,
+                commands::save_absences,
+                commands::delete_absence,
+                commands::list_absence_audits,
+                commands::list_overtime_entries,
+                commands::create_overtime_entry,
+                commands::update_overtime_entry,
+                commands::delete_overtime_entry,
+                commands::list_overtime_audits,
+                commands::get_work_settings,
+                commands::update_work_settings,
+                commands::delete_account,
+                commands::get_app_version,
+                commands::log_client_error
+            ])
+            .run(tauri::generate_context!())
+    }));
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => {
+            startup_failure::mark_startup_complete();
+            startup_failure::report(&error);
+            std::process::exit(1);
+        }
+        Err(payload) => {
+            startup_failure::mark_startup_complete();
+            let panic_error = startup_panic_error(payload.as_ref());
+            startup_failure::report_startup_panic(&panic_error);
+            std::process::exit(1);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -414,5 +474,29 @@ mod tests {
                 "the missing guard of {source:?} was not seen"
             );
         }
+    }
+
+    #[test]
+    fn panic_summary_keeps_the_first_line() {
+        assert_eq!(
+            super::panic_summary("startup failed\nwith details"),
+            "startup failed"
+        );
+    }
+
+    #[test]
+    fn panic_summary_drops_struct_tail_after_an_opening_brace() {
+        assert_eq!(
+            super::panic_summary("Failed: BoolError { message: \"x\" }"),
+            "Failed: BoolError"
+        );
+    }
+
+    #[test]
+    fn panic_summary_falls_back_for_an_empty_message() {
+        assert_eq!(
+            super::panic_summary("   "),
+            "panic payload was not a string".to_owned()
+        );
     }
 }

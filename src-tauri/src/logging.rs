@@ -36,10 +36,19 @@ const HASH_PREFIXES: [&str; 6] = ["$argon2", "$pbkdf2", "$scrypt", "$2a$", "$2b$
 
 static LOG_FILE: OnceLock<Mutex<PathBuf>> = OnceLock::new();
 
+fn log_dir_for(directory: &Path) -> PathBuf {
+    directory.join("logs")
+}
+
+/// The canonical log file path below an app data directory.
+pub fn log_file_path_for(directory: &Path) -> PathBuf {
+    log_dir_for(directory).join(FILE_NAME)
+}
+
 /// Points the logger at `<directory>/logs`. Logging before this call is a no-op,
 /// so tests and the browser fallback never touch the file system.
 pub fn init(directory: &Path) {
-    let logs = directory.join("logs");
+    let logs = log_dir_for(directory);
     if fs::create_dir_all(&logs).is_err() {
         return;
     }
