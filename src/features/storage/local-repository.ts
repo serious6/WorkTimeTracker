@@ -658,16 +658,18 @@ const fallbackRepository: Repository = {
     const users = readUsers()
     const user = users.find((stored) => stored.id === userId)
     const keys = SCOPED_KEYS.map((key) => `work-time-tracker.${userId}.${key}`)
-    atomically([USERS_KEY, ...keys], () => {
+    // The session ends inside the same scope: a failure there would otherwise
+    // leave the account erased while the caller is told that nothing was.
+    atomically([USERS_KEY, SESSIONS_KEY, ...keys], () => {
       for (const key of keys) globalThis.localStorage?.removeItem(key)
       write(
         USERS_KEY,
         users.filter((stored) => stored.id !== userId),
       )
+      endSession()
     })
     // The lockout counter names the erased email, so it goes as well.
     if (user) loginAttempts.recordSuccess(user.email)
-    endSession()
   },
   listProjects: async () => readProjects().sort((left, right) => left.name.localeCompare(right.name)),
   createProject: async (input) => {

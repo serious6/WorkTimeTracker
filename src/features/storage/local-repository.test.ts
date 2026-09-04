@@ -1199,6 +1199,34 @@ describe('local repository account erasure', () => {
     expect(await createLocalRepository().listTimeEntries()).toHaveLength(1)
   })
 
+  it('keeps the account when ending the session fails', async () => {
+    const user = await seedAccount('first@example.com')
+    const real = globalThis.localStorage
+    // The session is written inside the erasure; a rejected write must leave
+    // the account and its data behind instead of half erasing them.
+    const failing: Storage = {
+      get length() {
+        return real.length
+      },
+      key: (index) => real.key(index),
+      getItem: (key) => real.getItem(key),
+      setItem: (key, value) => {
+        if (key.endsWith('sessions')) throw new Error('quota exceeded')
+        real.setItem(key, value)
+      },
+      removeItem: (key) => real.removeItem(key),
+      clear: () => real.clear(),
+    }
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: failing })
+
+    await expect(createLocalRepository().deleteAccount()).rejects.toThrow('quota exceeded')
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: real })
+
+    expect(storedKeysOf(user.id).length).toBeGreaterThan(0)
+    expect(await createLocalRepository().currentSession()).not.toBeNull()
+    expect(await createLocalRepository().listProjects()).toHaveLength(1)
+  })
+
   it('refuses to erase an account without a session', async () => {
     await seedAccount('first@example.com')
     await createLocalRepository().logout()

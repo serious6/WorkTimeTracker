@@ -196,13 +196,14 @@ fn map_time_entry_write_error(error: TimeEntryWriteError) -> AppError {
 /// window that session belongs to. The body only runs for a live session of the
 /// calling webview, so an authorisation check cannot be forgotten. A command
 /// that runs without a session has to be written by hand and named in
-/// [`PUBLIC_COMMANDS`]. A third binding is handed out on request: it ends the
-/// session the command runs in, which only the erasure of an account needs.
+/// [`PUBLIC_COMMANDS`]. A third binding is handed out on request: the session
+/// registry itself, which only the erasure of an account needs to sign every
+/// window of that user out.
 macro_rules! authed_command {
     (
         $(#[$meta:meta])*
         fn $name:ident($($params:tt)*) -> $ret:ty,
-        |$db:ident, $user:ident $(, $end_session:ident)?| $body:expr
+        |$db:ident, $user:ident $(, $sessions:ident)?| $body:expr
     ) => {
         $(#[$meta])*
         #[tauri::command]
@@ -217,7 +218,7 @@ macro_rules! authed_command {
                 let id = SessionId::from(session_id);
                 let $user = current_user(&sessions, &id, webview.label())?;
                 let $db = &database;
-                $(let $end_session = || sessions.end(&id, webview.label());)?
+                $(let $sessions = &*sessions;)?
                 $body
             })
         }
@@ -479,13 +480,11 @@ authed_command!(
     /// lifetime of the account: apart from the retention of the auth events,
     /// this is the only path that removes a record from them, and it keeps no
     /// record of the deletion, because such a record would itself be personal
-    /// data of an erased account. The session ends right after the deletion, so
-    /// no further command can run against a deleted user.
+    /// data of an erased account. Every session of the user ends with the
+    /// deletion, this window and any other one, so no further command can run
+    /// against a deleted user.
     fn delete_account() -> (),
-    |db, user, end_session| {
-        db.0.delete_account(user)?;
-        end_session()
-    }
+    |db, user, sessions| sessions.end_all_of_user(user, || Ok(db.0.delete_account(user)?))
 );
 
 /// The version of the running binary. A deployed database is shared by every

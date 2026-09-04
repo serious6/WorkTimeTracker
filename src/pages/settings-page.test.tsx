@@ -235,7 +235,8 @@ describe('SettingsPage – danger zone', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-    await openDeleteDialog()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+    await screen.findByRole('dialog')
 
     expect(confirmButton()).toBeDisabled()
   })
@@ -243,6 +244,14 @@ describe('SettingsPage – danger zone', () => {
   test('erases the account, ends the session and clears the cache', async () => {
     const queryClient = createTestQueryClient()
     queryClient.setQueryData(['projects'], [{ id: 1 }])
+    // A finished mutation still holds its variables, credentials included.
+    const mutation = queryClient.getMutationCache().build(queryClient, {
+      mutationKey: ['login'],
+      mutationFn: (credentials: { email: string; password: string }) =>
+        Promise.resolve(credentials),
+    })
+    await mutation.execute({ email: EMAIL, password: 'secret' })
+    expect(queryClient.getMutationCache().getAll()).not.toEqual([])
     await openDeleteDialog(queryClient)
     typeConfirmation(EMAIL)
 
@@ -252,6 +261,7 @@ describe('SettingsPage – danger zone', () => {
       expect(await createLocalRepository().currentSession()).toBeNull(),
     )
     expect(queryClient.getQueryData(['projects'])).toBeUndefined()
+    expect(queryClient.getMutationCache().getAll()).toEqual([])
     expect(useToastStore.getState().toasts[0]?.title).toBe('Account deleted')
   })
 })
