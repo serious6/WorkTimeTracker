@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createProject, dialog, downloadText, register, trackingCard } from './helpers'
+import { createProject, dialog, downloadText, startSignedInSession, trackingCard } from './helpers'
 
 const PROJECT = 'Website Redesign'
 const OTHER_PROJECT = 'Mobile App'
@@ -49,9 +49,7 @@ async function stopTimer(page: Page) {
  */
 test.beforeEach(async ({ page }) => {
   await page.clock.install({ time: today(8) })
-  await page.goto('/')
-  await register(page, 'first@example.com')
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+  await startSignedInSession(page)
   await page.clock.pauseAt(today(9))
   await createProject(page, PROJECT)
 })

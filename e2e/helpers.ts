@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { SESSION_TIMEOUT_MINUTES } from '../src/features/auth/security-policy'
 
 export function dialog(page: Page) {
   return page.getByRole('dialog')
@@ -105,6 +106,45 @@ export async function downloadText(page: Page, button: string) {
 }
 
 export const PASSWORD = 'Str0ng-Passphrase!!x'
+const PASSWORD_HASH =
+  'pbkdf2-sha256$210000$d29yay10aW1lLXRlc3QtMQ==$9WatE7lxQeDr47my/+676IM7dG0Neb4WKkD3V/MVUZw='
+
+export async function startSignedInSession(page: Page, email = 'first@example.com') {
+  await page.addInitScript(
+    ({ accountEmail, passwordHash, sessionTimeoutMinutes }) => {
+      const now = Date.now()
+      const createdAt = new Date(now).toISOString()
+      const user = { id: 1, email: accountEmail, createdAt, passwordHash }
+      const token = 'test-session-1'
+      localStorage.setItem('work-time-tracker.users', JSON.stringify([user]))
+      localStorage.setItem(
+        'work-time-tracker.1.security-audits',
+        JSON.stringify([
+          {
+            id: 1,
+            entity: 'user',
+            entityId: 1,
+            action: 'user.registered',
+            actor: accountEmail,
+            oldValue: null,
+            newValue: JSON.stringify({ email: accountEmail }),
+            recordedAt: createdAt,
+          },
+        ]),
+      )
+      localStorage.setItem(
+        'work-time-tracker.sessions',
+        JSON.stringify({
+          [token]: { userId: 1, startedAt: now, expiresAt: now + sessionTimeoutMinutes * 60_000 },
+        }),
+      )
+      sessionStorage.setItem('work-time-tracker.session', token)
+    },
+    { accountEmail: email, passwordHash: PASSWORD_HASH, sessionTimeoutMinutes: SESSION_TIMEOUT_MINUTES },
+  )
+  await page.goto('/')
+  await expectHeading(page, 'Dashboard')
+}
 
 export async function register(page: Page, email: string, password = PASSWORD) {
   await page.getByRole('button', { name: 'Register' }).click()

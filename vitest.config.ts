@@ -1,6 +1,14 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
+const jsdomTestFiles = [
+  'src/lib/global-errors.test.ts',
+  'src/features/auth/session-queries.test.ts',
+  'src/features/storage/tauri-repository.test.ts',
+  'src/features/dashboard/use-keyboard-shortcuts.test.ts',
+  'src/features/timer/use-ticker.test.ts',
+]
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -9,9 +17,27 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
+    pool: 'threads',
     setupFiles: ['./src/test/setup.ts'],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+          exclude: jsdomTestFiles,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'jsdom',
+          environment: 'jsdom',
+          include: ['src/**/*.test.tsx', ...jsdomTestFiles],
+        },
+      },
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

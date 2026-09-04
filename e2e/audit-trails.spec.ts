@@ -11,6 +11,7 @@ import {
   markAbsence,
   openAccountMenu,
   register,
+  startSignedInSession,
 } from './helpers'
 
 const USER = 'first@example.com'
@@ -18,9 +19,7 @@ const AUDIT_DAY = '2026-03-15'
 const TRAIL_TYPES = ['Time Entry', 'Absence', 'Overtime', 'Identity', 'Configuration'] as const
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
-  await register(page, USER)
-  await expectHeading(page, 'Dashboard')
+  await startSignedInSession(page, USER)
 })
 
 function auditRows(page: Page, actor = USER) {

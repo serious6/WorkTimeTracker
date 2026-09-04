@@ -4,22 +4,9 @@ import { afterEach } from 'vitest'
 
 afterEach(cleanup)
 
-/** jsdom ships no ResizeObserver, which the chart components observe with. */
-if (!globalThis.ResizeObserver) {
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  }
-}
-
-/**
- * Node 26 owns a `localStorage` global that stays undefined without
- * `--localstorage-file` and hides the one jsdom provides.
- */
-if (!globalThis.localStorage) {
+function memoryStorage(): Storage {
   const entries = new Map<string, string>()
-  const storage: Storage = {
+  return {
     get length() {
       return entries.size
     },
@@ -35,5 +22,25 @@ if (!globalThis.localStorage) {
       entries.clear()
     },
   }
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+}
+
+/** jsdom ships no ResizeObserver, which the chart components observe with. */
+if (!globalThis.ResizeObserver) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}
+
+/**
+ * Node 26 owns storage globals that stay undefined without CLI storage files
+ * and hide the ones jsdom provides.
+ */
+if (!globalThis.localStorage) {
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: memoryStorage() })
+}
+
+if (!globalThis.sessionStorage) {
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: memoryStorage() })
 }

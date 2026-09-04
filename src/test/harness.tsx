@@ -4,6 +4,7 @@ import type { ReactElement } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { useToastStore } from '@/components/ui/toast-store'
 import type { AuthUser } from '@/features/auth/auth-schema'
+import { SESSION_TIMEOUT_MINUTES } from '@/features/auth/security-policy'
 import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
 import type { OvertimeEntry, SaveOvertimeEntry } from '@/features/overtime/overtime-schema'
@@ -15,6 +16,11 @@ import { toDateKey } from '@/lib/date'
 
 /** Satisfies the password policy, so registrations succeed. */
 export const TEST_PASSWORD = 'Str0ng-Passphrase!!x'
+const TEST_PASSWORD_HASH =
+  'pbkdf2-sha256$210000$d29yay10aW1lLXRlc3QtMQ==$9WatE7lxQeDr47my/+676IM7dG0Neb4WKkD3V/MVUZw='
+const USERS_KEY = 'work-time-tracker.users'
+const SESSION_KEY = 'work-time-tracker.session'
+const SESSIONS_KEY = 'work-time-tracker.sessions'
 
 export function createTestQueryClient(): QueryClient {
   return new QueryClient({
@@ -44,7 +50,39 @@ export async function resetAppState(): Promise<void> {
 }
 
 export async function signIn(email = 'tester@example.com'): Promise<AuthUser> {
-  return createLocalRepository().register({ email, password: TEST_PASSWORD })
+  const users = JSON.parse(globalThis.localStorage?.getItem(USERS_KEY) ?? '[]') as Array<
+    AuthUser & { passwordHash: string }
+  >
+  const user = { id: nextId(users), email, createdAt: new Date().toISOString() }
+  globalThis.localStorage?.setItem(
+    USERS_KEY,
+    JSON.stringify([...users, { ...user, passwordHash: TEST_PASSWORD_HASH }]),
+  )
+  globalThis.localStorage?.setItem(
+    `work-time-tracker.${user.id}.security-audits`,
+    JSON.stringify([
+      {
+        id: 1,
+        entity: 'user',
+        entityId: user.id,
+        action: 'user.registered',
+        actor: email,
+        oldValue: null,
+        newValue: JSON.stringify({ email }),
+        recordedAt: user.createdAt,
+      },
+    ]),
+  )
+  const token = `test-session-${user.id}`
+  const startedAt = Date.now()
+  globalThis.localStorage?.setItem(
+    SESSIONS_KEY,
+    JSON.stringify({
+      [token]: { userId: user.id, startedAt, expiresAt: startedAt + SESSION_TIMEOUT_MINUTES * 60_000 },
+    }),
+  )
+  globalThis.sessionStorage?.setItem(SESSION_KEY, token)
+  return user
 }
 
 export async function seedProject(
@@ -100,6 +138,10 @@ export async function seedOvertimeEntry(
 
 function toIsoString(value: Date | string): string {
   return typeof value === 'string' ? value : value.toISOString()
+}
+
+function nextId(records: { id: number }[]): number {
+  return records.reduce((highest, record) => Math.max(highest, record.id), 0) + 1
 }
 
 /** A date at the given local time of day, relative to `reference`. */

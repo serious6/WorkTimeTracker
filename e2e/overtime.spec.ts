@@ -1,14 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
-import { addEntry, addOvertime, createProject, dateKey, dialog, expectHeading, gotoPage, register } from './helpers'
+import { addEntry, addOvertime, createProject, dateKey, dialog, gotoPage, startSignedInSession } from './helpers'
 
 function cumulativeBalance(page: Page) {
   return page.getByRole('button').filter({ hasText: 'Carried into this day' }).locator('p').first()
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
-  await register(page, 'first@example.com')
-  await expectHeading(page, 'Dashboard')
+  await startSignedInSession(page)
 })
 
 // O1 in docs/e2e-test-cases.md

@@ -1,10 +1,8 @@
 import { expect, test } from '@playwright/test'
-import { expectHeading, gotoPage, openAccountMenu, register } from './helpers'
+import { expectHeading, gotoPage, openAccountMenu, startSignedInSession } from './helpers'
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/')
-  await register(page, 'first@example.com')
-  await expectHeading(page, 'Dashboard')
+  await startSignedInSession(page)
 })
 
 // L1 in docs/e2e-test-cases.md
