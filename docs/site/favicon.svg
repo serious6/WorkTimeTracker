@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>WorkTimeTracker</title>
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5b9eff" />
+      <stop offset="1" stop-color="#0462d3" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" ry="224" fill="url(#brand)" />
+  <g
+    fill="none"
+    stroke="#ffffff"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="2.6"
+    transform="translate(151 193) scale(29)"
+  >
+    <path d="M16.7 16.7A8 8 0 1 1 16.7 5.3" />
+    <path d="M11 6v5l3 1.8" />
+    <path d="m15 15.2 2.4 2.6 4.4-5.6" />
+  </g>
+</svg>

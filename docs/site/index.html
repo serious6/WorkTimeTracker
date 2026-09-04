@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WorkTimeTracker — Your time, clearly tracked</title>
+    <meta name="description" content="A local-first, open-source desktop app for tracking working time, projects, and balances." />
+    <link rel="canonical" href="https://serious6.github.io/WorkTimeTracker/site/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="WorkTimeTracker — Your time, clearly tracked" />
+    <meta property="og:description" content="A local-first, open-source desktop app for tracking working time, projects, and balances." />
+    <meta property="og:url" content="https://serious6.github.io/WorkTimeTracker/site/" />
+    <meta property="og:image" content="https://serious6.github.io/WorkTimeTracker/site/favicon.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="WorkTimeTracker — Your time, clearly tracked" />
+    <meta name="twitter:description" content="A local-first, open-source desktop app for tracking working time, projects, and balances." />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="WorkTimeTracker home"><img src="favicon.svg" alt="" width="36" height="36" />WorkTimeTracker</a>
+      <nav aria-label="Main navigation"><a href="#features">Features</a><a href="#downloads">Downloads</a><a href="https://github.com/serious6/WorkTimeTracker">GitHub</a></nav>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="eyebrow">Open source · Local-first</div>
+        <h1 id="hero-title">Your working time,<br /><em>clearly tracked.</em></h1>
+        <p class="hero-copy">A desktop app for keeping projects, working time, and balances in one focused place—on your own terms.</p>
+        <div class="actions"><a class="button primary" href="#downloads">Download <span aria-hidden="true">↓</span></a><a class="button secondary" href="https://github.com/serious6/WorkTimeTracker">View on GitHub <span aria-hidden="true">↗</span></a></div>
+        <div class="product-card" aria-label="WorkTimeTracker overview">
+          <div class="window-bar"><span></span><span></span><span></span><b>WorkTimeTracker</b></div>
+          <div class="product-content"><div><small>Today</small><strong>Focus on what matters.</strong><p>Track time as you work. Keep every project in view.</p></div><div class="time-ring">08<span>h</span><small>42 min</small></div></div>
+          <div class="project-row"><span class="dot"></span><b>Current project</b><span>In progress</span></div>
+        </div>
+      </section>
+      <section id="features" class="section" aria-labelledby="features-title">
+        <div class="section-heading"><p class="eyebrow">Built for the working day</p><h2 id="features-title">Time tracking that respects your time.</h2></div>
+        <div class="feature-grid">
+          <article><span class="icon">◷</span><h3>Track without friction</h3><p>Start, pause, resume, stop, or switch timers as your work changes.</p></article>
+          <article><span class="icon">⌂</span><h3>Local-first by design</h3><p>Your native app data is stored in a Postgres database you control.</p></article>
+          <article><span class="icon">▣</span><h3>Keep projects in view</h3><p>See time distribution, budgets, consumption, and forecasts in one place.</p></article>
+          <article><span class="icon">◫</span><h3>Work across platforms</h3><p>A Tauri desktop app for Windows and macOS, with Linux support built into Tauri.</p></article>
+          <article><span class="icon">↺</span><h3>Dates handled carefully</h3><p>UTC-canonical timestamps derive local days and durations correctly, including daylight saving time.</p></article>
+          <article><span class="icon">⌘</span><h3>Open source</h3><p>WorkTimeTracker is MIT licensed—inspect, adapt, and contribute on GitHub.</p></article>
+        </div>
+      </section>
+      <section class="section workflow" aria-labelledby="workflow-title">
+        <div class="section-heading"><p class="eyebrow">A simple rhythm</p><h2 id="workflow-title">Make time visible, one entry at a time.</h2></div>
+        <ol><li><b>01</b><div><h3>Set your week</h3><p>Choose your working days and weekly target.</p></div></li><li><b>02</b><div><h3>Track your work</h3><p>Run a timer or add time afterwards when it suits you.</p></div></li><li><b>03</b><div><h3>Understand the picture</h3><p>Review projects, balances, reports, breaks, and absences.</p></div></li></ol>
+      </section>
+      <section id="downloads" class="section downloads" aria-labelledby="downloads-title">
+        <div class="section-heading"><p class="eyebrow">Get WorkTimeTracker</p><h2 id="downloads-title">Downloads</h2><p>New releases appear here automatically after they are published.</p></div>
+        <div id="release-content" class="release-panel" aria-busy="true" aria-live="polite">
+          <div class="loading"><span class="spinner" aria-hidden="true"></span><span>Checking for releases…</span></div>
+        </div>
+        <noscript><p class="release-panel">JavaScript is needed to show downloads. <a href="https://github.com/serious6/WorkTimeTracker/releases">Visit GitHub Releases</a>.</p></noscript>
+      </section>
+    </main>
+    <footer><a class="brand" href="#"><img src="favicon.svg" alt="" width="28" height="28" />WorkTimeTracker</a><p>Open-source work-time tracking for the desktop.</p><a href="https://github.com/serious6/WorkTimeTracker/blob/main/LICENSE">MIT License</a></footer>
+    <script type="module" src="releases.js"></script>
+  </body>
+</html>
