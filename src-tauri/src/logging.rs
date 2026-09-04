@@ -40,11 +40,6 @@ fn log_dir_for(directory: &Path) -> PathBuf {
     directory.join("logs")
 }
 
-/// The canonical log file path below an app data directory.
-pub fn log_file_path_for(directory: &Path) -> PathBuf {
-    log_dir_for(directory).join(FILE_NAME)
-}
-
 /// Points the logger at `<directory>/logs`. Logging before this call is a no-op,
 /// so tests and the browser fallback never touch the file system.
 pub fn init(directory: &Path) {
@@ -53,6 +48,15 @@ pub fn init(directory: &Path) {
         return;
     }
     let _ = LOG_FILE.set(Mutex::new(logs.join(FILE_NAME)));
+}
+
+/// The file the logger writes to, `None` while [`init`] has not succeeded. A
+/// caller may only point a user at the log file once this returns a path.
+pub fn file_path() -> Option<PathBuf> {
+    LOG_FILE
+        .get()
+        .and_then(|path| path.lock().ok())
+        .map(|path| path.clone())
 }
 
 /// Appends one redacted error line. Failures of the logger itself are swallowed:
@@ -133,20 +137,47 @@ fn clamp(message: &str) -> String {
 /// Removes credentials, hashes, e-mail addresses and file system paths from a
 /// message. A log line is redacted before it is written, so it is safe wherever it originates.
 pub fn redact(message: &str) -> String {
-    let mut parts: Vec<String> = Vec::new();
-
     let message = redact_sensitive_values(message);
-    for token in message.split_whitespace() {
-        match split_pair(token) {
-            Some((key, separator, value)) if !is_path(token) && needs_redaction(value) => {
-                parts.push(format!("{key}{separator}{}", replacement(value)));
+    message
+        .split_whitespace()
+        .map(redact_token)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The same redaction as [`redact`], but the original whitespace is kept, so a
+/// multi-line text stays readable where it is shown instead of logged.
+pub fn redact_keeping_layout(message: &str) -> String {
+    let message = redact_sensitive_values(message);
+    let mut redacted = String::new();
+    let mut token = String::new();
+
+    for character in message.chars() {
+        if character.is_whitespace() {
+            if !token.is_empty() {
+                redacted.push_str(&redact_token(&token));
+                token.clear();
             }
-            _ if needs_redaction(token) => parts.push(replacement(token).to_owned()),
-            _ => parts.push(token.to_owned()),
+            redacted.push(character);
+            continue;
         }
+        token.push(character);
     }
 
-    parts.join(" ")
+    if !token.is_empty() {
+        redacted.push_str(&redact_token(&token));
+    }
+    redacted
+}
+
+fn redact_token(token: &str) -> String {
+    match split_pair(token) {
+        Some((key, separator, value)) if !is_path(token) && needs_redaction(value) => {
+            format!("{key}{separator}{}", replacement(value))
+        }
+        _ if needs_redaction(token) => replacement(token).to_owned(),
+        _ => token.to_owned(),
+    }
 }
 
 fn replacement(token: &str) -> &'static str {
@@ -423,6 +454,21 @@ mod tests {
     }
 
     #[test]
+    fn keeps_the_layout_while_redacting() {
+        assert_eq!(
+            redact_keeping_layout("line 1:\n  token=abc123\n\tjane@example.com"),
+            "line 1:\n  token=[redacted]\n\t[redacted]"
+        );
+    }
+
+    #[test]
+    fn keeping_the_layout_redacts_the_same_tokens_as_a_log_line() {
+        let message = "opening /home/jane/app.db for $argon2id$v=19$hash of jane@example.com";
+
+        assert_eq!(redact_keeping_layout(message), redact(message));
+    }
+
+    #[test]
     fn clamps_long_messages() {
         let message = "a".repeat(MAX_MESSAGE_CHARS + 100);
 
@@ -431,6 +477,7 @@ mod tests {
 
     #[test]
     fn logging_without_initialization_is_a_no_op() {
+        assert_eq!(file_path(), None);
         error("test", "nothing is written");
     }
 

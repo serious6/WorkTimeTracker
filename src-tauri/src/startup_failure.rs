@@ -1,6 +1,6 @@
 use std::cell::Cell;
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -11,7 +11,6 @@ const TITLE: &str = "WorkTimeTracker could not start";
 
 static STARTUP_IN_PROGRESS: AtomicBool = AtomicBool::new(true);
 static FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
-static LOG_FILE_PATH: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<Mutex<Option<AppHandle>>> = OnceLock::new();
 
 thread_local! {
@@ -24,13 +23,6 @@ pub fn remember_app_handle(handle: AppHandle) {
         if value.is_none() {
             *value = Some(handle);
         }
-    }
-}
-
-pub fn remember_log_file_path(path: PathBuf) {
-    let slot = LOG_FILE_PATH.get_or_init(|| Mutex::new(None));
-    if let Ok(mut value) = slot.lock() {
-        *value = Some(path);
     }
 }
 
@@ -55,24 +47,26 @@ fn report_internal(error: &dyn Error) {
     }
     crate::logging::error("startup", &error.to_string());
 
-    let log_file_path = configured_log_file_path();
-    let (title, body) = format_startup_failure(error, &log_file_path);
-    let shown = show_dialog(&title, &body);
-    if !shown {
-        eprintln!("{title}\n\n{body}");
+    // The log file only exists once the logger has been initialized; an earlier
+    // failure must not point the user at a file that was never written.
+    let log_file_path = crate::logging::file_path();
+    if let Some(text) = deliver(error, log_file_path.as_deref(), show_dialog) {
+        eprintln!("{text}");
     }
 }
 
-fn configured_log_file_path() -> PathBuf {
-    LOG_FILE_PATH
-        .get()
-        .and_then(|slot| slot.lock().ok())
-        .and_then(|value| value.clone())
-        .unwrap_or_else(fallback_log_file_path)
-}
-
-fn fallback_log_file_path() -> PathBuf {
-    crate::logging::log_file_path_for(Path::new("<app data>"))
+/// Shows the failure to the user and returns the text that still has to reach
+/// stderr because no dialog could be opened.
+fn deliver(
+    error: &dyn Error,
+    log_file_path: Option<&Path>,
+    show: impl FnOnce(&str, &str) -> bool,
+) -> Option<String> {
+    let (title, body) = format_startup_failure(error, log_file_path);
+    if show(&title, &body) {
+        return None;
+    }
+    Some(format!("{title}\n\n{body}"))
 }
 
 fn show_dialog(title: &str, body: &str) -> bool {
@@ -104,19 +98,24 @@ fn show_dialog(title: &str, body: &str) -> bool {
     })
 }
 
-/// Builds the startup failure dialog text as `(title, body)` and redacts
-/// database credentials before formatting the user-facing body.
-pub fn format_startup_failure(error: &dyn Error, log_file_path: &Path) -> (String, String) {
-    let message = redact_database_urls(&error.to_string());
-    (
-        TITLE.to_owned(),
-        format!(
+/// Builds the startup failure dialog text as `(title, body)`. The message runs
+/// through the same redaction as a log line, so credentials, hashes, e-mail
+/// addresses and file system paths never reach the dialog or stderr. The log
+/// file is only named once the logger writes one.
+pub fn format_startup_failure(error: &dyn Error, log_file_path: Option<&Path>) -> (String, String) {
+    let message = crate::logging::redact_keeping_layout(&redact_database_urls(&error.to_string()));
+    let body = match log_file_path {
+        Some(path) => format!(
             "{message}\n\nSee the log file for details:\n{}",
-            log_file_path.display()
+            path.display()
         ),
-    )
+        None => message,
+    };
+    (TITLE.to_owned(), body)
 }
 
+/// Redacts the credentials of every database URL first, so that the host of the
+/// connection survives the general redaction as a diagnostic hint.
 fn redact_database_urls(message: &str) -> String {
     let mut redacted = String::new();
     let mut token = String::new();
@@ -140,44 +139,42 @@ fn redact_database_urls(message: &str) -> String {
 }
 
 fn redact_token_if_database_url(token: &str) -> String {
-    let (start, end) = trimmed_bounds(token);
-    let trimmed = &token[start..end];
-    if !looks_like_database_url(trimmed) {
+    let Some(start) = database_url_start(token) else {
         return token.to_owned();
-    }
+    };
+    let end = start + trimmed_end(&token[start..]);
     format!(
         "{}{}{}",
         &token[..start],
-        crate::config::redact_database_url(trimmed),
+        crate::config::redact_database_url(&token[start..end]),
         &token[end..]
     )
 }
 
-fn looks_like_database_url(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.starts_with("postgres://") || lower.starts_with("postgresql://")
+/// The byte offset of a database URL inside a token, which may carry a prefix
+/// such as `url=` or an opening bracket.
+fn database_url_start(token: &str) -> Option<usize> {
+    let lower = token.to_ascii_lowercase();
+    ["postgresql://", "postgres://"]
+        .iter()
+        .filter_map(|scheme| lower.find(scheme))
+        .min()
 }
 
-/// The byte offsets of the token content after punctuation around the URL was
-/// stripped. Offsets are returned so the redacted URL can be spliced back into
-/// the original token without losing the original surrounding punctuation.
-fn trimmed_bounds(token: &str) -> (usize, usize) {
-    let start = token
-        .char_indices()
-        .find(|(_, character)| !is_trimmed_character(*character))
-        .map_or(token.len(), |(index, _)| index);
-    let end = token
+/// The end of the URL inside a token, with the punctuation that closes a
+/// bracket or ends a sentence excluded, so that it survives the redaction.
+fn trimmed_end(token: &str) -> usize {
+    token
         .char_indices()
         .rev()
-        .find(|(_, character)| !is_trimmed_character(*character))
-        .map_or(start, |(index, character)| index + character.len_utf8());
-    (start, end)
+        .find(|(_, character)| !is_trailing_character(*character))
+        .map_or(0, |(index, character)| index + character.len_utf8())
 }
 
-fn is_trimmed_character(character: char) -> bool {
+fn is_trailing_character(character: char) -> bool {
     matches!(
         character,
-        '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\'' | ',' | ';'
+        ')' | ']' | '}' | '"' | '\'' | ',' | ';' | '.' | '!' | '?'
     )
 }
 
@@ -187,11 +184,15 @@ mod tests {
     use crate::config::ConfigError;
     use crate::store::OpenError;
 
+    fn body_of(error: &dyn Error) -> String {
+        format_startup_failure(error, Some(Path::new("/tmp/wtt.log"))).1
+    }
+
     #[test]
     fn formats_concrete_config_error_with_log_path() {
         let (title, body) = format_startup_failure(
             &ConfigError::MissingDatabaseUrl,
-            Path::new("/tmp/work-time-tracker.log"),
+            Some(Path::new("/tmp/work-time-tracker.log")),
         );
 
         assert_eq!(title, TITLE);
@@ -202,10 +203,18 @@ mod tests {
     #[test]
     fn formats_concrete_open_error_with_log_path() {
         let error = OpenError("postgres: could not connect".to_owned());
-        let (_, body) = format_startup_failure(&error, Path::new("/tmp/wtt.log"));
+        let (_, body) = format_startup_failure(&error, Some(Path::new("/tmp/wtt.log")));
 
         assert!(body.contains("postgres: could not connect"));
         assert!(body.contains("/tmp/wtt.log"));
+    }
+
+    #[test]
+    fn omits_the_log_file_hint_before_the_logger_writes() {
+        let (_, body) = format_startup_failure(&ConfigError::MissingDatabaseUrl, None);
+
+        assert!(!body.contains("log file"));
+        assert!(body.contains("DATABASE_URL"));
     }
 
     #[test]
@@ -214,10 +223,20 @@ mod tests {
         let error: Box<dyn Error> = Box::new(std::io::Error::other(format!(
             "failed to connect with postgresql://user:{password}@localhost:5432/work_time_tracker"
         )));
-        let (_, body) = format_startup_failure(error.as_ref(), Path::new("/tmp/wtt.log"));
+        let body = body_of(error.as_ref());
 
         assert!(!body.contains(password));
         assert!(body.contains("/tmp/wtt.log"));
+    }
+
+    #[test]
+    fn redacts_a_database_url_that_does_not_start_its_token() {
+        let password = "top-secret-password";
+        let error: Box<dyn Error> = Box::new(std::io::Error::other(format!(
+            "(url=postgresql://user:{password}@localhost/work)"
+        )));
+
+        assert!(!body_of(error.as_ref()).contains(password));
     }
 
     #[test]
@@ -225,10 +244,42 @@ mod tests {
         let password = "supersecret";
         let message = format!("line 1:\n  postgresql://user:{password}@localhost/work\nline 2");
         let error: Box<dyn Error> = Box::new(std::io::Error::other(message));
-        let (_, body) = format_startup_failure(error.as_ref(), Path::new("/tmp/wtt.log"));
+        let body = body_of(error.as_ref());
 
         assert!(body.contains("line 1:\n"));
         assert!(body.contains("\nline 2"));
         assert!(!body.contains(password));
+    }
+
+    #[test]
+    fn redacts_tokens_hashes_emails_and_paths_like_a_log_line() {
+        let error: Box<dyn Error> = Box::new(std::io::Error::other(
+            "token=abc123 for jane@example.com with $argon2id$v=19$hash\nat /home/jane/app.db",
+        ));
+        let body = body_of(error.as_ref());
+
+        assert!(!body.contains("abc123"));
+        assert!(!body.contains("jane@example.com"));
+        assert!(!body.contains("$argon2id"));
+        assert!(!body.contains("/home/jane/app.db"));
+        assert!(body.contains("[redacted path]"));
+    }
+
+    #[test]
+    fn falls_back_to_stderr_when_no_dialog_can_be_shown() {
+        let error = ConfigError::MissingDatabaseUrl;
+
+        let text = deliver(&error, Some(Path::new("/tmp/wtt.log")), |_, _| false)
+            .expect("the text has to reach stderr");
+
+        assert!(text.starts_with(TITLE));
+        assert!(text.contains("/tmp/wtt.log"));
+    }
+
+    #[test]
+    fn keeps_stderr_quiet_once_the_dialog_was_shown() {
+        let error = ConfigError::MissingDatabaseUrl;
+
+        assert_eq!(deliver(&error, None, |_, _| true), None);
     }
 }

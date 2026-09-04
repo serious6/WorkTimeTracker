@@ -95,7 +95,6 @@ pub fn run() {
                     .path()
                     .app_data_dir()
                     .inspect_err(|error| startup_failure::report(error))?;
-                startup_failure::remember_log_file_path(logging::log_file_path_for(&data_dir));
                 std::fs::create_dir_all(&data_dir)
                     .inspect_err(|error| startup_failure::report(error))?;
                 logging::init(&data_dir);
@@ -162,18 +161,22 @@ pub fn run() {
 
     match result {
         Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            startup_failure::mark_startup_complete();
-            startup_failure::report(&error);
-            std::process::exit(1);
-        }
-        Err(payload) => {
-            startup_failure::mark_startup_complete();
-            let panic_error = startup_panic_error(payload.as_ref());
-            startup_failure::report_startup_panic(&panic_error);
-            std::process::exit(1);
-        }
+        Ok(Err(error)) => exit_after_startup_failure(&error),
+        Err(payload) => exit_after_startup_failure(&startup_panic_error(payload.as_ref())),
     }
+}
+
+/// The exit code of a start that never reached the window, so that a shell or a
+/// launcher sees the failure the dialog reports.
+const FAILURE_EXIT_CODE: i32 = 1;
+
+/// Reports a failure that prevents the application from starting and ends the
+/// process. Reporting comes first, so the user is never left with a window that
+/// silently disappears.
+fn exit_after_startup_failure(error: &dyn std::error::Error) -> ! {
+    startup_failure::mark_startup_complete();
+    startup_failure::report(error);
+    std::process::exit(FAILURE_EXIT_CODE);
 }
 
 #[cfg(test)]
@@ -498,5 +501,72 @@ mod tests {
             super::panic_summary("   "),
             "panic payload was not a string".to_owned()
         );
+    }
+
+    /// Set in the child process below, which reports a fatal startup instead of
+    /// running the test body.
+    const SUBPROCESS_ENV: &str = "WORK_TIME_TRACKER_FATAL_STARTUP_TEST";
+
+    /// Starts this test binary again, filtered down to `test`, so that the
+    /// child can end its process on the fatal startup path. Returns its exit
+    /// code and its stderr.
+    fn fatal_startup_child(test: &str) -> (Option<i32>, String) {
+        let binary = std::env::current_exe().expect("the test binary is known");
+        let output = std::process::Command::new(binary)
+            .args([&format!("tests::{test}"), "--exact", "--nocapture"])
+            .env(SUBPROCESS_ENV, "1")
+            .output()
+            .expect("the test binary starts itself");
+
+        (
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        )
+    }
+
+    fn is_fatal_startup_child() -> bool {
+        std::env::var_os(SUBPROCESS_ENV).is_some()
+    }
+
+    #[test]
+    fn a_failed_setup_is_reported_and_exits_non_zero() {
+        let secret = "top-secret-password";
+        if is_fatal_startup_child() {
+            super::exit_after_startup_failure(&std::io::Error::other(format!(
+                "the database is unreachable: postgresql://user:{secret}@localhost/work"
+            )));
+        }
+
+        let (code, stderr) = fatal_startup_child("a_failed_setup_is_reported_and_exits_non_zero");
+
+        assert_eq!(
+            code,
+            Some(super::FAILURE_EXIT_CODE),
+            "a failed start has to end with a non-zero exit code: {stderr}"
+        );
+        assert!(
+            stderr.contains("WorkTimeTracker could not start"),
+            "without a dialog the failure has to reach stderr: {stderr}"
+        );
+        assert!(stderr.contains("the database is unreachable"), "{stderr}");
+        assert!(!stderr.contains(secret), "{stderr}");
+    }
+
+    #[test]
+    fn a_panicking_setup_is_reported_and_exits_non_zero() {
+        if is_fatal_startup_child() {
+            let payload: Box<dyn std::any::Any + Send> = Box::new("the setup panicked".to_owned());
+            super::exit_after_startup_failure(&super::startup_panic_error(payload.as_ref()));
+        }
+
+        let (code, stderr) =
+            fatal_startup_child("a_panicking_setup_is_reported_and_exits_non_zero");
+
+        assert_eq!(code, Some(super::FAILURE_EXIT_CODE), "{stderr}");
+        assert!(
+            stderr.contains("stopped unexpectedly during startup"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("the setup panicked"), "{stderr}");
     }
 }
