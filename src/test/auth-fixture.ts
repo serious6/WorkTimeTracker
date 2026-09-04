@@ -5,6 +5,7 @@ export const AUTH_STORAGE_KEYS = {
   session: 'work-time-tracker.session',
   sessions: 'work-time-tracker.sessions',
 } as const
+export const SEEDED_AUTH_USER_ID = 1
 
 // Valid PBKDF2-SHA256 hash of the shared test password with the app's test salt;
 // regenerate if the password or PBKDF2_ITERATIONS changes.
@@ -15,11 +16,15 @@ export function seededAuthUser(id: number, email: string, createdAt: string) {
   return { id, email, createdAt, passwordHash: SEEDED_AUTH_PASSWORD_HASH }
 }
 
-export function seededRegistrationAudit(id: number, email: string, recordedAt: string) {
+export function securityAuditsKey(userId: number) {
+  return `work-time-tracker.${userId}.security-audits`
+}
+
+export function seededRegistrationAudit(userId: number, email: string, recordedAt: string) {
   return {
     id: 1,
     entity: 'user',
-    entityId: id,
+    entityId: userId,
     action: 'user.registered',
     actor: email,
     oldValue: null,

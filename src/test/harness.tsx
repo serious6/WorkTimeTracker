@@ -14,6 +14,7 @@ import { useTimerStore } from '@/features/timer/timer-store'
 import { toDateKey } from '@/lib/date'
 import {
   AUTH_STORAGE_KEYS,
+  securityAuditsKey,
   seededAuthUser,
   seededRegistrationAudit,
   seededSession,
@@ -59,7 +60,7 @@ export async function signIn(email = 'tester@example.com'): Promise<AuthUser> {
     JSON.stringify([...users, seededAuthUser(user.id, user.email, user.createdAt)]),
   )
   globalThis.localStorage?.setItem(
-    `work-time-tracker.${user.id}.security-audits`,
+    securityAuditsKey(user.id),
     JSON.stringify([seededRegistrationAudit(user.id, email, user.createdAt)]),
   )
   const startedAt = Date.now()
