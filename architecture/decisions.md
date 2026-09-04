@@ -282,11 +282,12 @@ texts remain reachable from the account menu next to the third-party license not
 
 Because decision 16 gives the application two storage modes, both texts name them instead of
 promising a single one: desktop development builds, browser development or test runs, and
-self-hosted production deployments keep the data in storage controlled by the operator, while a
-released production build stores it in the hosted Postgres database in the EU. That is content
-again, so the distinction lives in the text, not in a component that would have to know the mode. The
-texts also state that the authors administer the production database and may read its contents to fix
-errors and evaluate usage, because a promise the deployment cannot keep would be worse than no
+self-hosted production deployments keep the data in storage controlled by you or the organisation
+that deploys the application for you, while a released production build stores it in the hosted
+Postgres database in the EU. That is content again, so the distinction lives in the text, not in a
+component that would have to know the mode. The texts also state that the authors administer the
+production database and may read its contents to fix errors and evaluate usage, because a promise the
+deployment cannot keep would be worse than no
 promise.
 
 ## 18. Archiving retires a project, it never touches its records

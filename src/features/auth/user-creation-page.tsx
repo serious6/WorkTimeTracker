@@ -10,8 +10,8 @@ import { useRegister } from './session-queries'
 
 interface UserCreationPageProps {
   onCancel: () => void
-  onShowPrivacy?: () => void
-  onShowTerms?: () => void
+  onShowPrivacy: () => void
+  onShowTerms: () => void
   onSuccess?: () => void
 }
 
@@ -66,23 +66,17 @@ export function UserCreationPage({ onCancel, onShowPrivacy, onShowTerms, onSucce
               />
             </Field>
             <PasswordPolicyChecklist password={password} />
-            {(onShowTerms || onShowPrivacy) && (
-              <p className="text-sm text-muted-foreground">
-                Read{' '}
-                {onShowTerms && (
-                  <Button onClick={onShowTerms} size="inline" type="button" variant="link">
-                    Terms of Service
-                  </Button>
-                )}
-                {onShowTerms && onShowPrivacy ? ' and ' : ''}
-                {onShowPrivacy && (
-                  <Button onClick={onShowPrivacy} size="inline" type="button" variant="link">
-                    Privacy Policy
-                  </Button>
-                )}{' '}
-                before accepting them.
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground">
+              Read{' '}
+              <Button onClick={onShowTerms} size="inline" type="button" variant="link">
+                Terms of Service
+              </Button>{' '}
+              and{' '}
+              <Button onClick={onShowPrivacy} size="inline" type="button" variant="link">
+                Privacy Policy
+              </Button>{' '}
+              before accepting them.
+            </p>
             <Field
               error={error?.field === 'termsAccepted' ? error.message : undefined}
               label="I accept the Terms of Service"

@@ -19,35 +19,40 @@ function acceptLegalTexts() {
   fireEvent.click(screen.getByLabelText('I accept the Privacy Policy'))
 }
 
+const legalTextHandlers = {
+  onShowPrivacy: () => {},
+  onShowTerms: () => {},
+}
+
 describe('UserCreationPage', () => {
   test('renders the heading', () => {
-    renderWithProviders(<UserCreationPage onCancel={() => {}} />)
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
     expect(screen.getByRole('heading', { name: /create your account/i })).toBeInTheDocument()
   })
 
   test('calls onCancel when Cancel is clicked', () => {
     let cancelled = false
-    renderWithProviders(<UserCreationPage onCancel={() => { cancelled = true }} />)
+    renderWithProviders(<UserCreationPage onCancel={() => { cancelled = true }} {...legalTextHandlers} />)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(cancelled).toBe(true)
   })
 
   test('shows validation error for invalid email', async () => {
-    renderWithProviders(<UserCreationPage onCancel={() => {}} />)
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
     typeIntoForm('a@b', 'Str0ng-Passphrase!!x')
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 
   test('shows error when password does not meet policy', async () => {
-    renderWithProviders(<UserCreationPage onCancel={() => {}} />)
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
     typeIntoForm('new@example.com', 'weak')
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
   })
 
   test('shows password policy checklist', () => {
-    renderWithProviders(<UserCreationPage onCancel={() => {}} />)
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
     expect(screen.getByRole('list', { name: 'Password policy' })).toBeInTheDocument()
   })
 
@@ -70,7 +75,9 @@ describe('UserCreationPage', () => {
 
   test('successful registration calls onSuccess', async () => {
     let succeeded = false
-    renderWithProviders(<UserCreationPage onCancel={() => {}} onSuccess={() => { succeeded = true }} />)
+    renderWithProviders(
+      <UserCreationPage onCancel={() => {}} onSuccess={() => { succeeded = true }} {...legalTextHandlers} />,
+    )
     typeIntoForm('newuser@example.com', 'Str0ng-Passphrase!!x')
     acceptLegalTexts()
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
@@ -78,7 +85,9 @@ describe('UserCreationPage', () => {
   })
 
   test('requires both legal texts before registration', async () => {
-    renderWithProviders(<UserCreationPage onCancel={() => {}} onSuccess={() => { throw new Error('unexpected') }} />)
+    renderWithProviders(
+      <UserCreationPage onCancel={() => {}} onSuccess={() => { throw new Error('unexpected') }} {...legalTextHandlers} />,
+    )
     typeIntoForm('newuser@example.com', 'Str0ng-Passphrase!!x')
 
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))
@@ -94,7 +103,7 @@ describe('UserCreationPage', () => {
     await createLocalRepository().register({ email: 'dup@example.com', password: 'Str0ng-Passphrase!!x' })
     await createLocalRepository().logout()
 
-    renderWithProviders(<UserCreationPage onCancel={() => {}} />)
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
     typeIntoForm('dup@example.com', 'Str0ng-Passphrase!!x')
     acceptLegalTexts()
     fireEvent.click(screen.getByRole('button', { name: 'Register' }))

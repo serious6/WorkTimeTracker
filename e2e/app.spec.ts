@@ -64,7 +64,9 @@ test('validates the password policy while typing and blocks weak passwords', asy
 })
 
 // #24 in docs/e2e-test-cases.md
-test('blocks registration until both legal texts are accepted', async ({ page }) => {
+test('blocks registration until both legal texts are accepted', async ({ page }, testInfo) => {
+  const email = `legal-${testInfo.workerIndex}-${testInfo.repeatEachIndex}-${testInfo.retry}@example.com`
+
   await openAccountMenu(page)
   await page.getByRole('menuitem', { name: 'Logout' }).click()
   await page.getByRole('button', { name: 'Register' }).click()
@@ -76,7 +78,7 @@ test('blocks registration until both legal texts are accepted', async ({ page })
   await expect(page.getByRole('heading', { name: 'Privacy Policy' })).toBeVisible()
   await page.getByRole('button', { name: 'Back to registration' }).click()
 
-  await page.getByLabel('Email').fill('legal@example.com')
+  await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
 
   await page.getByRole('button', { name: 'Register' }).click()
