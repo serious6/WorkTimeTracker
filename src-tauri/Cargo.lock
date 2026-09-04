@@ -5088,6 +5088,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tokio-postgres-rustls",
  "windows-native-keyring-store",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

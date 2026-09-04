@@ -275,12 +275,17 @@ The folder of such an installation may be copied or synchronised, so it holds no
 first start `DATABASE_URL` and `SUPABASE_DB_PASSWORD` are moved into the credential store of the
 user account - the Windows Credential Manager, which protects them with DPAPI in the scope of the
 current user, and the macOS Keychain, both of which work without administrator rights - and the
-file keeps a marker in their place. They are filed under the folder of that installation, so a
-second copy keeps its own connection and a build that carries no file removes none; deleting the
-file forgets the secrets of that folder again. A secret that can neither
-be stored nor read back fails the start instead of staying readable in the folder, as does a file
-that others may read. The failures name the file and the setting, never a value, and the release
-job refuses to pack an archive whose env file carries a secret.
+file keeps a marker in their place. They are filed under the folder of that installation, resolved
+of its links and folded to lower case only on a filesystem that ignores case, so a second copy keeps
+its own connection and a build that carries no file removes none; deleting the file forgets the
+secrets of that folder again, and a removal that fails is reported instead of leaving a secret the
+user believes to be gone. A secret that can neither be stored nor read back fails the start instead
+of staying readable in the folder, unless the process environment carries it, which overrides the
+file as everywhere else. So does a file another account may reach: the file carries the connection
+in clear text until the first start absorbs it, which is a mode on macOS and a permission list on
+Windows, and the application checks it before reading and writes the file back for its owner alone.
+The failures name the file and the setting, never a value, and the release job refuses to pack an
+archive whose env file carries a secret.
 
 ## 17. The legal texts are versioned content, not layout
 

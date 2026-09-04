@@ -115,8 +115,10 @@ the job when an env file in it names a filled-in configuration or carries a valu
 
 `bundle.windows.webviewInstallMode` stays at the default bootstrapper: the fixed runtime would add
 well over 100 MB to every artifact of the release and has to be raised by hand for each WebView2
-security update, while the evergreen runtime is part of Windows 10 and 11. A portable archive
-therefore documents WebView2 as a requirement instead of shipping it.
+security update, while the evergreen runtime ships with Windows 11 and reaches most Windows 10
+machines through Edge. A portable archive therefore documents WebView2 as a requirement instead of
+shipping it, and the README names the per-user bootstrapper for the managed and LTSC images that
+carry no runtime.
 
 The Windows archive is unsigned and the macOS archive is neither signed nor notarized, so SmartScreen
 and Gatekeeper warn about them; the README describes how a user gets past that. Portable archives are

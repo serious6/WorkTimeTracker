@@ -84,19 +84,23 @@ release tagged `v<version>`.
 ### Portable archives
 
 Every release also contains `windows-x86_64-WorkTimeTracker-portable.zip` and
-`macos-aarch64-WorkTimeTracker-portable.zip` for machines where nothing may be installed. Unpack
-the archive into any folder you may write to and start `WorkTimeTracker.exe` or
-`WorkTimeTracker.app` from there; no administrator rights are needed. Windows needs the WebView2
-runtime, which is part of Windows 10 and 11. The archives are not signed, so SmartScreen and
-Gatekeeper warn about them once; on macOS the quarantine flag is removed with
+`macos-aarch64-WorkTimeTracker-portable.zip` for machines where the application itself may not be
+installed. Unpack the archive into any folder you may write to and start `WorkTimeTracker.exe` or
+`WorkTimeTracker.app` from there; no administrator rights are needed. The Windows archive does not
+bundle the WebView2 runtime it renders in: Windows 11 carries that runtime, and Windows 10 usually
+does, but a managed or LTSC image may not. Where it is missing it has to be added once, which the
+Evergreen Bootstrapper of Microsoft does for the current account without administrator rights. The
+archives are not signed, so SmartScreen and Gatekeeper warn about them once; on macOS the
+quarantine flag is removed with
 `xattr -d com.apple.quarantine WorkTimeTracker.app`.
 
 A portable installation requires the remote database described above, because it can neither
 install nor run a local Postgres. It reads its connection from `WorkTimeTracker.env` next to the
 application — beside `WorkTimeTracker.exe` on Windows and beside `WorkTimeTracker.app` on macOS, so
 the file survives replacing the bundle. Copy the included `WorkTimeTracker.env.example`, fill in the
-settings of [`.env.example`](.env.example), and restrict the file to your account
-(`chmod 600 WorkTimeTracker.env`); a relative `SUPABASE_DB_ROOT_CERT` path is resolved against that
+settings of [`.env.example`](.env.example), and restrict the file to your account —
+`chmod 600 WorkTimeTracker.env` on macOS, and on Windows a permission list that names your account
+alone, which the first start writes and every later start checks; a relative `SUPABASE_DB_ROOT_CERT` path is resolved against that
 folder, so the pinned certificate authority travels with the archive. A value that the process
 environment already carries wins over the file, so a managed deployment can still override it.
 

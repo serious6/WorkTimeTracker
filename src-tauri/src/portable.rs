@@ -46,6 +46,7 @@ pub enum PortableError {
     UnknownSetting(usize),
     NotStorable(&'static str),
     NotStored(&'static str),
+    NotForgotten(&'static str),
 }
 
 impl std::fmt::Display for PortableError {
@@ -55,10 +56,20 @@ impl std::fmt::Display for PortableError {
                 formatter,
                 "{ENV_FILE_NAME} next to the application could not be read"
             ),
-            Self::Permissions => write!(
-                formatter,
-                "{ENV_FILE_NAME} must be readable by its owner only; restrict it (chmod 600) before starting again"
-            ),
+            Self::Permissions => {
+                #[cfg(windows)]
+                {
+                    write!(
+                        formatter,
+                        "{ENV_FILE_NAME} must be readable by its owner only; remove every other account from its permissions before starting again"
+                    )
+                }
+                #[cfg(not(windows))]
+                write!(
+                    formatter,
+                    "{ENV_FILE_NAME} must be readable by its owner only; restrict it (chmod 600) before starting again"
+                )
+            }
             Self::Malformed(line) => write!(
                 formatter,
                 "{ENV_FILE_NAME} line {line} is neither a comment nor a NAME=value setting"
@@ -74,6 +85,10 @@ impl std::fmt::Display for PortableError {
             Self::NotStored(name) => write!(
                 formatter,
                 "{name} is marked as held by the credential store of this account, but no such credential exists; enter the connection again in {ENV_FILE_NAME}"
+            ),
+            Self::NotForgotten(name) => write!(
+                formatter,
+                "{name} could not be removed from the credential store of this account; without {ENV_FILE_NAME} this folder must keep no secret, so restore the file or remove the credential by hand"
             ),
         }
     }
@@ -230,7 +245,7 @@ fn resolve(
         // connection. Another installation keeps its own secrets, which are
         // filed under the folder they belong to.
         for setting in SECRET_KEYS {
-            store.forget(&credential_name(directory, setting));
+            forget(store, directory, setting)?;
         }
         return Ok(process);
     }
@@ -238,7 +253,7 @@ fn resolve(
     let contents = std::fs::read_to_string(&path).map_err(|_| PortableError::Unreadable)?;
 
     let mut settings = parse(&contents)?;
-    protect_secrets(directory, &path, &contents, &mut settings, store)?;
+    protect_secrets(directory, &path, &contents, &mut settings, store, &process)?;
     absolute_root_cert(directory, &mut settings);
 
     for (key, value) in process {
@@ -247,8 +262,25 @@ fn resolve(
     Ok(settings)
 }
 
-/// Fails on a file that anyone but its owner may read. Windows carries no such
-/// mode; there the file holds no secret, because the Credential Manager does.
+/// Removes a secret of this folder from the credential store. A removal that
+/// fails is reported, because a secret that outlives its file is one the user
+/// believes to be gone.
+fn forget(
+    store: &dyn SecretStore,
+    directory: &Path,
+    setting: &'static str,
+) -> Result<(), PortableError> {
+    if store.forget(&credential_name(directory, setting)) {
+        Ok(())
+    } else {
+        Err(PortableError::NotForgotten(setting))
+    }
+}
+
+/// Fails on a file that an account other than its owner may read. The file
+/// carries the connection in clear text until the first start moves it into the
+/// credential store, so it is read only once the folder it was unpacked into
+/// has not widened it.
 fn verify_owner_only(path: &Path) -> Result<(), PortableError> {
     #[cfg(unix)]
     {
@@ -259,7 +291,13 @@ fn verify_owner_only(path: &Path) -> Result<(), PortableError> {
             return Err(PortableError::Permissions);
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        if windows_acl::reaches_beyond_owner(path).map_err(|_| PortableError::Unreadable)? {
+            return Err(PortableError::Permissions);
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     let _ = path;
     Ok(())
 }
@@ -308,28 +346,41 @@ fn unquote(value: &str) -> &str {
 /// Moves a secret that the file still carries in clear text into the
 /// credential store and rewrites the file with the marker in its place, and
 /// reads back the ones that are already stored. A secret that can neither be
-/// stored nor read fails the start instead of being used from the folder.
+/// stored nor read fails the start instead of being used from the folder,
+/// unless the process environment carries it: a managed deployment overrides
+/// the file, so its value decides even when the credential is gone.
 fn protect_secrets(
     directory: &Path,
     path: &Path,
     contents: &str,
     settings: &mut HashMap<String, String>,
     store: &dyn SecretStore,
+    process: &HashMap<String, String>,
 ) -> Result<(), PortableError> {
     let mut absorbed = Vec::new();
     for setting in SECRET_KEYS {
         let name = credential_name(directory, setting);
         let Some(value) = settings.get(setting).cloned() else {
-            store.forget(&name);
+            forget(store, directory, setting)?;
             continue;
         };
         if value == STORED {
-            let secret = store
-                .secret(&name)
-                .ok_or(PortableError::NotStored(setting))?;
-            settings.insert(setting.to_owned(), secret);
+            match store.secret(&name) {
+                Some(secret) => {
+                    settings.insert(setting.to_owned(), secret);
+                }
+                // The value of the process environment is inserted over the
+                // settings afterwards, so the marker is dropped rather than
+                // used as a connection.
+                None if process.contains_key(setting) => {
+                    settings.remove(setting);
+                }
+                None => return Err(PortableError::NotStored(setting)),
+            }
             continue;
         }
+        // A value the process environment overrides is still moved out of the
+        // file: it must not stay readable in the folder either way.
         if !store.remember(&name, &value) {
             return Err(PortableError::NotStorable(setting));
         }
@@ -388,7 +439,9 @@ fn write_owner_only(path: &Path, contents: &str) -> std::io::Result<()> {
 }
 
 /// Restricts a file to its owner, for the case that it existed already and the
-/// mode of `OpenOptions` therefore did not apply.
+/// mode of `OpenOptions` therefore did not apply. On Windows it replaces the
+/// inherited permissions of the folder with a list that names the account of
+/// this process alone.
 fn restrict(path: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
@@ -396,9 +449,207 @@ fn restrict(path: &Path) -> std::io::Result<()> {
 
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    windows_acl::restrict_to_owner(path)?;
+    #[cfg(not(any(unix, windows)))]
     let _ = path;
     Ok(())
+}
+
+/// The Windows side of "only its owner may read this file". A file has no mode
+/// there; what decides is its discretionary access control list, which a file
+/// unpacked into a shared or synchronized folder inherits from that folder.
+#[cfg(windows)]
+mod windows_acl {
+    use std::io;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+
+    use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE, HLOCAL};
+    use windows_sys::Win32::Security::Authorization::{
+        GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
+    };
+    use windows_sys::Win32::Security::{
+        AddAccessAllowedAce, CreateWellKnownSid, EqualSid, GetAce, GetLengthSid,
+        GetTokenInformation, InitializeAcl, TokenUser, WinBuiltinAdministratorsSid,
+        WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_REVISION,
+        DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, PSID, TOKEN_QUERY,
+        TOKEN_USER, WELL_KNOWN_SID_TYPE,
+    };
+    use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    /// The entry types of an access control list that hand out access. The
+    /// remaining ones deny it or only record it, so they never widen the file.
+    const GRANTING_ACE_TYPES: [u8; 4] = [0, 5, 9, 11];
+
+    /// Whether the list of the file grants access to anyone but the account of
+    /// this process. The two authorities of the machine itself count as its
+    /// owner: they may take ownership of any file regardless of the list, so
+    /// refusing them would only make every ordinary folder unusable.
+    pub fn reaches_beyond_owner(path: &Path) -> Result<bool, ()> {
+        let trusted = trusted_sids().ok_or(())?;
+        let name = wide(path);
+        // SAFETY: the descriptor is filled in by the call, the list points into
+        // it, and both are read before it is released again.
+        unsafe {
+            let mut list: *mut ACL = std::ptr::null_mut();
+            let mut descriptor = std::ptr::null_mut();
+            let status = GetNamedSecurityInfoW(
+                name.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut list,
+                std::ptr::null_mut(),
+                &mut descriptor,
+            );
+            if status != ERROR_SUCCESS {
+                return Err(());
+            }
+            let verdict = grants_beyond(list, &trusted);
+            LocalFree(descriptor as HLOCAL);
+            verdict
+        }
+    }
+
+    /// Walks the entries of the list. A file without a list at all is open to
+    /// everyone, which is the widest case there is.
+    unsafe fn grants_beyond(list: *const ACL, trusted: &[Vec<u8>]) -> Result<bool, ()> {
+        if list.is_null() {
+            return Ok(true);
+        }
+        for index in 0..u32::from((*list).AceCount) {
+            let mut entry = std::ptr::null_mut();
+            if GetAce(list, index, &mut entry) == 0 {
+                return Err(());
+            }
+            let header = &*(entry as *const ACE_HEADER);
+            if !GRANTING_ACE_TYPES.contains(&header.AceType) {
+                continue;
+            }
+            let granted = &*(entry as *const ACCESS_ALLOWED_ACE);
+            let sid = std::ptr::addr_of!(granted.SidStart) as PSID;
+            if !trusted
+                .iter()
+                .any(|known| EqualSid(sid, known.as_ptr() as PSID) != 0)
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Replaces the list of the file with one entry, the account of this
+    /// process. The list is marked protected, so the folder the file sits in
+    /// cannot hand its own permissions down onto it again.
+    pub fn restrict_to_owner(path: &Path) -> io::Result<()> {
+        let owner = current_user_sid()
+            .ok_or_else(|| io::Error::other("the account of this process has no identifier"))?;
+        let size = std::mem::size_of::<ACL>() + std::mem::size_of::<ACCESS_ALLOWED_ACE>()
+            - std::mem::size_of::<u32>()
+            + owner.len();
+        // An access control list is read as words, so the buffer is one too.
+        let mut buffer = vec![0u32; size.div_ceil(std::mem::size_of::<u32>())];
+        let list = buffer.as_mut_ptr().cast::<ACL>();
+        let name = wide(path);
+        // SAFETY: the list is built in a buffer of the size the entry needs,
+        // and the identifier outlives the call that copies it into the list.
+        unsafe {
+            if InitializeAcl(list, size as u32, ACL_REVISION) == 0
+                || AddAccessAllowedAce(list, ACL_REVISION, FILE_ALL_ACCESS, owner.as_ptr() as PSID)
+                    == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            let status = SetNamedSecurityInfoW(
+                name.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                list,
+                std::ptr::null(),
+            );
+            if status != ERROR_SUCCESS {
+                return Err(io::Error::from_raw_os_error(status as i32));
+            }
+        }
+        Ok(())
+    }
+
+    /// The account of this process, the local system and the administrators of
+    /// the machine.
+    fn trusted_sids() -> Option<Vec<Vec<u8>>> {
+        let mut trusted = vec![current_user_sid()?];
+        trusted.push(well_known_sid(WinLocalSystemSid)?);
+        trusted.push(well_known_sid(WinBuiltinAdministratorsSid)?);
+        Some(trusted)
+    }
+
+    /// The identifier of the account this process runs as, read from its token.
+    fn current_user_sid() -> Option<Vec<u8>> {
+        // SAFETY: the token is closed again, and the buffer is filled with the
+        // length the first call reports.
+        unsafe {
+            let mut token: HANDLE = std::ptr::null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return None;
+            }
+            let mut length = 0u32;
+            GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut length);
+            let mut buffer = vec![0u8; length as usize];
+            let read = GetTokenInformation(
+                token,
+                TokenUser,
+                buffer.as_mut_ptr().cast(),
+                length,
+                &mut length,
+            );
+            CloseHandle(token);
+            if read == 0 {
+                return None;
+            }
+            let user = &*(buffer.as_ptr() as *const TOKEN_USER);
+            Some(copy_sid(user.User.Sid))
+        }
+    }
+
+    /// The identifier of an authority every Windows installation knows.
+    fn well_known_sid(kind: WELL_KNOWN_SID_TYPE) -> Option<Vec<u8>> {
+        // SAFETY: the buffer is filled with the length the first call reports.
+        unsafe {
+            let mut length = 0u32;
+            CreateWellKnownSid(
+                kind,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut length,
+            );
+            let mut buffer = vec![0u8; length as usize];
+            if CreateWellKnownSid(
+                kind,
+                std::ptr::null_mut(),
+                buffer.as_mut_ptr().cast(),
+                &mut length,
+            ) == 0
+            {
+                return None;
+            }
+            Some(buffer)
+        }
+    }
+
+    /// An identifier the caller owns, copied out of a structure it does not.
+    unsafe fn copy_sid(sid: PSID) -> Vec<u8> {
+        std::slice::from_raw_parts(sid.cast::<u8>(), GetLengthSid(sid) as usize).to_vec()
+    }
+
+    /// The path in the spelling the Win32 API reads, terminated by a zero.
+    fn wide(path: &Path) -> Vec<u16> {
+        path.as_os_str().encode_wide().chain(Some(0)).collect()
+    }
 }
 
 /// The name a secret is filed under in the credential store: the setting and a
@@ -409,16 +660,69 @@ fn credential_name(directory: &Path, setting: &str) -> String {
     format!("{setting}@{}", fingerprint(directory))
 }
 
-/// FNV-1a over the folder, lower-cased because Windows and macOS reach the
-/// same folder under different spellings. It identifies an installation, it
-/// protects nothing, and the folder itself is no secret.
+/// FNV-1a over the folder the installation runs from. Symbolic links are
+/// resolved first, so the same folder reached over different paths keeps its
+/// credentials, and the spelling is folded to lower case only where the
+/// filesystem itself ignores case. On a case-sensitive volume `Portable/Foo`
+/// and `Portable/foo` are two installations that must not reach each other's
+/// secrets. The fingerprint identifies an installation, it protects nothing,
+/// and the folder itself is no secret.
 fn fingerprint(directory: &Path) -> String {
+    let canonical = std::fs::canonicalize(directory).unwrap_or_else(|_| directory.to_path_buf());
+    let spelling = canonical.to_string_lossy();
+    let spelling = if ignores_case(&canonical) {
+        spelling.to_lowercase()
+    } else {
+        spelling.into_owned()
+    };
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in directory.to_string_lossy().to_lowercase().bytes() {
+    for byte in spelling.bytes() {
         hash ^= u64::from(byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     format!("{hash:016x}")
+}
+
+/// Whether the filesystem of this folder reaches it under any spelling of its
+/// case, which Windows does.
+#[cfg(windows)]
+fn ignores_case(_directory: &Path) -> bool {
+    true
+}
+
+/// Whether the filesystem of this folder reaches it under any spelling of its
+/// case. macOS formats a volume either way, so it is asked rather than assumed:
+/// the folder is looked up again with every letter of its path in the other
+/// case, and it is the same folder when both spellings name one inode. A folder
+/// that cannot be looked up counts as case-sensitive, the answer that keeps two
+/// installations apart.
+#[cfg(unix)]
+fn ignores_case(directory: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    let flipped: String = directory
+        .to_string_lossy()
+        .chars()
+        .map(|letter| {
+            if letter.is_uppercase() {
+                letter.to_lowercase().next().unwrap_or(letter)
+            } else {
+                letter.to_uppercase().next().unwrap_or(letter)
+            }
+        })
+        .collect();
+    let Ok(folder) = std::fs::metadata(directory) else {
+        return false;
+    };
+    std::fs::metadata(Path::new(&flipped))
+        .is_ok_and(|other| other.dev() == folder.dev() && other.ino() == folder.ino())
+}
+
+/// No portable archive is shipped for the platforms that are neither, so the
+/// spelling is kept as it is.
+#[cfg(not(any(windows, unix)))]
+fn ignores_case(_directory: &Path) -> bool {
+    false
 }
 
 /// Resolves a relative path of the pinned certificate authority against the
@@ -452,12 +756,21 @@ mod tests {
     struct MemoryStore {
         secrets: RefCell<Map<String, String>>,
         refuses: bool,
+        keeps: bool,
     }
 
     impl MemoryStore {
         fn refusing() -> Self {
             Self {
                 refuses: true,
+                ..Self::default()
+            }
+        }
+
+        /// A store whose removal fails, as a locked Credential Manager does.
+        fn forgetting_nothing() -> Self {
+            Self {
+                keeps: true,
                 ..Self::default()
             }
         }
@@ -479,6 +792,9 @@ mod tests {
         }
 
         fn forget(&self, name: &str) -> bool {
+            if self.keeps {
+                return false;
+            }
             self.secrets.borrow_mut().remove(name);
             true
         }
@@ -584,6 +900,53 @@ mod tests {
             settings.get(DB_HOST_ENV).map(String::as_str),
             Some("db.managed.example")
         );
+    }
+
+    #[test]
+    fn the_process_environment_wins_over_a_secret_the_store_lost() {
+        let folder = Folder::new("override-lost-secret");
+        folder.write(&format!("{DATABASE_URL_ENV}={STORED}\n"));
+
+        let settings = resolve(
+            &folder.0,
+            process(&[(DATABASE_URL_ENV, "local")]),
+            &MemoryStore::default(),
+        )
+        .expect("the value of the process environment decides");
+
+        assert_eq!(
+            settings.get(DATABASE_URL_ENV).map(String::as_str),
+            Some("local")
+        );
+    }
+
+    #[test]
+    fn a_secret_of_the_file_is_scrubbed_even_when_the_process_overrides_it() {
+        let folder = Folder::new("override-scrub");
+        folder.write(&format!("{DATABASE_URL_ENV}={REMOTE}\n"));
+        let store = MemoryStore::default();
+
+        resolve(&folder.0, process(&[(DATABASE_URL_ENV, "local")]), &store).unwrap();
+
+        assert!(
+            !folder.read().contains(REMOTE),
+            "the file still carries a secret the process environment overrides"
+        );
+    }
+
+    #[test]
+    fn fails_when_a_secret_of_a_deleted_file_cannot_be_forgotten() {
+        let folder = Folder::new("forget-failure");
+
+        let error = resolve(
+            &folder.0,
+            HashMap::new(),
+            &MemoryStore::forgetting_nothing(),
+        )
+        .expect_err("a credential that survives its file must fail the start");
+
+        assert_eq!(error, PortableError::NotForgotten(DATABASE_URL_ENV));
+        assert!(error.to_string().contains(DATABASE_URL_ENV));
     }
 
     #[test]
@@ -788,6 +1151,37 @@ mod tests {
 
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600, "unexpected mode {mode:o}");
+    }
+
+    #[test]
+    fn two_folders_that_differ_only_in_case_are_two_installations() {
+        let upper = Folder::new("Case-Split");
+        let lower = Folder::new("case-split");
+        // A volume that ignores case reaches one folder under both spellings,
+        // so there is only one installation, and it keeps one set of secrets.
+        if ignores_case(&upper.0) {
+            return;
+        }
+
+        assert_ne!(
+            credential_name(&upper.0, DATABASE_URL_ENV),
+            credential_name(&lower.0, DATABASE_URL_ENV)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_to_the_folder_reaches_the_secrets_of_that_folder() {
+        let folder = Folder::new("linked");
+        let link = std::env::temp_dir().join("wtt-portable-link");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&folder.0, &link).expect("the test link is created");
+
+        let same = credential_name(&link, DATABASE_URL_ENV)
+            == credential_name(&folder.0, DATABASE_URL_ENV);
+        let _ = std::fs::remove_file(&link);
+
+        assert!(same, "the same folder was taken for two installations");
     }
 
     #[test]

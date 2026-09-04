@@ -19,8 +19,9 @@ pub const DB_PASSWORD_ENV: &str = "SUPABASE_DB_PASSWORD";
 pub const DB_NAME_ENV: &str = "SUPABASE_DB_NAME";
 pub const DB_ROOT_CERT_ENV: &str = "SUPABASE_DB_ROOT_CERT";
 
-/// Every variable the resolution reads, so `from_env` never copies the rest of
-/// the process environment.
+/// Every variable the resolution reads: `env_vars` copies only these out of the
+/// process environment, and `portable.rs` accepts only these names in
+/// `WorkTimeTracker.env`.
 pub const ENV_KEYS: [&str; 9] = [
     DATABASE_URL_ENV,
     DEPLOYMENT_MODE_ENV,

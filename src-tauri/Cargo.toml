@@ -49,6 +49,11 @@ keyring-core = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.1.0"
+# `WorkTimeTracker.env` carries the connection until the first start moves it
+# into the Credential Manager, and Windows expresses "only its owner may read
+# this" as a DACL rather than as a file mode. Reading and writing that DACL
+# needs the Win32 API.
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1.0.2", default-features = false, features = ["keychain"] }
