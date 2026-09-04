@@ -60,6 +60,10 @@ const pages = {
   licenses: lazy(() =>
     import('@/pages/licenses-page').then((module) => ({ default: module.LicensesPage })),
   ),
+  terms: lazy(() => import('@/pages/terms-page').then((module) => ({ default: module.TermsPage }))),
+  privacy: lazy(() =>
+    import('@/pages/privacy-page').then((module) => ({ default: module.PrivacyPage })),
+  ),
 }
 
 function App() {

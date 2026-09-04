@@ -3,10 +3,10 @@
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
 (`calendar`, `week`, `projects`, `absences`, `overtime`, `audit-trails`, `reports-settings`,
-`licenses`, `security-csp`, `persistence`) covers one use case as a complete click path. The marker
+`licenses`, `legal`, `security-csp`, `persistence`) covers one use case as a complete click path. The marker
 in the first column is repeated as a comment above the matching test (`#<number>`, `E<number>`,
 `C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `AT<number>`, `R<number>`,
-`S<number>`, `L<number>`, `SEC<number>`, `X<number>`), so a
+`S<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `X<number>`), so a
 test and its specification can always be matched in both directions.
 
 Run the suite with `npm run test:e2e`. Every test starts from the shared `test.beforeEach` setup,
@@ -127,6 +127,13 @@ timer on it.
 | #  | Test (`e2e/licenses.spec.ts`) | Given | When | Then |
 |----|-------------------------------|-------|------|------|
 | L1 | `L1: licenses page is reachable and expands package notices with license text` | The user is signed in | The user opens Licenses from the account menu (while on Settings/footer area) and expands a package | The npm and Rust sections show counts, and expanded package details show license text |
+
+## Legal documents
+
+| #  | Test (`e2e/legal.spec.ts`) | Given | When | Then |
+|----|----------------------------|-------|------|------|
+| LG1 | `LG1: terms of service and privacy policy are reachable from the account menu` | The user is signed in | The user opens "Terms of Service" and then "Privacy Policy" from the account menu | Both pages show their heading, the revision line and their sections, and the main navigation still works afterwards |
+| LG2 | `LG2: the legal documents stay reachable and are not restored after a reload` | The privacy policy is open | The user reloads and opens the terms of service from another view | The reload returns to the dashboard instead of restoring the policy, and the account menu opens the terms from any view |
 
 ## Content Security Policy
 
