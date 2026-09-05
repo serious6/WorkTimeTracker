@@ -16,34 +16,18 @@ Branch off `main` as `<type>/<short-topic>`, for example `feat/project-budgets` 
 
 ## Tests are required
 
-Every feature and every bugfix ships with **unit tests** (Vitest as `<name>.test.ts(x)` next to the
-code, `#[cfg(test)]` modules for Rust). Anything user-facing also ships with an **e2e test** in
-`e2e/` covering the happy path and one failure case, listed in
-[`docs/e2e-test-cases.md`](docs/e2e-test-cases.md). Tests mock the clock instead of reading it. A
-bugfix starts with a failing test.
+Every feature and every bugfix ships with **unit tests**, and anything user-facing also ships with
+an **e2e test** covering the happy path and one failure case, listed in
+[`docs/e2e-test-cases.md`](docs/e2e-test-cases.md). A bugfix starts with a failing test. Where the
+test files live and how they stay deterministic is described in
+[`AGENTS.md`](AGENTS.md#test-conventions).
 
 ## Quality checks
 
-Run before opening a pull request:
-
-```sh
-npm run lint
-npm run typecheck
-npm run licenses:check
-npm run test:coverage
-npm run test:e2e
-npm run architecture:check
-npm run build
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-`npm run test:coverage` fails below 80 percent statement, branch, function, or line coverage.
-`npm run test:e2e` runs against a `test-e2e` build served by `vite preview`, not the dev server.
-Run `npx playwright install --with-deps chromium` once before the first e2e run.
-Rust tests that need a database skip without a reachable `DATABASE_URL`; `REQUIRE_POSTGRES_TESTS=1`
-(as in CI) turns the skip into a failure.
+Every check that has to pass before a pull request is listed once, in
+[`docs/development.md`](docs/development.md#quality-checks), together with the coverage gate, the
+Playwright setup, and how the Rust tests behave without a database. Run the subset that matches your
+change while iterating and the full set before opening the pull request.
 
 ## Conventional Commits
 
@@ -102,12 +86,11 @@ build, and both repeat the paths of the in-app `AppLogo`. After changing the sou
 ## Conventions
 
 - Only add dependencies with an OSI-approved open-source license.
-- Keep documentation concise.
+- Keep documentation concise, and keep every fact in one place: link to the document that owns it
+  instead of repeating it.
 - Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
   the browser fallback.
-- `drizzle/0000_init.sql` is the baseline migration for a fresh database. Before the first release,
-  schema changes stay folded into that baseline. After a release, schema changes also add an
-  idempotent migration that upgrades existing databases. Keep `MIGRATIONS` in
-  `src-tauri/src/postgres_store.rs`, `src/db/schema.ts`, and the queries in
-  `src-tauri/src/postgres_store.rs` aligned.
+- Schema changes follow
+  [`architecture/decisions.md`](architecture/decisions.md#keep-native-persistence-postgres-only-and-migrations-explicit)
+  and update `docs/data-model.md` with the migration.
 - UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md).

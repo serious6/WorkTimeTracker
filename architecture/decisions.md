@@ -1,8 +1,9 @@
 # Architecture decisions
 
-Each record follows the arc42 decision template: **Context**, **Decision**, and **Consequences**.
-Superseded implementation notes are intentionally omitted; keep this file for decisions that affect
-future changes.
+Each record follows the arc42 decision template: **Context**, **Decision**, and **Consequences**,
+followed by the implementation detail that decision commits the code to. Every rule is recorded
+once: other documents link to a record here instead of restating it. Superseded implementation notes
+are intentionally omitted; keep this file for decisions that affect future changes.
 
 ## Keep the Rust backend and browser fallback behind one contract
 
@@ -86,6 +87,19 @@ Foreign ids and unknown ids both map to `notFound`.
 SQL or in the equivalent browser fallback filter. A write that changes no row is an error, not a
 silent success.
 
+Every statement in `src-tauri/src/postgres_store.rs` that names a record by an id the caller
+supplied carries `AND user_id = $n`, and a write that names a project (`create_time_entry`,
+`update_time_entry`, `switch_running_time_entry`, the budget writers) checks that reference the same
+way. The module documentation of `postgres_store.rs` lists the few statements that carry no
+`user_id` - the account lookups of a sign in, the lockout counters, the auth trail and the
+installation metadata - with the reason each is safe.
+
+A read, an update and a delete of a record of another account therefore answer `notFound`, the same
+answer an unknown id gets, so the id space of another account stays indistinguishable from an empty
+one. A delete of an id that matches nothing reports `notFound` as well, because a silent success
+cannot be told apart from a delete that was refused. `local-repository.ts` follows the same rule, so
+the browser fallback and the Rust backend answer alike.
+
 ## Bound history queries and page full-account calculations
 
 **Status:** accepted
@@ -129,22 +143,7 @@ compiled into debug builds only.
 **Consequences:** LAN testing is opt-in and temporary. New frontend dependencies must work under the
 CSP. Release builds must not enable `tauri/devtools` or release `debug-assertions`.
 
-## Separate local development databases from verified production databases
-
-**Status:** accepted
-
-**Context:** Development, tests, and CI must never reach a deployed database. Production needs a
-remote database, but only with verified transport and an explicit migration step.
-
-**Decision:** `WORK_TIME_TRACKER_ENV` defaults to `development`, where database hosts must be
-`localhost`, loopback, or the compose host `db` without TLS. `production` refuses local hosts and
-requires `sslmode=verify-full` with a pinned CA from connection-string `sslrootcert` or
-`SUPABASE_DB_ROOT_CERT`. The release workflow injects production connection values from the
-protected `production` environment.
-
-**Consequences:** Test helpers refuse to create or drop databases outside development/local hosts.
-Remote connection strings are redacted before logging. Production database credentials never belong
-in the repository or CI jobs outside the protected migration step.
+### Content security policy
 
 `app.security.csp` in `src-tauri/tauri.conf.json` names every directive it relies on instead of
 falling back to `default-src`, and it grants neither `'unsafe-inline'` nor `'unsafe-eval'`:
@@ -169,7 +168,7 @@ bundle with it and fails on any `securitypolicyviolation`, so a change that need
 noticed in CI instead of in the packaged application. The policy is not applied by the dev server:
 `tauri dev` loads `devUrl` directly, where Vite injects its stylesheets and its HMR client inline.
 
-## 14. The web inspector belongs to a debug build only
+### The web inspector belongs to a debug build only
 
 An open web inspector reads the running application: the session id in `sessionStorage`, the
 arguments and answers of every IPC command, and the data of the signed in account. A shipped build
@@ -201,37 +200,30 @@ The window in `tauri.conf.json` names no `devtools` field on purpose. `false` wo
 inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has
 already compiled out.
 
-## 15. Ownership is part of the query, and a write that changes nothing is refused
+## Separate local development databases from verified production databases
 
-Every statement in `src-tauri/src/postgres_store.rs` that names a record by an id the caller
-supplied carries `AND user_id = $n`, and a write that names a project (`create_time_entry`,
-`update_time_entry`, `switch_running_time_entry`, the budget writers) checks that reference the same
-way. The ownership test is therefore part of the query instead of a check on an already fetched row,
-which cannot be skipped in a new code path and cannot read a foreign row on the way. The module
-documentation of `postgres_store.rs` lists the few statements that carry no `user_id` - the account
-lookups of a sign in, the lockout counters, the auth trail and the installation metadata - with the
-reason each is safe.
+**Status:** accepted
 
-A read, an update and a delete of a record of another account therefore answer `notFound`, the same
-answer an unknown id gets, so the id space of another account stays indistinguishable from an empty
-one. A delete of an id that matches nothing used to report success in both backends; it now reports
-`notFound` as well, because a silent success cannot be told apart from a delete that was refused.
-`local-repository.ts` follows the same rule, so the browser fallback and the Rust backend answer
-alike.
+**Context:** Development, tests, and CI must never reach a deployed database. Production needs a
+remote database, but only with verified transport and an explicit migration step.
 
-## 16. Local Postgres for development, a remote database only for a production build
+**Decision:** `WORK_TIME_TRACKER_ENV` defaults to `development`, where database hosts must be
+`localhost`, loopback, or the compose host `db` without TLS. `production` refuses local hosts and
+requires `sslmode=verify-full` with a pinned CA from connection-string `sslrootcert` or
+`SUPABASE_DB_ROOT_CERT`. The release workflow injects production connection values from the
+protected `production` environment.
 
-Development, the unit and contract suites, the Playwright suite and every CI job connect to the
-compose database on `localhost` (or the service `db` inside compose). A deployment reaches a
-managed Postgres instead, which is a remote host, so the strict local-only guard of
-`connection::plan` could no longer be the only rule.
+**Consequences:** Test helpers refuse to create or drop databases outside development/local hosts.
+Remote connection strings are redacted before logging. Production database credentials never belong
+in the repository or CI jobs outside the protected migration step.
 
-The mode is explicit rather than derived from the host: `WORK_TIME_TRACKER_ENV` is `development`
-unless it says `production`, and only a production process may name a remote host. That keeps a
-developer checkout, a test run and a CI job on a local database even when a remote connection
-string happens to be present in the environment, and `test_support` refuses to create or drop a
-database whenever the mode is production or the host is not local, so a deployed server can never
-be the target of a test.
+A deployment reaches a managed Postgres, which is a remote host, so the strict local-only guard of
+`connection::plan` could not stay the only rule. The mode is explicit rather than derived from the
+host: `WORK_TIME_TRACKER_ENV` is `development` unless it says `production`, and only a production
+process may name a remote host. That keeps a developer checkout, a test run and a CI job on a local
+database even when a remote connection string happens to be present in the environment, and
+`test_support` refuses to create or drop a database whenever the mode is production or the host is
+not local, so a deployed server can never be the target of a test.
 
 A remote connection is only accepted with `sslmode=verify-full` and a pinned certificate
 authority. The chain and the host name are verified by `rustls` against that one authority instead
@@ -287,7 +279,7 @@ Windows, and the application checks it before reading and writes the file back f
 The failures name the file and the setting, never a value, and the release job refuses to pack an
 archive whose env file carries a secret.
 
-## 17. The legal texts are versioned content, not layout
+## The legal texts are versioned content, not layout
 
 The terms of service and the privacy policy are declared as data in
 `src/features/legal/legal-documents.ts` and rendered by one `LegalDocumentView`. A wording change
@@ -304,7 +296,7 @@ Neither document is stored or synchronised, and the acceptance itself is not per
 registration form requires accepting both texts before it creates an account; after sign-in, the
 texts remain reachable from the account menu next to the third-party license notices.
 
-Because decision 16 gives the application two storage modes, both texts name them instead of
+Because the record above gives the application two storage modes, both texts name them instead of
 promising a single one: desktop development builds, browser development or test runs, and
 self-hosted production deployments keep the data in storage controlled by you or the organisation
 that deploys the application for you, while a released production build stores it in the hosted
@@ -313,7 +305,7 @@ component that would have to know the mode. The texts also state that the author
 production database and may read its contents to fix errors and evaluate usage, because a promise
 the deployment cannot keep would be worse than no promise.
 
-## 18. Archiving retires a project, it never touches its records
+## Archiving retires a project, it never touches its records
 
 A project that is no longer worked on is archived instead of deleted: deletion detaches its entries
 (`project_id` becomes `NULL`) and the past reads as "Deleted project", which loses information the

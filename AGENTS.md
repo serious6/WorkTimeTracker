@@ -73,9 +73,9 @@ See [`docs/development.md`](docs/development.md#repository-layout).
   that baseline. After a release, also add an idempotent upgrade migration for existing databases.
   Update `MIGRATIONS`, `src/db/schema.ts`, `docs/data-model.md`, and affected queries/models
   together.
-- Commit messages and pull request titles follow Conventional Commits with a lower-case,
-  imperative summary. Use `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `build`,
-  `ci`, `style`, `revert`; mark breaking changes with `!` and a `BREAKING CHANGE:` footer.
+- Commit messages and pull request titles follow Conventional Commits with a lower-case, imperative
+  summary; the allowed types, the scopes, and the breaking-change form are listed in
+  [`CONTRIBUTING.md`](CONTRIBUTING.md#conventional-commits).
 - New dependencies must be OSI-approved open source and require `npm run licenses:generate` to
   update `src/data/licenses.json`.
 - Do not commit secrets, `.env` files, credentials, `dist/`, `target/`, or `node_modules/`.

@@ -35,12 +35,11 @@ testing, because it serves the unauthenticated UI to the network.
 `podman compose down -v` drops the `postgres_data` volume and deletes the local database. Native
 Tauri windows need a desktop display server and belong on the host.
 
-Leave `WORK_TIME_TRACKER_ENV` unset for development, tests, and CI. It defaults to `development`:
-`DATABASE_URL` must name `localhost`, another loopback address, or the compose host `db`.
-Production uses a remote database only with `sslmode=verify-full`; provide the pinned CA with
-`sslrootcert` in the connection string or `SUPABASE_DB_ROOT_CERT`; see
-[`.env.example`](../.env.example) and
-[`architecture/decisions.md`](../architecture/decisions.md#separate-local-development-databases-from-verified-production-databases).
+Leave `WORK_TIME_TRACKER_ENV` unset for development, tests, and CI. It defaults to `development`, so
+`DATABASE_URL` must name `localhost`, another loopback address, or the compose host `db`. What a
+production build may reach instead is recorded in
+[`architecture/decisions.md`](../architecture/decisions.md#separate-local-development-databases-from-verified-production-databases);
+every variable is documented in [`.env.example`](../.env.example).
 
 ## Npm scripts and common invocations
 

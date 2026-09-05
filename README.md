@@ -36,29 +36,14 @@ Running the application from the source code — prerequisites, the bundled Post
 
 ## Database
 
-Postgres is required for the native application. Application tables live in the dedicated `wtt`
-schema, leaving the default `public` schema empty. `WORK_TIME_TRACKER_ENV` selects how the
-database is reached and defaults to `development`.
-
-- `development` — `DATABASE_URL` must point at `localhost`, another loopback address, or the
-  compose hostname `db`; every other TCP host is rejected before connecting. The connection uses no
-  TLS, which is what the bundled database offers. Development, the tests, the Playwright suite and
-  every CI job run in this mode.
-- `production` — the connection may name a remote host, but only over TLS with the certificate
-  chain *and* the host name verified (`sslmode=verify-full`) against the certificate authority
-  pinned in `SUPABASE_DB_ROOT_CERT`. There is no setting that relaxes this: an unverifiable
-  certificate fails the start instead of falling back to an unencrypted connection. A production
-  process never migrates the shared database, it only verifies that the migrations are applied.
-
-The production connection is configuration, never part of the repository: `DATABASE_URL` wins when
-it is set, otherwise it is assembled from `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`,
-`SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD` and `SUPABASE_DB_NAME`. A missing or malformed value
-fails the start with a redacted message. See [`.env.example`](.env.example) for every variable and
-[`docs/development.md`](docs/development.md#production-database-secrets) for the secrets the release
-workflow injects.
-
-Removing the `postgres_data` volume permanently deletes the local database. Database files of
-earlier versions are neither read nor migrated; export what you need before switching.
+Postgres is required for the native application; application tables live in the dedicated `wtt`
+schema, leaving the default `public` schema empty. `WORK_TIME_TRACKER_ENV` decides which database
+may be reached: `development` accepts a local host only, `production` a remote host only over a TLS
+connection verified against a pinned certificate authority, and it never migrates the shared
+database. The rules and their reasoning are recorded in
+[`architecture/decisions.md`](architecture/decisions.md#separate-local-development-databases-from-verified-production-databases),
+every setting in [`.env.example`](.env.example), and the secrets the release workflow injects in
+[`docs/development.md`](docs/development.md#production-database-secrets).
 
 ## Legal documents
 
@@ -67,14 +52,14 @@ license notices. Both legal texts live in
 [`src/features/legal/legal-documents.ts`](src/features/legal/legal-documents.ts) and carry their own
 version and date, so a wording change is a content change and the installed build always states the
 revision it shows. Both texts distinguish the two storage modes: a local, self-hosted or browser
-build keeps the data in the storage you configured, while a released production build stores it in
-the hosted Postgres database in the EU described above, which the authors administer and may review
-to fix errors and evaluate usage.
+build keeps the data in the storage you configured, while a released production build stores it in a
+hosted Postgres database in the EU, which the authors administer and may review to fix errors and
+evaluate usage.
 
 ## Logs
 
-Errors of the backend and of the user interface are appended to
-`<app data directory>/logs/work-time-tracker.log`, redacted and rotated at 512 KiB.
+Backend and user interface errors are appended to a redacted log file that rotates at 512 KiB.
+[`docs/installation.md`](docs/installation.md) names its location and what the messages mean.
 
 ## Release
 
@@ -87,20 +72,9 @@ release tagged `v<version>`.
 ### Portable archives
 
 Every release also carries `windows-x86_64-WorkTimeTracker-portable.zip` and
-`macos-aarch64-WorkTimeTracker-portable.zip` for machines where nothing may be installed. They run
-from any writable folder without administrator rights, need the remote database above because they
-can neither install nor run a local Postgres, and read it from `WorkTimeTracker.env` next to the
-application. The first start moves `DATABASE_URL` and `SUPABASE_DB_PASSWORD` into the credential
-store of the user account — Windows Credential Manager or macOS Keychain — so the folder itself
-never keeps a secret. Setting the file up is described in
-[`docs/installation.md`](docs/installation.md), the bundling in
-[`docs/development.md`](docs/development.md#portable-archives).
-
-`src/data/licenses.json` is the committed license notice for shipped dependencies. Run
-`npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.
-
-The secrets the release workflow reads for the production database, and how they are rotated, are
-listed in [`docs/development.md`](docs/development.md#production-database-secrets).
+`macos-aarch64-WorkTimeTracker-portable.zip` for machines where nothing may be installed. Using one
+is described in [`docs/installation.md`](docs/installation.md), how the release job builds and
+checks it in [`docs/development.md`](docs/development.md#portable-archives).
 
 ## Documentation
 

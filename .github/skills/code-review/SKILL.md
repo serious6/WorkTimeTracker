@@ -21,7 +21,8 @@ commands are in [`AGENTS.md`](../../../AGENTS.md); this skill only adds what a r
 5. **Severity** — `blocker` (correctness, security, data loss, contract divergence), `major`
    (architecture, missing tests), `minor` (readability), `nit` (style, explicitly optional).
 6. **Verification** — state which applicable quality checks from
-   [`CONTRIBUTING.md`](../../../CONTRIBUTING.md#quality-checks) were run or still need to run.
+   [`docs/development.md`](../../../docs/development.md#quality-checks) were run or still need to
+   run.
 7. **Verdict** — approve, request changes, or comment, using the output template.
 
 ## Dimensions
