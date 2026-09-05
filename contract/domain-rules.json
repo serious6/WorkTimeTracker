@@ -391,6 +391,26 @@
         "note": null
       },
       "accepted": false
+    },
+    {
+      "name": "rejects a start on a day that has not happened yet",
+      "input": {
+        "projectId": 1,
+        "startTime": "2999-12-31T08:00:00.000Z",
+        "endTime": null,
+        "note": null
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an end on a day that has not happened yet",
+      "input": {
+        "projectId": 1,
+        "startTime": "2026-08-27T08:00:00.000Z",
+        "endTime": "2999-12-31T09:00:00.000Z",
+        "note": null
+      },
+      "accepted": false
     }
   ],
   "projectBudgets": [

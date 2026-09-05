@@ -1,12 +1,21 @@
 import { describe, expect, it } from 'vitest'
+import { addDays, toDateKey } from '@/lib/date'
 import {
   saveTimeEntrySchema,
   formToSaveTimeEntry,
   entryToForm,
   timeEntryFormSchema,
+  FUTURE_DAY_MESSAGE,
   ORDER_MESSAGE,
   type TimeEntry,
 } from './time-entry-schema'
+
+/** A canonical timestamp at a local hour of a day, relative to the test run. */
+function at(day: Date, hours: number): string {
+  const date = new Date(day)
+  date.setHours(hours, 0, 0, 0)
+  return date.toISOString()
+}
 
 const BASE_ENTRY: TimeEntry = {
   id: 1,
@@ -38,6 +47,41 @@ describe('saveTimeEntrySchema', () => {
         note: null,
       }),
     ).toThrow()
+  })
+
+  it('rejects a start on a day that has not happened yet', () => {
+    const result = saveTimeEntrySchema.safeParse({
+      projectId: 1,
+      startTime: at(addDays(new Date(), 1), 8),
+      endTime: null,
+      note: null,
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(FUTURE_DAY_MESSAGE)
+  })
+
+  it('rejects an end on a day that has not happened yet', () => {
+    const result = saveTimeEntrySchema.safeParse({
+      projectId: 1,
+      startTime: at(new Date(), 8),
+      endTime: at(addDays(new Date(), 1), 10),
+      note: null,
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(FUTURE_DAY_MESSAGE)
+  })
+
+  it('accepts an entry that is recorded today', () => {
+    const result = saveTimeEntrySchema.safeParse({
+      projectId: 1,
+      startTime: at(new Date(), 0),
+      endTime: at(new Date(), 23),
+      note: null,
+    })
+
+    expect(result.success).toBe(true)
   })
 })
 
@@ -106,6 +150,18 @@ describe('timeEntryFormSchema', () => {
       endTime: '10:00',
     })
     expect(result.success).toBe(false)
+  })
+
+  it('rejects a date that has not happened yet', () => {
+    const result = timeEntryFormSchema.safeParse({
+      projectId: 1,
+      date: toDateKey(addDays(new Date(), 1)),
+      startTime: '08:00',
+      endTime: '10:00',
+    })
+
+    expect(result.success).toBe(false)
+    expect(result.error?.issues[0]?.message).toBe(FUTURE_DAY_MESSAGE)
   })
 
   it('rejects a note longer than 500 chars', () => {

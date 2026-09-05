@@ -1,9 +1,10 @@
 import { z } from '@/lib/zod'
-import { combineDateAndTime, toDateKey, toTimeKey } from '@/lib/date'
+import { combineDateAndTime, isFutureDay, toDateKey, toTimeKey } from '@/lib/date'
 
 export const OVERLAP_MESSAGE = 'This time overlaps with another time entry'
 export const ORDER_MESSAGE = 'End time must be later than start time'
 export const FUTURE_START_MESSAGE = 'The start time cannot be in the future'
+export const FUTURE_DAY_MESSAGE = 'Time can only be tracked up to today'
 export const TIMER_ERROR_MESSAGE = 'Unable to start the timer. Please try again'
 export const DELETED_PROJECT_NAME = 'Deleted project'
 export const BREAK_PROJECT_MESSAGE = 'A break is not booked on a project'
@@ -50,6 +51,15 @@ export const saveTimeEntrySchema = z.object({
 })
   .refine((entry) => !entry.endTime || entry.endTime > entry.startTime, {
     message: ORDER_MESSAGE,
+    path: ['endTime'],
+  })
+  /** A day that has not happened yet carries no work, so it records none. */
+  .refine((entry) => !isFutureDay(new Date(entry.startTime)), {
+    message: FUTURE_DAY_MESSAGE,
+    path: ['startTime'],
+  })
+  .refine((entry) => !entry.endTime || !isFutureDay(new Date(entry.endTime)), {
+    message: FUTURE_DAY_MESSAGE,
     path: ['endTime'],
   })
   .refine((entry) => entry.entryType !== 'break' || entry.projectId === null, {
@@ -132,6 +142,10 @@ export const timeEntryFormSchema = z
       combineDateAndTime(values.date, values.startTime),
     { message: ORDER_MESSAGE, path: ['endTime'] },
   )
+  .refine((values) => !isFutureDay(values.date), {
+    message: FUTURE_DAY_MESSAGE,
+    path: ['date'],
+  })
 
 export type TimeEntryForm = z.infer<typeof timeEntryFormSchema>
 export type TimeEntryFormValues = Omit<TimeEntryForm, 'projectId'> & {

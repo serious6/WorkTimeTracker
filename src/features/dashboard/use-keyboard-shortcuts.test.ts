@@ -64,6 +64,13 @@ describe('useKeyboardShortcuts', () => {
     expect(useDashboardStore.getState().selectedDate).toBe('2026-08-28')
   })
 
+  it('ArrowRight stops at today', () => {
+    useDashboardStore.setState({ selectedDate: toDateKey(new Date()) })
+    setup()
+    fireKey('ArrowRight')
+    expect(useDashboardStore.getState().selectedDate).toBe(toDateKey(new Date()))
+  })
+
   it('does not navigate when typing in a text input', () => {
     setup()
     const input = document.createElement('input')

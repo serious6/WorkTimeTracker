@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { errorToast, toast } from '@/components/ui/toast-store'
+import { useDashboardStore } from '@/features/dashboard/dashboard-store'
 import { entryDurationMs, findRunningEntry } from '@/features/dashboard/metrics'
 import { useProjects } from '@/features/projects/project-queries'
 import {
@@ -12,11 +13,12 @@ import {
 } from '@/features/time-entries/time-entry-queries'
 import {
   DELETED_PROJECT_NAME,
+  FUTURE_DAY_MESSAGE,
   FUTURE_START_MESSAGE,
   TIMER_ERROR_MESSAGE,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
-import { formatDuration, formatTimeOfDay, MINUTE_MS } from '@/lib/date'
+import { formatDuration, formatTimeOfDay, isFutureDay, MINUTE_MS } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { reconcileSession } from './recover-session'
 import { DISCARDED_ENTRY_MESSAGE, DISCARDED_ENTRY_TITLE, roundToMinutes } from './round-duration'
@@ -49,6 +51,7 @@ function sessionSegments(
 export function useTimer(now: number) {
   const { data: entries = [], isSuccess } = useTimeEntries()
   const { data: projects = [] } = useProjects()
+  const selectedDate = useDashboardStore((state) => state.selectedDate)
   const session = useTimerStore((state) => state.session)
   const setSession = useTimerStore((state) => state.setSession)
   const recovered = useTimerStore((state) => state.recovered)
@@ -66,6 +69,12 @@ export function useTimer(now: number) {
     deleteEntry.isPending
 
   const running = findRunningEntry(entries)
+  /**
+   * A timer always records the moment it runs in, so it only works on a day
+   * that has happened. While a later day is selected, tracking is refused
+   * instead of writing time onto a day that lies ahead.
+   */
+  const futureDay = isFutureDay(selectedDate, new Date(now))
 
   /** Once per application start the stored entries decide what is running. */
   useEffect(() => {
@@ -106,6 +115,10 @@ export function useTimer(now: number) {
 
   const start = useCallback(
     async (projectId: number, note: string | null = null) => {
+      if (futureDay) {
+        errorToast('The timer was not started', FUTURE_DAY_MESSAGE)
+        return
+      }
       try {
         const entry = await createEntry.mutateAsync({
           projectId,
@@ -119,7 +132,7 @@ export function useTimer(now: number) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
-    [createEntry, projectName, setSession],
+    [createEntry, futureDay, projectName, setSession],
   )
 
   /**
@@ -180,6 +193,10 @@ export function useTimer(now: number) {
 
   const resume = useCallback(async () => {
     if (!session) return
+    if (futureDay) {
+      errorToast('The timer was not resumed', FUTURE_DAY_MESSAGE)
+      return
+    }
     if (session.projectId === null) {
       errorToast(TIMER_ERROR_MESSAGE, 'The original project no longer exists')
       return
@@ -200,11 +217,15 @@ export function useTimer(now: number) {
     } catch (error) {
       errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
     }
-  }, [createEntry, projectName, session, setSession])
+  }, [createEntry, futureDay, projectName, session, setSession])
 
   /** Closes the current interval and starts the next one at the same timestamp. */
   const switchTo = useCallback(
     async (projectId: number) => {
+      if (futureDay) {
+        errorToast('The project was not switched', FUTURE_DAY_MESSAGE)
+        return
+      }
       const timestamp = new Date().toISOString()
       try {
         const entry = running
@@ -219,7 +240,7 @@ export function useTimer(now: number) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
-    [createEntry, projectName, running, setSession, switchEntry],
+    [createEntry, futureDay, projectName, running, setSession, switchEntry],
   )
 
   /**
@@ -265,5 +286,5 @@ export function useTimer(now: number) {
     [running, updateNote],
   )
 
-  return { status, isPending, start, stop, pause, resume, switchTo, correctStart, setNote }
+  return { status, isPending, futureDay, start, stop, pause, resume, switchTo, correctStart, setNote }
 }

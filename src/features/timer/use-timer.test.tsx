@@ -591,3 +591,76 @@ describe('useTimer – retroactive start correction', () => {
     expect(corrected).toBe(false)
   })
 })
+
+describe('useTimer – days that have not happened yet', () => {
+  /** The selection is bounded to today, so the guard is set on the store. */
+  async function selectTomorrow() {
+    const { useDashboardStore } = await import('@/features/dashboard/dashboard-store')
+    const { addDays, toDateKey } = await import('@/lib/date')
+    useDashboardStore.setState({ selectedDate: toDateKey(addDays(new Date(), 1)) })
+  }
+
+  it('reports the selected day as a future day', async () => {
+    await selectTomorrow()
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+
+    await waitFor(() => expect(result.current.futureDay).toBe(true))
+  })
+
+  it('start records nothing and explains why', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const { FUTURE_DAY_MESSAGE } = await import('@/features/time-entries/time-entry-schema')
+    const project = await seedProject('Website')
+    await selectTomorrow()
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.start(project.id)
+    })
+
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useTimerStore.getState().session).toBeNull()
+    expect(
+      useToastStore.getState().toasts.some((toast) => toast.description === FUTURE_DAY_MESSAGE),
+    ).toBe(true)
+  })
+
+  it('resume keeps the session paused', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    useTimerStore.setState({
+      session: { projectId: project.id, carriedMs: 60_000, paused: true },
+    })
+    await selectTomorrow()
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.paused).toBe(true))
+
+    await act(async () => {
+      await result.current.resume()
+    })
+
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useTimerStore.getState().session?.paused).toBe(true)
+  })
+
+  it('switchTo records nothing', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    await selectTomorrow()
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status).toBeDefined())
+
+    await act(async () => {
+      await result.current.switchTo(project.id)
+    })
+
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useTimerStore.getState().session).toBeNull()
+  })
+})
