@@ -1,0 +1,206 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Dependency advisories are published continuously, so main is re-scanned
+    # weekly even when nothing changes.
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NPM_CONFIG_FUND: 'false'
+
+jobs:
+  # Known vulnerabilities in the npm and cargo lockfiles. OSV covers both
+  # ecosystems from a single scan, so no separate cargo advisory tool is needed.
+  # On a pull request only advisories that the branch *adds* fail the check,
+  # because the Tauri dependency tree carries GTK crates with open RUSTSEC
+  # advisories that this repository cannot resolve on its own.
+  #
+  # This mirrors osv-scanner-reusable-pr.yml, but as a job we own. The upstream
+  # reusable workflow requests `security-events: write` for itself, and a called
+  # workflow may not request more than the caller's effective token holds; a
+  # fork pull request is read-only, so the call would be rejected before the scan
+  # started and would fail the check for every external contributor. In a job of
+  # our own the same request is silently reduced instead, and only the upload at
+  # the end is skipped.
+  osv-scanner-pr:
+    name: osv-scanner (new advisories)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history, so the base branch below resolves from the local
+          # objects and needs no credentials of its own.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check out the base branch
+        run: git checkout --detach "origin/${GITHUB_BASE_REF}"
+      # Both scans report their own failure through the results file, so a
+      # non-zero exit here must not end the job before the two are compared.
+      - name: Scan the base branch
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+        with:
+          scan-args: |-
+            --format=json
+            --output=old-results.json
+            --recursive
+            ./
+      # The results file is untracked, so checking the head out again keeps it.
+      - name: Check out the pull request head
+        run: git checkout -f "${GITHUB_SHA}"
+      - name: Scan the pull request head
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+        with:
+          scan-args: |-
+            --format=json
+            --output=new-results.json
+            --recursive
+            ./
+      - name: Report advisories added by this branch
+        uses: google/osv-scanner-action/osv-reporter-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+        with:
+          scan-args: |-
+            --output=results.sarif
+            --old=old-results.json
+            --new=new-results.json
+            --gh-annotations=true
+            --fail-on-vuln=true
+      - uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        # A fork pull request cannot write security events, so the upload is
+        # skipped rather than failing the job; the annotations above still show
+        # the added advisories on the diff.
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.full_name == github.repository }}
+        with:
+          sarif_file: results.sarif
+          category: osv-scanner
+
+  # Full inventory for main and the weekly run. It reports instead of failing so
+  # the unresolvable transitive advisories stay visible in Security > Code
+  # scanning without permanently blocking every push.
+  osv-scanner:
+    name: osv-scanner (full inventory)
+    if: github.event_name != 'pull_request'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
+    with:
+      fail-on-vuln: false
+
+  # Second opinion on the npm tree from the GitHub Advisory Database. Only high
+  # and critical advisories fail the build; lower severities are visible in the
+  # log and handled by the weekly Dependabot updates.
+  npm-audit:
+    name: npm audit (high)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Not the setup-node composite: `npm audit` reads the lockfile, and that
+      # action installs the tree first, which would run the install scripts of
+      # the very dependencies being audited. `.nvmrc` keeps the version aligned
+      # with the composite without repeating it here.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: npm audit --audit-level=high
+
+  # Static analysis with explicitly named Semgrep rule packs. Pull requests only,
+  # because CodeQL already covers pushes to main and the scheduled scans.
+  semgrep:
+    name: semgrep
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The official image is Alpine-based, which cannot run the JavaScript
+      # actions below, so Semgrep is installed on the runner instead.
+      - run: pipx install semgrep==1.176.1
+      - name: Run semgrep
+        # The packs are listed instead of using `--config auto`: auto resolves
+        # the rule set from the repository URL it sends to the registry, so the
+        # set that decides whether this check passes is neither visible here nor
+        # stable between runs. Metrics are off for the same reason.
+        #
+        # `p/rust` is deliberately absent. Its findings here were all inherent to
+        # the application rather than defects - `current_exe` is how portable
+        # mode locates its configuration, `temp_dir` appears only in tests, and
+        # every `unsafe` block is documented Windows ACL interop - so keeping it
+        # would mean permanently excluding three rules and silencing them for
+        # future code as well. CodeQL analyses the same crate with
+        # `security-extended`.
+        run: |
+          semgrep scan \
+            --config p/typescript \
+            --config p/react \
+            --config p/secrets \
+            --config p/github-actions \
+            --metrics=off \
+            --sarif --output semgrep.sarif --error
+      - uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        # See the note on osv-scanner-pr: a fork pull request cannot write
+        # security events, so the upload is skipped rather than failing the job.
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # Catches secrets that were committed before push protection could reject
+  # them, including in history reachable from the pushed commits.
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: a secret is only removed once it is gone from every
+          # reachable commit, not just from the tip.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Single required status check for branch protection, mirroring "CI success":
+  # it passes when every job above either succeeded or was skipped.
+  security-success:
+    name: Security success
+    if: always()
+    needs: [osv-scanner-pr, osv-scanner, npm-audit, semgrep, gitleaks]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more security jobs failed."
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more security jobs were cancelled."
+            exit 1
+          fi
+          echo "All security jobs succeeded (or were skipped)."

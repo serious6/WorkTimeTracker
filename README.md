@@ -1,6 +1,7 @@
 # WorkTimeTracker
 
 [![codecov](https://codecov.io/github/serious6/WorkTimeTracker/graph/badge.svg?token=QNG3S1GW7V)](https://codecov.io/github/serious6/WorkTimeTracker)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/serious6/WorkTimeTracker/badge)](https://scorecard.dev/viewer/?uri=github.com/serious6/WorkTimeTracker)
 
 A local-first, open-source desktop work-time tracker built with Tauri 2. Data stays in a Postgres
 database you control, for example the bundled compose service.
@@ -77,6 +78,13 @@ Every release also carries `windows-x86_64-WorkTimeTracker-portable.zip` and
 `macos-aarch64-WorkTimeTracker-portable.zip` for machines where nothing may be installed. Using one
 is described in [`docs/installation.md`](docs/installation.md), how the release job builds and
 checks it in [`docs/development.md`](docs/development.md#portable-archives).
+
+## Security
+
+Every push and pull request is scanned by CodeQL (TypeScript and Rust), OSV-Scanner and
+`npm audit` for vulnerable dependencies, and gitleaks; Semgrep runs on pull requests. Weekly
+Dependabot updates cover npm, cargo, GitHub Actions, and the container files. Reporting a
+vulnerability is described in [`SECURITY.md`](SECURITY.md).
 
 ## Documentation
 

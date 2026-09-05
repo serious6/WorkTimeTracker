@@ -7,7 +7,7 @@ in [`docs/installation.md`](installation.md).
 
 | Tool | Version | Source |
 | --- | --- | --- |
-| Node.js + npm | 26+ | `.github/actions/setup-node/action.yml`, `.github/workflows/release.yml` |
+| Node.js + npm | 26+ | `.nvmrc`, also read by `.github/actions/setup-node/action.yml`; `.github/workflows/release.yml` still pins it inline |
 | Rust + Cargo | 1.95+ stable | `src-tauri/Cargo.toml` (`rust-version`, edition 2021) |
 | Tauri CLI | 2.x | `@tauri-apps/cli` in `package.json`, run through `npm run tauri` |
 | PostgreSQL | 18 | `compose.yaml` and CI service images |
@@ -102,6 +102,22 @@ cargo test --manifest-path src-tauri/Cargo.toml
 Run `npx playwright install --with-deps chromium` before the first e2e run in a fresh environment.
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
+
+## Security checks
+
+These run in CI only; none of them is part of the local pull request checklist.
+
+| Workflow | What it does |
+| --- | --- |
+| `codeql.yml` | CodeQL `security-extended` for `javascript-typescript` and `rust` (public preview) on pushes, pull requests, and weekly. |
+| `security.yml` → `osv-scanner` | OSV advisories for `package-lock.json` and `src-tauri/Cargo.lock`. A pull request fails only on advisories it adds; the run on `main` reports the full inventory to Security > Code scanning without failing, because the Tauri dependency tree carries GTK crates with open RUSTSEC advisories that cannot be resolved here. |
+| `security.yml` → `npm-audit` | `npm audit --audit-level=high`; moderate and lower findings are left to Dependabot. |
+| `security.yml` → `semgrep` | Named Semgrep packs (`p/typescript`, `p/react`, `p/secrets`, `p/github-actions`) on pull requests, so the rule set that gates the check is visible in the workflow rather than resolved from the repository URL. Rust is left to CodeQL. |
+| `security.yml` → `gitleaks` | Full-history secret scan, complementing GitHub push protection. |
+| `scorecard.yml` | OpenSSF Scorecard; publishing the result is what makes the README badge resolve. |
+
+Findings land in the Security tab as code scanning alerts. `Security success` is the aggregate status
+check, mirroring `CI success`.
 
 ## Repository layout
 
