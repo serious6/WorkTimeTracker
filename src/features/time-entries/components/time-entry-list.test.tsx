@@ -111,7 +111,7 @@ describe('TimeEntryList', () => {
     const onPause = vi.fn()
     const { project, entry } = await setup()
     renderList([{ ...entry, endTime: null }], [{ ...project, archived: true }], vi.fn(), onPause)
-    fireEvent.click(screen.getByRole('button', { name: /pause timer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /pause timer for alpha/i }))
     expect(onPause).toHaveBeenCalled()
   })
 
@@ -148,7 +148,7 @@ describe('TimeEntryList', () => {
     renderList([{ ...entry, endTime: null }], [project], vi.fn(), onPause, onStop, true)
 
     expect(screen.getByRole('button', { name: /stop timer for alpha/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /pause timer/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /pause timer for alpha/i })).toBeDisabled()
   })
 
   it('opens edit dialog via menu', async () => {

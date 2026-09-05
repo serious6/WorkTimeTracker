@@ -99,7 +99,7 @@ export function TimeEntryList({
                     <Square className="size-4" />
                   </Button>
                   <Button
-                    aria-label="Pause timer"
+                    aria-label={`Pause timer for ${name}`}
                     disabled={isTimerPending}
                     onClick={onPause}
                     size="icon"
