@@ -210,3 +210,120 @@ CREATE INDEX IF NOT EXISTS security_audits_user_recorded_at
 -- configuration records stay for as long as the domain trails do.
 CREATE INDEX IF NOT EXISTS security_audits_entity_recorded_at
   ON wtt.security_audits (entity, recorded_at);
+
+-- Row level security.
+--
+-- Every query of the application already carries its own `AND user_id = $n`
+-- predicate; the policies below are the second line of defence behind it. The
+-- application connects as one Postgres role for all of its users, so the
+-- signed in account is named per connection instead of per database role:
+-- `PostgresStore::conn_for` sets `wtt.user_id` on the connection it hands out
+-- and `PostgresStore::conn` clears it again. A statement that forgets its
+-- predicate therefore reads and writes nothing instead of reaching another
+-- account, and a connection without a session reaches no user-owned row at
+-- all.
+--
+-- `users`, `login_attempts`, `app_metadata` and `schema_migrations` carry no
+-- `user_id` and stay without policies: the first two are read to sign a user
+-- in, which is precisely the moment at which no session exists yet, and the
+-- last two describe the database rather than an account.
+
+-- NULL for a connection that names no user, which makes every `user_id = ...`
+-- comparison below unknown and therefore denies the row.
+CREATE OR REPLACE FUNCTION wtt.current_user_id() RETURNS BIGINT
+  LANGUAGE sql
+  STABLE
+  AS $$ SELECT NULLIF(current_setting('wtt.user_id', TRUE), '')::BIGINT $$;
+
+-- The table owner is the application role itself, so the policies only take
+-- effect with FORCE; ENABLE alone would let the owner bypass them.
+ALTER TABLE wtt.projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.projects FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.time_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.time_entries FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.project_budgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.project_budgets FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.work_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.work_settings FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.time_entry_audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.time_entry_audits FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.absences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.absences FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.absence_audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.absence_audits FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.overtime_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.overtime_entries FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.overtime_audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.overtime_audits FORCE ROW LEVEL SECURITY;
+ALTER TABLE wtt.security_audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wtt.security_audits FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY projects_owner ON wtt.projects
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY time_entries_owner ON wtt.time_entries
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY project_budgets_owner ON wtt.project_budgets
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY work_settings_owner ON wtt.work_settings
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY time_entry_audits_owner ON wtt.time_entry_audits
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY absences_owner ON wtt.absences
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY absence_audits_owner ON wtt.absence_audits
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY overtime_entries_owner ON wtt.overtime_entries
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY overtime_audits_owner ON wtt.overtime_audits
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY security_audits_owner ON wtt.security_audits
+  USING (user_id = wtt.current_user_id())
+  WITH CHECK (user_id = wtt.current_user_id());
+
+-- The four tables that predate the accounts still allow a NULL `user_id`, and
+-- the first registration claims those rows (`PostgresStore::register_user`).
+-- A row of nobody stays readable, because the claim has to find it, and the
+-- claim is the one update that may touch it: it can only hand it to the user
+-- the connection names, and no policy allows such a row to be written again.
+CREATE POLICY projects_unclaimed ON wtt.projects FOR SELECT
+  USING (user_id IS NULL);
+CREATE POLICY projects_claim ON wtt.projects FOR UPDATE
+  USING (user_id IS NULL)
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY time_entries_unclaimed ON wtt.time_entries FOR SELECT
+  USING (user_id IS NULL);
+CREATE POLICY time_entries_claim ON wtt.time_entries FOR UPDATE
+  USING (user_id IS NULL)
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY project_budgets_unclaimed ON wtt.project_budgets FOR SELECT
+  USING (user_id IS NULL);
+CREATE POLICY project_budgets_claim ON wtt.project_budgets FOR UPDATE
+  USING (user_id IS NULL)
+  WITH CHECK (user_id = wtt.current_user_id());
+CREATE POLICY work_settings_unclaimed ON wtt.work_settings FOR SELECT
+  USING (user_id IS NULL);
+CREATE POLICY work_settings_claim ON wtt.work_settings FOR UPDATE
+  USING (user_id IS NULL)
+  WITH CHECK (user_id = wtt.current_user_id());
+
+-- The identity trail is written before a session exists: a failed login has
+-- none, and a registration records the account it just created. Such a
+-- connection may therefore append a record, and it may read and prune the
+-- `auth` events, because the lockout decides from them whether the current
+-- lockout was already recorded. It can still read no other entity and no
+-- record of a signed in user.
+CREATE POLICY security_audits_unscoped_write ON wtt.security_audits FOR INSERT
+  WITH CHECK (wtt.current_user_id() IS NULL);
+CREATE POLICY security_audits_auth_read ON wtt.security_audits FOR SELECT
+  USING (wtt.current_user_id() IS NULL AND entity = 'auth');
+CREATE POLICY security_audits_auth_prune ON wtt.security_audits FOR DELETE
+  USING (wtt.current_user_id() IS NULL AND entity = 'auth');

@@ -96,7 +96,7 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     env:
-      DATABASE_URL: host=localhost port=5432 user=postgres dbname=worktimetracker
+      DATABASE_URL: host=localhost port=5432 user=worktimetracker_app dbname=worktimetracker
       # Turns an unreachable database into a failure instead of a skip.
       REQUIRE_POSTGRES_TESTS: '1'
     steps:
@@ -119,6 +119,15 @@ jobs:
       # The tests create and drop databases, so this job must never be
       # pointed at anything but its own throwaway service container.
       - run: node scripts/assert-local-database.mjs
+      # The bootstrap role of the service container is a superuser and would
+      # bypass the row level security policies of the schema, so the tests
+      # connect as the same kind of role as the application does.
+      - name: Create the application role
+        run: |
+          psql "host=localhost port=5432 user=postgres dbname=worktimetracker" \
+            -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE worktimetracker_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEROLE CREATEDB" \
+            -c "GRANT ALL PRIVILEGES ON DATABASE worktimetracker TO worktimetracker_app"
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       # Runs in the lint/build job for any change that can affect licenses

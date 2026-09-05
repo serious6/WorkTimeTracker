@@ -3,6 +3,10 @@
 //! Ownership checks stay inside the SQL: caller-supplied record ids are matched
 //! with `AND user_id = $n`, and foreign keys supplied by the caller are checked
 //! the same way. Foreign and unknown ids both return [`StoreError::NotFound`].
+//! Behind those predicates stand the row level security policies of the schema
+//! (see `drizzle/0000_init.sql`): a connection from [`PostgresStore::conn_for`]
+//! reaches the rows of that user only, so a forgotten predicate returns and
+//! writes nothing instead of reaching another account.
 //! Statements without a `user_id` predicate either run before a session exists
 //! (`users`, `login_attempts`, auth audit inserts) or describe database
 //! state (`wtt.app_metadata`, `wtt.schema_migrations`).
@@ -126,8 +130,28 @@ impl PostgresStore {
         })
     }
 
+    /// A pooled connection that names no user, for the statements that run
+    /// before a session exists or that describe the database itself.
     fn conn(&self) -> Result<PooledConnection<Manager>, StoreError> {
-        Ok(self.pool.get()?)
+        self.scoped_conn("")
+    }
+
+    /// A pooled connection bound to `user_id`, which the row level security
+    /// policies of the schema match every user-owned row against. A statement
+    /// that forgets its `AND user_id = $n` predicate therefore reads and
+    /// writes nothing instead of reaching another account.
+    fn conn_for(&self, user_id: i64) -> Result<PooledConnection<Manager>, StoreError> {
+        self.scoped_conn(&user_id.to_string())
+    }
+
+    /// Names the user of a connection taken from the pool. The setting lives
+    /// for the whole session, so a connection is bound again on every
+    /// checkout; an empty value clears the binding of its previous holder,
+    /// which keeps a connection that names no user from inheriting one.
+    fn scoped_conn(&self, user_id: &str) -> Result<PooledConnection<Manager>, StoreError> {
+        let mut client = self.pool.get()?;
+        client.execute("SELECT set_config('wtt.user_id', $1, false)", &[&user_id])?;
+        Ok(client)
     }
 
     fn assert_owns_project(
@@ -958,7 +982,7 @@ fn read_settings_of(
 
 impl Store for PostgresStore {
     fn list_projects(&self, user_id: i64) -> Result<Vec<Project>, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!("SELECT {PROJECT_COLUMNS} FROM projects WHERE user_id = $1 ORDER BY name"),
             &[&user_id],
@@ -967,7 +991,7 @@ impl Store for PostgresStore {
     }
 
     fn insert_project(&self, user_id: i64, input: &SaveProject) -> Result<Project, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let now = now_iso();
         let row = transaction.query_one(
@@ -1007,7 +1031,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveProject,
     ) -> Result<Project, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let current = find_project(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
         let row = transaction
@@ -1043,7 +1067,7 @@ impl Store for PostgresStore {
     }
 
     fn delete_project(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         // The delete is refused before anything is read when the id names no
         // project of this user, so a foreign id cannot be told apart from an
@@ -1122,7 +1146,7 @@ impl Store for PostgresStore {
         if let Some(to) = &range.to {
             filter.push_str(&format!(" AND start_time < ${}", params.push(to)));
         }
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         // The newest rows are the interesting ones, the outer order stays
         // ascending so that callers keep their chronological list.
         let rows = client.query(
@@ -1144,7 +1168,7 @@ impl Store for PostgresStore {
         end_time: Option<&str>,
         exclude_id: Option<i64>,
     ) -> Result<bool, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         overlaps_tx(&mut *client, user_id, start_time, end_time, exclude_id)
     }
 
@@ -1153,7 +1177,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveTimeEntry,
     ) -> Result<TimeEntry, TimeEntryWriteError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction().map_err(StoreError::from)?;
         if overlaps_tx(
             &mut transaction,
@@ -1201,7 +1225,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveTimeEntry,
     ) -> Result<TimeEntry, TimeEntryWriteError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction().map_err(StoreError::from)?;
         if input.project_id.is_some()
             && input.entry_type.is_none()
@@ -1259,7 +1283,7 @@ impl Store for PostgresStore {
         user_id: i64,
         note: Option<&str>,
     ) -> Result<TimeEntry, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let current = read_entry(&mut transaction, id, user_id)?;
         transaction.execute(
@@ -1285,7 +1309,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveTimeEntry,
     ) -> Result<TimeEntry, SwitchEntryError> {
-        let mut client = self.conn().map_err(SwitchEntryError::from)?;
+        let mut client = self.conn_for(user_id).map_err(SwitchEntryError::from)?;
         let mut transaction = client.transaction().map_err(StoreError::from)?;
         let current = read_entry(&mut transaction, id, user_id).map_err(SwitchEntryError::from)?;
         if current.end_time.is_some()
@@ -1357,7 +1381,7 @@ impl Store for PostgresStore {
     }
 
     fn delete_time_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         // The snapshot comes out of the delete itself, so a concurrent delete
         // of the same row cannot leave a second trail entry behind: only the
@@ -1392,7 +1416,7 @@ impl Store for PostgresStore {
         let limit = range.limit();
         let mut params = Params::new(&user_id, &limit);
         let filter = recorded_at_filter(range, &mut params);
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT {AUDIT_COLUMNS} FROM time_entry_audits WHERE user_id = $1{filter}
@@ -1429,7 +1453,7 @@ impl Store for PostgresStore {
     }
 
     fn list_project_budgets(&self, user_id: i64) -> Result<Vec<ProjectBudget>, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT {BUDGET_COLUMNS} FROM project_budgets WHERE user_id = $1 ORDER BY due_date"
@@ -1444,7 +1468,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveProjectBudget,
     ) -> Result<ProjectBudget, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         PostgresStore::assert_owns_project(&mut transaction, user_id, Some(input.project_id))?;
         let now = now_iso();
@@ -1475,7 +1499,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveProjectBudget,
     ) -> Result<ProjectBudget, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         PostgresStore::assert_owns_project(&mut transaction, user_id, Some(input.project_id))?;
         let current = find_budget(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
@@ -1510,7 +1534,7 @@ impl Store for PostgresStore {
     }
 
     fn delete_project_budget(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let deleted = find_budget(&mut transaction, id, user_id)?.ok_or(StoreError::NotFound)?;
         transaction.execute(
@@ -1540,7 +1564,7 @@ impl Store for PostgresStore {
         if let Some(to) = &range.to {
             filter.push_str(&format!(" AND absence_date < ${}", params.push(to)));
         }
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT * FROM (
@@ -1554,7 +1578,7 @@ impl Store for PostgresStore {
     }
 
     fn insert_absence(&self, user_id: i64, input: &SaveAbsence) -> Result<Absence, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let now = now_iso();
         let row = transaction.query_one(
@@ -1583,7 +1607,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveAbsence,
     ) -> Result<Absence, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let current = read_absence(&mut transaction, id, user_id)?;
         let row = transaction
@@ -1615,7 +1639,7 @@ impl Store for PostgresStore {
         replacement_ids: &[i64],
         update_id: Option<i64>,
     ) -> Result<Vec<Absence>, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let mut replacements = Vec::with_capacity(replacement_ids.len());
         for id in replacement_ids {
@@ -1688,7 +1712,7 @@ impl Store for PostgresStore {
     }
 
     fn delete_absence(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         // The snapshot comes out of the delete itself, so a concurrent delete
         // of the same row cannot leave a second trail entry behind.
@@ -1722,7 +1746,7 @@ impl Store for PostgresStore {
         let limit = range.limit();
         let mut params = Params::new(&user_id, &limit);
         let filter = recorded_at_filter(range, &mut params);
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT {ABSENCE_AUDIT_COLUMNS} FROM absence_audits WHERE user_id = $1{filter}
@@ -1734,7 +1758,7 @@ impl Store for PostgresStore {
     }
 
     fn list_overtime_entries(&self, user_id: i64) -> Result<Vec<OvertimeEntry>, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT {OVERTIME_COLUMNS} FROM overtime_entries WHERE user_id = $1
@@ -1750,7 +1774,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveOvertimeEntry,
     ) -> Result<OvertimeEntry, OvertimeWriteError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction().map_err(StoreError::from)?;
         if input.kind == "opening" && has_other_opening(&mut transaction, user_id, None)? {
             return Err(OvertimeWriteError::SecondOpening);
@@ -1794,7 +1818,7 @@ impl Store for PostgresStore {
         user_id: i64,
         input: &SaveOvertimeEntry,
     ) -> Result<OvertimeEntry, OvertimeWriteError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction().map_err(StoreError::from)?;
         let current = read_overtime_entry(&mut transaction, id, user_id)?;
         if input.kind == "opening" && has_other_opening(&mut transaction, user_id, Some(id))? {
@@ -1833,7 +1857,7 @@ impl Store for PostgresStore {
     }
 
     fn delete_overtime_entry(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         // The snapshot comes out of the delete itself, so a concurrent delete
         // of the same row cannot leave a second trail entry behind.
@@ -1867,7 +1891,7 @@ impl Store for PostgresStore {
         let limit = range.limit();
         let mut params = Params::new(&user_id, &limit);
         let filter = recorded_at_filter(range, &mut params);
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT {OVERTIME_AUDIT_COLUMNS} FROM overtime_audits WHERE user_id = $1{filter}
@@ -1879,7 +1903,7 @@ impl Store for PostgresStore {
     }
 
     fn read_settings(&self, user_id: i64) -> Result<WorkSettings, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         read_settings_of(&mut *client, user_id)
     }
 
@@ -1888,7 +1912,7 @@ impl Store for PostgresStore {
         user_id: i64,
         settings: &WorkSettings,
     ) -> Result<WorkSettings, StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let current = read_settings_of(&mut transaction, user_id)?;
         let limits = settings.compliance_limits;
@@ -1967,7 +1991,7 @@ impl Store for PostgresStore {
         let limit = range.limit();
         let mut params = Params::new(&user_id, &limit);
         let filter = recorded_at_filter(range, &mut params);
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
                 "SELECT {SECURITY_AUDIT_COLUMNS} FROM security_audits
@@ -2042,6 +2066,14 @@ impl Store for PostgresStore {
             },
         )?;
         if first_user == 0 {
+            // The claim is the only write of the registration that reaches
+            // rows the row level security policies guard, so the transaction
+            // names the user it hands them to. `SET LOCAL` ends with the
+            // transaction and leaves the connection unbound again.
+            transaction.execute(
+                "SELECT set_config('wtt.user_id', $1, true)",
+                &[&user.id.to_string()],
+            )?;
             for table in [
                 "projects",
                 "time_entries",
@@ -2067,7 +2099,7 @@ impl Store for PostgresStore {
     /// account and are deliberately left untouched. One transaction: a failure
     /// anywhere leaves the account fully intact.
     fn delete_account(&self, user_id: i64) -> Result<(), StoreError> {
-        let mut client = self.conn()?;
+        let mut client = self.conn_for(user_id)?;
         let mut transaction = client.transaction()?;
         let Some(row) =
             transaction.query_opt("SELECT email FROM users WHERE id = $1", &[&user_id])?
@@ -3266,7 +3298,19 @@ mod tests {
             .expect("test_store already connected to this server")
     }
 
+    /// Names the user a raw test client reads and writes as, the way
+    /// `PostgresStore::conn_for` does for the pooled connections. Without it
+    /// the row level security policies of the schema hide every user-owned
+    /// row from the client.
+    fn bind_user(client: &mut postgres::Client, user_id: Option<i64>) {
+        let scope = user_id.map(|id| id.to_string()).unwrap_or_default();
+        client
+            .execute("SELECT set_config('wtt.user_id', $1, false)", &[&scope])
+            .unwrap();
+    }
+
     fn rows_of_user(client: &mut postgres::Client, table: &str, user_id: i64) -> i64 {
+        bind_user(client, Some(user_id));
         client
             .query_one(
                 &format!("SELECT COUNT(*) FROM {table} WHERE user_id = $1"),
@@ -3511,5 +3555,185 @@ mod tests {
             );
         }
         assert!(store.read_user(user.id).unwrap().is_some());
+    }
+
+    /// The policies below are worth nothing to a role that bypasses them, and
+    /// the bootstrap role of a Postgres cluster does exactly that, so the
+    /// suite proves the application role is not one of those.
+    #[test]
+    fn the_application_role_cannot_bypass_row_level_security() {
+        let Some(_store) = test_store() else {
+            return;
+        };
+        let mut client = test_client();
+
+        let bypasses: bool = client
+            .query_one(
+                "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user",
+                &[],
+            )
+            .unwrap()
+            .get(0);
+
+        assert!(
+            !bypasses,
+            "the application connects as a role that bypasses row level security; \
+             create the non-superuser role described in docs/development.md and \
+             point DATABASE_URL at it"
+        );
+    }
+
+    /// Every user-owned table is guarded, and guarded with FORCE: the
+    /// application owns its tables, and an owner bypasses a policy that is
+    /// only enabled.
+    #[test]
+    fn every_user_owned_table_forces_row_level_security() {
+        let Some(_store) = test_store() else {
+            return;
+        };
+        let mut client = test_client();
+
+        let unguarded: Vec<String> = client
+            .query(
+                "SELECT relname FROM pg_class
+                 JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+                 WHERE nspname = $1 AND relname = ANY($2)
+                   AND NOT (relrowsecurity AND relforcerowsecurity)
+                 ORDER BY relname",
+                &[&APP_SCHEMA, &USER_OWNED_TABLES.as_slice()],
+            )
+            .unwrap()
+            .iter()
+            .map(|row| row.get(0))
+            .collect();
+
+        assert!(
+            unguarded.is_empty(),
+            "the row level security of {unguarded:?} is missing or not forced"
+        );
+    }
+
+    /// The policies are the second line of defence behind the `user_id`
+    /// predicates of the queries: a statement that carries none still reaches
+    /// the records of its own user only.
+    #[test]
+    fn hides_the_records_of_another_user_from_a_query_without_a_predicate() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let mine = seed_account(&store);
+        let _other = seed_account(&store);
+        let mut client = test_client();
+        bind_user(&mut client, Some(mine.id));
+
+        for table in USER_OWNED_TABLES {
+            let owners: Vec<i64> = client
+                .query(&format!("SELECT DISTINCT user_id FROM {table}"), &[])
+                .unwrap()
+                .iter()
+                .map(|row| row.get(0))
+                .collect();
+
+            assert_eq!(
+                owners,
+                vec![mine.id],
+                "{table} exposed the records of another account"
+            );
+        }
+    }
+
+    /// A connection that names no user reaches no record of an account, so a
+    /// query that never bound its user fails closed instead of open. The
+    /// `auth` events are the documented exception: the login reads them
+    /// before a session exists.
+    #[test]
+    fn denies_the_records_of_every_account_to_a_connection_without_a_user() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let _user = seed_account(&store);
+        let mut client = test_client();
+        bind_user(&mut client, None);
+
+        for table in USER_OWNED_TABLES {
+            let visible: i64 = client
+                .query_one(
+                    &format!(
+                        "SELECT COUNT(*) FROM {table}{}",
+                        if table == "security_audits" {
+                            " WHERE entity <> 'auth'"
+                        } else {
+                            ""
+                        }
+                    ),
+                    &[],
+                )
+                .unwrap()
+                .get(0);
+
+            assert_eq!(visible, 0, "{table} exposed records without a session");
+        }
+    }
+
+    /// The policies check what is written, not only what is read, so a
+    /// connection cannot file a record under another account either.
+    #[test]
+    fn refuses_a_record_written_for_another_user() {
+        let Some(store) = test_store() else {
+            return;
+        };
+        let mine = seed_account(&store);
+        let other = seed_account(&store);
+        let mut client = test_client();
+        bind_user(&mut client, Some(mine.id));
+
+        let now = now_iso();
+        let error = client
+            .execute(
+                "INSERT INTO projects (user_id, name, color, created_at, updated_at)
+                 VALUES ($1, 'Smuggled', '#336699', $2, $2)",
+                &[&other.id, &now],
+            )
+            .expect_err("a record of another account must be refused");
+
+        assert_eq!(
+            error.code(),
+            Some(&SqlState::INSUFFICIENT_PRIVILEGE),
+            "{error}"
+        );
+    }
+
+    /// A database that predates the accounts carries records without a user,
+    /// and the first registration claims them. The policies allow that one
+    /// update, and only into the account being created, so a private database
+    /// seeds the legacy state with the policies momentarily unforced.
+    #[test]
+    fn claims_the_records_without_a_user_for_the_first_account() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let store = PostgresStore::connect(database.url()).unwrap();
+        let mut client = connect_test_client(database.url());
+        client
+            .batch_execute(
+                "ALTER TABLE projects NO FORCE ROW LEVEL SECURITY;
+                 INSERT INTO projects (name, color, created_at, updated_at)
+                 VALUES ('Legacy', '#336699', '2026-01-01T00:00:00.000Z',
+                         '2026-01-01T00:00:00.000Z');
+                 ALTER TABLE projects FORCE ROW LEVEL SECURITY",
+            )
+            .unwrap();
+
+        let user = store.register_user(&unique_email(), "hash").unwrap();
+
+        let claimed = store.list_projects(user.id).unwrap();
+        assert_eq!(
+            claimed
+                .iter()
+                .map(|project| &project.name)
+                .collect::<Vec<_>>(),
+            vec!["Legacy"],
+            "the first account has to inherit the records of nobody"
+        );
     }
 }
