@@ -1,51 +1,35 @@
 # EditorConfig for WorkTimeTracker - https://editorconfig.org
-# Mirrors .gitattributes (`eol=lf`), rustfmt defaults, and the markdown wrapping used in docs/.
+# Holds the whitespace conventions that oxlint, tsc, and cargo fmt do not cover.
 root = true
 
 [*]
 charset = utf-8
+# Matches `* text=auto eol=lf` in .gitattributes, so the working tree stays LF on every platform.
 end_of_line = lf
 indent_style = space
 indent_size = 2
 insert_final_newline = true
 trim_trailing_whitespace = true
-max_line_length = 100
 
-# rustfmt defaults: 4 spaces, 100 column width.
+# `cargo fmt` uses the rustfmt defaults, which are 4 spaces and a 100 column width.
 [*.rs]
 indent_size = 4
-
-[*.{ts,tsx,js,mjs,cjs,css,html,json,jsonc,yml,yaml,sql,c4}]
-indent_size = 2
-
-# Cargo, Tauri, and tool manifests.
-[*.toml]
-indent_size = 2
-max_line_length = off
-
-# Trailing double-space is a hard line break in markdown, and tables exceed the wrap width.
-[*.md]
-trim_trailing_whitespace = false
 max_line_length = 100
 
-# Generated or externally formatted files: keep as emitted.
+# Trailing double-space is a hard line break, and nested list markers are not indented in steps of 2.
+[*.md]
+indent_size = unset
+trim_trailing_whitespace = false
+
+# Generated files keep the layout their generator emits.
 [{package-lock.json,Cargo.lock,src/data/licenses.json}]
 indent_style = unset
 indent_size = unset
-max_line_length = off
 
-[LICENSE]
-max_line_length = off
+# drizzle-kit rewrites its journal without a final newline.
+[drizzle/meta/**]
+insert_final_newline = false
 
 [*.{svg,png,jpg,jpeg,gif,ico,icns,pdf,woff,woff2}]
 insert_final_newline = false
 trim_trailing_whitespace = false
-
-[Containerfile]
-indent_size = 2
-
-[*.sh]
-indent_size = 2
-
-[{.gitattributes,.gitignore,.dockerignore,.nvmrc,*.example}]
-max_line_length = off

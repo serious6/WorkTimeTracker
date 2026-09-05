@@ -105,12 +105,12 @@ Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 
 ## Editor settings
 
-`.editorconfig` carries the whitespace conventions no linter enforces: UTF-8, LF endings that match
-`.gitattributes`, a final newline, no trailing whitespace, a 100 column guide, and two-space indents
-everywhere except Rust, which keeps the four spaces `cargo fmt` produces. Markdown keeps trailing
-whitespace because two spaces are a hard line break, and lock files and `src/data/licenses.json` are
-left as their generators emit them. Most editors apply it directly; JetBrains IDEs and VS Code need
-no plugin.
+`.editorconfig` carries the whitespace conventions that oxlint, `tsc`, and `cargo fmt` do not cover:
+UTF-8, the LF endings `.gitattributes` pins, a final newline, no trailing whitespace, and two-space
+indents everywhere except Rust, which keeps the four spaces and 100 column width of the rustfmt
+defaults. Markdown is exempt from the trailing whitespace rule because two spaces are a hard line
+break, and generated files such as the lock files, `src/data/licenses.json`, and `drizzle/meta/`
+stay as their generators emit them. JetBrains IDEs and VS Code read the file without a plugin.
 
 ## Fuzzing
 
