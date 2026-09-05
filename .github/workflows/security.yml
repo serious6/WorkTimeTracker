@@ -171,6 +171,40 @@ jobs:
           sarif_file: semgrep.sarif
           category: semgrep
 
+  # Static analysis of the workflows and composite actions themselves, which
+  # neither CodeQL nor the Semgrep packs above model as an attack surface.
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Installed on the runner and pinned to an exact version, like Semgrep
+      # above, so the rule set that decides whether this check passes is visible
+      # here and stable between runs.
+      - run: pipx install zizmor==1.30.0
+      - name: Run zizmor
+        env:
+          # A token enables the online audits, which resolve `uses:` refs
+          # against the GitHub API to flag known-vulnerable or stale actions.
+          # The read-only token of a fork pull request is enough for that.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # `--strict-collection` turns an unparseable workflow into a failure
+        # instead of a warning, so a malformed file cannot silently go
+        # unaudited.
+        run: zizmor --format=sarif --strict-collection . > zizmor.sarif
+      - uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        # See the note on osv-scanner-pr: a fork pull request cannot write
+        # security events, so the upload is skipped rather than failing the job.
+        if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
   # Catches secrets that were committed before push protection could reject
   # them, including in history reachable from the pushed commits.
   gitleaks:
@@ -192,7 +226,7 @@ jobs:
   security-success:
     name: Security success
     if: always()
-    needs: [osv-scanner-pr, osv-scanner, npm-audit, semgrep, gitleaks]
+    needs: [osv-scanner-pr, osv-scanner, npm-audit, semgrep, zizmor, gitleaks]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results

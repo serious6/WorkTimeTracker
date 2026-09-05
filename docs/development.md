@@ -103,6 +103,15 @@ Run `npx playwright install --with-deps chromium` before the first e2e run in a 
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
 
+## Editor settings
+
+`.editorconfig` carries the whitespace conventions no linter enforces: UTF-8, LF endings that match
+`.gitattributes`, a final newline, no trailing whitespace, a 100 column guide, and two-space indents
+everywhere except Rust, which keeps the four spaces `cargo fmt` produces. Markdown keeps trailing
+whitespace because two spaces are a hard line break, and lock files and `src/data/licenses.json` are
+left as their generators emit them. Most editors apply it directly; JetBrains IDEs and VS Code need
+no plugin.
+
 ## Fuzzing
 
 Parsers and validators see input nobody wrote an example for: a driver error that ends up in a log,
@@ -150,6 +159,7 @@ These run in CI only; none of them is part of the local pull request checklist.
 | `security.yml` → `osv-scanner` | OSV advisories for `package-lock.json` and `src-tauri/Cargo.lock`. `src-tauri/fuzz/Cargo.lock` is excluded through `src-tauri/fuzz/osv-scanner.toml`, because the dev-only fuzz harness duplicates the tree that is already scanned. A pull request fails only on advisories it adds; the run on `main` reports the full inventory to Security > Code scanning without failing, because the Tauri dependency tree carries GTK crates with open RUSTSEC advisories that cannot be resolved here. |
 | `security.yml` → `npm-audit` | `npm audit --audit-level=high`; moderate and lower findings are left to Dependabot. |
 | `security.yml` → `semgrep` | Named Semgrep packs (`p/typescript`, `p/react`, `p/secrets`, `p/github-actions`) on pull requests, so the rule set that gates the check is visible in the workflow rather than resolved from the repository URL. Rust is left to CodeQL. |
+| `security.yml` → `zizmor` | [zizmor](https://docs.zizmor.sh) audits the workflows, the composite action, and `dependabot.yml` for GitHub Actions specific risks such as credential persistence, script injection, and unpinned or known-vulnerable `uses:` refs. |
 | `security.yml` → `gitleaks` | Full-history secret scan, complementing GitHub push protection. |
 | `scorecard.yml` | OpenSSF Scorecard; publishing the result is what makes the README badge resolve. |
 
