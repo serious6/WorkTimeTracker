@@ -1,5 +1,7 @@
 # WorkTimeTracker
 
+[![codecov](https://codecov.io/github/serious6/WorkTimeTracker/graph/badge.svg?token=QNG3S1GW7V)](https://codecov.io/github/serious6/WorkTimeTracker)
+
 A local-first, open-source desktop work-time tracker built with Tauri 2. Data stays in a Postgres
 database you control, for example the bundled compose service.
 
