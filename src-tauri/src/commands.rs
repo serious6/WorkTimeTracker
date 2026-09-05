@@ -518,6 +518,7 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::policy_compliant_password;
 
     /// The command source without the test module, so that the scanning tests
     /// below do not read their own string literals as commands.
@@ -571,19 +572,8 @@ mod tests {
             .collect()
     }
 
-    fn known_password() -> String {
-        let mut password = "a".repeat(21);
-        password.replace_range(0..1, "A");
-        password.replace_range(1..2, "0");
-        password.replace_range(2..3, "!");
-        password.replace_range(3..4, "!");
-        password
-    }
-
     fn wrong_password() -> String {
-        let mut password = known_password();
-        password.replace_range(0..1, "B");
-        password
+        format!("B0!!{}", "a".repeat(17))
     }
 
     #[test]
@@ -669,7 +659,7 @@ mod tests {
     #[test]
     fn verifies_a_dummy_hash_when_the_email_is_unknown() {
         let before = auth::dummy_verifications();
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
 
         assert_eq!(verify_credentials(None, &known_password), None);
 
@@ -682,7 +672,7 @@ mod tests {
 
     #[test]
     fn verifies_the_stored_hash_of_a_known_email() {
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
         let hash = auth::hash_password(&known_password).unwrap();
         let wrong_password = wrong_password();
         let before = auth::dummy_verifications();

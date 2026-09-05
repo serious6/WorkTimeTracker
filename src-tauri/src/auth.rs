@@ -326,19 +326,11 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 mod tests {
     use super::*;
     use crate::store::{LoginAttempt, StoreError};
-
-    fn known_password() -> String {
-        let mut password = "a".repeat(21);
-        password.replace_range(0..1, "A");
-        password.replace_range(1..2, "0");
-        password.replace_range(2..3, "!");
-        password.replace_range(3..4, "!");
-        password
-    }
+    use crate::test_support::policy_compliant_password;
 
     #[test]
     fn verifies_only_the_hashed_password() {
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
         let mut wrong_password = known_password.clone();
         wrong_password.make_ascii_lowercase();
         let hash = hash_password(&known_password).unwrap();
@@ -350,7 +342,7 @@ mod tests {
 
     #[test]
     fn hashes_with_the_pinned_parameters() {
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
         let hash = hash_password(&known_password).unwrap();
 
         assert!(hash.starts_with("$argon2id$v=19$"), "{hash}");
@@ -364,7 +356,7 @@ mod tests {
 
     #[test]
     fn salts_every_hash() {
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
         assert_ne!(
             hash_password(&known_password).unwrap(),
             hash_password(&known_password).unwrap()
@@ -373,14 +365,14 @@ mod tests {
 
     #[test]
     fn spends_a_verification_on_an_unknown_email() {
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
         assert!(DUMMY_HASH.starts_with("$argon2id$v=19$"), "{}", *DUMMY_HASH);
         assert!(!verify_dummy_password(&known_password));
     }
 
     #[test]
     fn rejects_malformed_hashes() {
-        let known_password = known_password();
+        let known_password = policy_compliant_password();
         assert!(!verify_password(&known_password, "not-a-hash"));
     }
 

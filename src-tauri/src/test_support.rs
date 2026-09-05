@@ -78,6 +78,11 @@ pub fn unique_email() -> String {
     format!("postgres-test-{}@example.com", unique_tag())
 }
 
+/// Password that passes the registration policy checks in tests.
+pub fn policy_compliant_password() -> String {
+    format!("A0!!{}", "a".repeat(17))
+}
+
 /// An empty database created on the configured server, so a test can exercise
 /// a first-time migration. Dropped again when the guard goes out of scope, so
 /// repeated local runs do not pile up databases.

@@ -677,6 +677,7 @@ impl WorkSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::policy_compliant_password;
 
     #[test]
     fn validates_and_normalizes_project_input() {
@@ -1037,15 +1038,6 @@ mod tests {
         "x".repeat(24)
     }
 
-    fn policy_compliant_password() -> String {
-        let mut password = "a".repeat(21);
-        password.replace_range(0..1, "A");
-        password.replace_range(1..2, "0");
-        password.replace_range(2..3, "!");
-        password.replace_range(3..4, "!");
-        password
-    }
-
     #[test]
     fn normalizes_the_email_of_credentials() {
         let placeholder_password = placeholder_password();
@@ -1103,8 +1095,7 @@ mod tests {
         let too_short = "x".repeat(8);
         let without_uppercase = policy_compliant_password().to_lowercase();
         let without_lowercase = policy_compliant_password().to_uppercase();
-        let mut one_special = policy_compliant_password();
-        one_special.replace_range(2..3, "x");
+        let one_special = format!("A0!x{}", "a".repeat(17));
         assert_eq!(
             check_password_policy(&too_short),
             Err("password must have at least 20 characters")
