@@ -192,6 +192,15 @@ The manual `Release` workflow verifies that `package.json`, `src-tauri/Cargo.tom
 architecture check, build, Rust format and tests, license checks, the e2e suite, and then bundles
 Windows and macOS installers.
 
+The `release` job, which creates/updates the GitHub release and uploads the installers and
+portable archives, also runs in the protected `production` environment. A dispatched run therefore
+pauses after `bundle` and waits for a reviewer to approve the `production` environment before
+anything becomes public, so the reviewer can inspect the produced artifacts first. This only gates
+the run when `production` has **Required reviewers** configured under Settings → Environments →
+production; without that, the `environment:` key adds no approval step. A deployment branch rule
+can additionally restrict `production` to `main`, so a release cannot be dispatched from an
+arbitrary branch.
+
 ### Portable archives
 
 The `bundle` job packs the same build a second time as

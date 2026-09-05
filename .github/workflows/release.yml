@@ -244,6 +244,11 @@ jobs:
     # asked for, and only a successful or a skipped one may be released after.
     if: ${{ !cancelled() && needs.bundle.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
     runs-on: ubuntu-latest
+    # Publishing a release is a production change: it waits for a reviewer of
+    # the protected `production` environment before any asset becomes public.
+    environment:
+      name: production
+      url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.meta.outputs.tag }}
     permissions:
       contents: write
     steps:
