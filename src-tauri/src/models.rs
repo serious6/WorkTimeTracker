@@ -1034,13 +1034,9 @@ mod tests {
         }
     }
 
-    fn placeholder_password() -> String {
-        "x".repeat(24)
-    }
-
     #[test]
     fn normalizes_the_email_of_credentials() {
-        let password = placeholder_password();
+        let password = "x".repeat(24);
         let mut input = credentials(" User@Example.COM ", &password);
         input.validate().unwrap();
         assert_eq!(input.email, "user@example.com");
@@ -1054,7 +1050,7 @@ mod tests {
 
     #[test]
     fn rejects_malformed_emails() {
-        let password = placeholder_password();
+        let password = "x".repeat(24);
         for email in [
             "user",
             "user@example",

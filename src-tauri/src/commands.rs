@@ -573,9 +573,7 @@ mod tests {
     }
 
     fn wrong_password() -> String {
-        let mut password = policy_compliant_password();
-        password.replace_range(0..1, "B");
-        password
+        format!("{}B", policy_compliant_password())
     }
 
     #[test]
