@@ -71,12 +71,12 @@ function freeSince(entries: TimeEntry[], sessionIds: number[], startMs: number):
  * rejected as an overlap.
  */
 function trackingStart(entries: TimeEntry[], now = Date.now()): string {
-  const latestEndMs = entries.reduce((latest, entry) => {
+  const reach = now + MAX_ROUNDING_MS
+  const startMs = entries.reduce((latest, entry) => {
     const endMs = entry.endTime ? Date.parse(entry.endTime) : 0
-    return endMs > latest ? endMs : latest
-  }, 0)
-  const started = latestEndMs > now && latestEndMs <= now + MAX_ROUNDING_MS ? latestEndMs : now
-  return new Date(started).toISOString()
+    return endMs > latest && endMs <= reach ? endMs : latest
+  }, now)
+  return new Date(startMs).toISOString()
 }
 
 export function useTimer(now: number) {
