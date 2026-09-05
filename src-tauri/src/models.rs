@@ -1040,8 +1040,8 @@ mod tests {
 
     #[test]
     fn normalizes_the_email_of_credentials() {
-        let placeholder_password = placeholder_password();
-        let mut input = credentials(" User@Example.COM ", &placeholder_password);
+        let password = placeholder_password();
+        let mut input = credentials(" User@Example.COM ", &password);
         input.validate().unwrap();
         assert_eq!(input.email, "user@example.com");
     }
@@ -1054,7 +1054,7 @@ mod tests {
 
     #[test]
     fn rejects_malformed_emails() {
-        let placeholder_password = placeholder_password();
+        let password = placeholder_password();
         for email in [
             "user",
             "user@example",
@@ -1064,7 +1064,7 @@ mod tests {
             "user@.example.com",
         ] {
             assert_eq!(
-                credentials(email, &placeholder_password).validate(),
+                credentials(email, &password).validate(),
                 Err("invalid email"),
                 "{email}"
             );
