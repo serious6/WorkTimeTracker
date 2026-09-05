@@ -14,6 +14,7 @@ export function DayEntriesCard({
   now,
   onPlay,
   onPause,
+  onStop,
   onAddEntry,
   onStartTimer,
 }: {
@@ -23,6 +24,7 @@ export function DayEntriesCard({
   now: number
   onPlay: (projectId: number) => void
   onPause: () => void
+  onStop: () => void
   onAddEntry: () => void
   onStartTimer: () => void
 }) {
@@ -51,6 +53,7 @@ export function DayEntriesCard({
           now={now}
           onPause={onPause}
           onPlay={onPlay}
+          onStop={onStop}
           projects={projects}
         />
         <div className="pt-3">

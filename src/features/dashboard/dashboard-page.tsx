@@ -135,6 +135,7 @@ export function DashboardPage() {
             onPause={() => void timer.pause()}
             onPlay={(projectId) => void timer.switchTo(projectId)}
             onStartTimer={() => setPickerOpen(true)}
+            onStop={() => void timer.stop()}
             projects={projects}
             title="Today's Entries"
           />

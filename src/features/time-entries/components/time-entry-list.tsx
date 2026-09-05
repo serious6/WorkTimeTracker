@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MoreVertical, Pause, Play } from 'lucide-react'
+import { MoreVertical, Pause, Play, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog } from '@/components/ui/dialog'
@@ -21,6 +21,7 @@ export function TimeEntryList({
   now,
   onPlay,
   onPause,
+  onStop,
   emptyState,
 }: {
   entries: TimeEntry[]
@@ -28,6 +29,8 @@ export function TimeEntryList({
   now: number
   onPlay: (projectId: number) => void
   onPause: () => void
+  /** Ends the session through the timer stop, which rounds or discards it. */
+  onStop: () => void
   emptyState?: React.ReactNode
 }) {
   const updateNote = useUpdateTimeEntryNote()
@@ -83,9 +86,19 @@ export function TimeEntryList({
                 {formatStopwatch(entryMinutes(entry, now) * 60_000)}
               </span>
               {running ? (
-                <Button aria-label="Pause timer" onClick={onPause} size="icon" variant="subtle">
-                  <Pause className="size-4" />
-                </Button>
+                <>
+                  <Button
+                    aria-label={`Stop timer for ${name}`}
+                    onClick={onStop}
+                    size="icon"
+                    variant="destructive"
+                  >
+                    <Square className="size-4" />
+                  </Button>
+                  <Button aria-label="Pause timer" onClick={onPause} size="icon" variant="subtle">
+                    <Pause className="size-4" />
+                  </Button>
+                </>
               ) : (
                 <Button
                   aria-label={`Start timer for ${name}`}

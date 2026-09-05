@@ -153,17 +153,17 @@ test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
 
   await expect(page.getByText('Timer started')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
+  await expect(trackingCard(page).getByRole('button', { name: 'Stop timer' })).toBeVisible()
   await expect(page.getByLabel('Elapsed time')).toBeVisible()
 
   // Stopped right away the session rounds to zero minutes, so nothing is stored.
-  await page.getByRole('button', { name: 'Stop timer' }).click()
+  await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText('Timer discarded')).toBeVisible()
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
   await expect(page.getByText('No time tracked today')).toBeVisible()
 
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
-  await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
+  await expect(trackingCard(page).getByRole('button', { name: 'Stop timer' })).toBeVisible()
 
   // An hour earlier, date and time, so the correction holds across midnight.
   const earlier = await page.evaluate(() => {
@@ -180,7 +180,7 @@ test('tracks time with the timer and updates the metrics', async ({ page }) => {
   await dialog(page).getByRole('button', { name: 'Save start time' }).click()
   await expect(page.getByText('Start time updated')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Stop timer' }).click()
+  await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText('Timer stopped')).toBeVisible()
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
 })

@@ -38,6 +38,7 @@ describe('DayEntriesCard', () => {
         onPause={vi.fn()}
         onPlay={vi.fn()}
         onStartTimer={vi.fn()}
+        onStop={vi.fn()}
         projects={projects}
         title="Today's Entries"
       />,
@@ -57,6 +58,7 @@ describe('DayEntriesCard', () => {
         onPause={vi.fn()}
         onPlay={vi.fn()}
         onStartTimer={onStartTimer}
+        onStop={vi.fn()}
         projects={projects}
         title="Today's Entries"
       />,
@@ -75,6 +77,7 @@ describe('DayEntriesCard', () => {
         onPause={vi.fn()}
         onPlay={vi.fn()}
         onStartTimer={vi.fn()}
+        onStop={vi.fn()}
         projects={projects}
         title="Today's Entries"
       />,
@@ -93,6 +96,7 @@ describe('DayEntriesCard', () => {
         onPause={vi.fn()}
         onPlay={vi.fn()}
         onStartTimer={vi.fn()}
+        onStop={vi.fn()}
         projects={projects}
         title="Today's Entries"
       />,
@@ -109,6 +113,7 @@ describe('DayEntriesCard', () => {
         onPause={vi.fn()}
         onPlay={vi.fn()}
         onStartTimer={vi.fn()}
+        onStop={vi.fn()}
         projects={projects}
         title="Today's Entries"
       />,
@@ -125,6 +130,7 @@ describe('DayEntriesCard', () => {
         onPause={vi.fn()}
         onPlay={vi.fn()}
         onStartTimer={vi.fn()}
+        onStop={vi.fn()}
         projects={projects}
         title="Wednesday"
       />,

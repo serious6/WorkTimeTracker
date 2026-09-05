@@ -139,6 +139,7 @@ export function TimeManagementPage() {
             now={now}
             onPause={() => void timer.pause()}
             onPlay={(id) => void timer.switchTo(id)}
+            onStop={() => void timer.stop()}
             projects={projects}
           />
         </CardContent>

@@ -34,6 +34,7 @@ function renderList(
   projects: Project[],
   onPlay = vi.fn(),
   onPause = vi.fn(),
+  onStop = vi.fn(),
 ) {
   return renderWithProviders(
     <TimeEntryList
@@ -42,6 +43,7 @@ function renderList(
       now={Date.now()}
       onPlay={onPlay}
       onPause={onPause}
+      onStop={onStop}
     />,
   )
 }
@@ -55,6 +57,7 @@ describe('TimeEntryList', () => {
         now={Date.now()}
         onPlay={vi.fn()}
         onPause={vi.fn()}
+        onStop={vi.fn()}
         emptyState={<p>Nothing here</p>}
       />,
     )
@@ -108,6 +111,32 @@ describe('TimeEntryList', () => {
     renderList([{ ...entry, endTime: null }], [{ ...project, archived: true }], vi.fn(), onPause)
     fireEvent.click(screen.getByRole('button', { name: /pause timer/i }))
     expect(onPause).toHaveBeenCalled()
+  })
+
+  it('ends a running entry through the stop path, not through pause', async () => {
+    const onPause = vi.fn()
+    const onStop = vi.fn()
+    const { project, entry } = await setup()
+    renderList([{ ...entry, endTime: null }], [project], vi.fn(), onPause, onStop)
+
+    fireEvent.click(screen.getByRole('button', { name: /stop timer for alpha/i }))
+
+    expect(onStop).toHaveBeenCalled()
+    expect(onPause).not.toHaveBeenCalled()
+  })
+
+  it('keeps stopping a running entry of an archived project', async () => {
+    const onStop = vi.fn()
+    const { project, entry } = await setup()
+    renderList(
+      [{ ...entry, endTime: null }],
+      [{ ...project, archived: true }],
+      vi.fn(),
+      vi.fn(),
+      onStop,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /stop timer for alpha/i }))
+    expect(onStop).toHaveBeenCalled()
   })
 
   it('opens edit dialog via menu', async () => {

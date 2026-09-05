@@ -99,6 +99,7 @@ export function TimeEntriesPage() {
                 now={now}
                 onPause={() => void timer.pause()}
                 onPlay={(projectId) => void timer.switchTo(projectId)}
+                onStop={() => void timer.stop()}
                 projects={projects}
               />
             </CardContent>

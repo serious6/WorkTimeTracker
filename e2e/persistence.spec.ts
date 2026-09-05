@@ -125,7 +125,7 @@ test('X3: pausing and resuming from the entry list continues the running timer',
   await expect(page.getByRole('button', { name: 'Pause timer' })).toBeVisible()
 
   await gotoPage(page, 'Dashboard')
-  await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
+  await expect(trackingCard(page).getByRole('button', { name: 'Stop timer' })).toBeVisible()
   await expect(page.getByLabel('Elapsed time')).toBeVisible()
 })
 

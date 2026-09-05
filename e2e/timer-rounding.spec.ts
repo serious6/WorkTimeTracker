@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
-import { createProject, dialog, downloadText, startSignedInSession, trackingCard } from './helpers'
+import {
+  addEntry,
+  createProject,
+  dialog,
+  downloadText,
+  startSignedInSession,
+  trackingCard,
+} from './helpers'
 
 const PROJECT = 'Website Redesign'
 const OTHER_PROJECT = 'Mobile App'
@@ -25,7 +32,7 @@ async function startTimer(page: Page, project: string) {
   await page.getByRole('button', { name: 'Select a project' }).click()
   await page.getByRole('option', { name: project }).click()
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
-  await expect(page.getByRole('button', { name: 'Stop timer' })).toBeVisible()
+  await expect(trackingCard(page).getByRole('button', { name: 'Stop timer' })).toBeVisible()
 }
 
 /** Adds a further project through the picker, once the first project exists. */
@@ -38,8 +45,26 @@ async function addProject(page: Page, name: string) {
 }
 
 async function stopTimer(page: Page) {
-  await page.getByRole('button', { name: 'Stop timer' }).click()
+  await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
+}
+
+/** The "Today's Entries" card, whose rows carry their own play and stop control. */
+function entriesCard(page: Page) {
+  return page.getByRole('region', { name: "Today's Entries" })
+}
+
+/**
+ * Tracks a session with the row controls of "Today's Entries". A row only
+ * exists for a project that already has an entry today, so the caller seeds one.
+ */
+async function trackFromEntriesCard(page: Page, project: string, elapsed: string) {
+  await entriesCard(page).getByRole('button', { name: `Start timer for ${project}` }).click()
+  const stop = entriesCard(page).getByRole('button', { name: `Stop timer for ${project}` })
+  await expect(stop).toBeVisible()
+
+  await page.clock.fastForward(elapsed)
+  await stop.click()
 }
 
 /**
@@ -73,7 +98,7 @@ for (const { id, elapsed, minutes } of ROUNDING_CASES) {
     await page.clock.fastForward(elapsed)
     await expect(page.getByLabel('Elapsed time')).toHaveText(elapsed)
 
-    await page.getByRole('button', { name: 'Stop timer' }).click()
+    await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
 
     if (minutes === 0) {
       await expect(page.getByText('Sessions shorter than 30 seconds are not saved')).toBeVisible()
@@ -102,7 +127,7 @@ test('E10: sums the segments of a paused session before rounding', async ({ page
 
   // Rounding each 40s segment on its own would give two minutes, the summed
   // 1m 20s of the session round to one.
-  await page.getByRole('button', { name: 'Stop timer' }).click()
+  await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText(`0h 01m added to ${PROJECT}`)).toBeVisible()
   await expect(page.getByText('Total: 0h 01m')).toBeVisible()
 })
@@ -119,7 +144,7 @@ test('E11: rounds the session that is stopped after a project switch', async ({ 
 
   // The switch starts a new session, so only its 1m 30s are rounded up.
   await page.clock.fastForward('00:01:30')
-  await page.getByRole('button', { name: 'Stop timer' }).click()
+  await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
   await expect(page.getByText(`0h 02m added to ${OTHER_PROJECT}`)).toBeVisible()
   await expect(page.getByText('Total: 0h 04m')).toBeVisible()
   // The closed segment keeps its two minutes, the stopped one is rounded up to two.
@@ -182,4 +207,29 @@ test('E14: keeps the rounded duration after a reload', async ({ page }) => {
 
   await expect(page.getByText('Total: 0h 02m')).toBeVisible()
   await expect(page.getByText('00:02:00')).toBeVisible()
+})
+
+// E15 in docs/e2e-test-cases.md
+test('E15: discards a short session that is started and stopped in the entry list', async ({
+  page,
+}) => {
+  await addEntry(page, PROJECT, '08:00', '08:30')
+  await expect(page.getByText('Total: 0h 30m')).toBeVisible()
+
+  await trackFromEntriesCard(page, PROJECT, '00:00:10')
+
+  await expect(page.getByText('Sessions shorter than 30 seconds are not saved')).toBeVisible()
+  await expect(page.getByText('Total: 0h 30m')).toBeVisible()
+  await expect(entriesCard(page).getByRole('listitem')).toHaveCount(1)
+})
+
+// E16 in docs/e2e-test-cases.md
+test('E16: rounds a session that is started and stopped in the entry list', async ({ page }) => {
+  await addEntry(page, PROJECT, '08:00', '08:30')
+
+  await trackFromEntriesCard(page, PROJECT, '00:00:35')
+
+  await expect(page.getByText(`0h 01m added to ${PROJECT}`)).toBeVisible()
+  await expect(page.getByText('Total: 0h 31m')).toBeVisible()
+  await expect(entriesCard(page).getByText('00:01:00')).toBeVisible()
 })
