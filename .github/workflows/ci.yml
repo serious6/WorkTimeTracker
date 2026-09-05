@@ -73,6 +73,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node
       - run: npm run test:coverage
+      # Forks do not get the token, so the upload is skipped there instead of
+      # failing the job.
+      - name: Upload coverage reports to Codecov
+        if: ${{ !cancelled() && github.event.pull_request.head.repo.fork != true }}
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          flags: unittests
+          fail_ci_if_error: true
 
   rust:
     needs: changes
