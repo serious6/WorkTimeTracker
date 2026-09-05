@@ -32,10 +32,17 @@ async function setup(entryOverrides: Partial<{ note: string | null }> = {}) {
 function renderList(
   entries: TimeEntry[],
   projects: Project[],
-  onPlay = vi.fn(),
-  onPause = vi.fn(),
-  onStop = vi.fn(),
-  isTimerPending = false,
+  {
+    onPlay = vi.fn(),
+    onPause = vi.fn(),
+    onStop = vi.fn(),
+    isTimerPending = false,
+  }: {
+    onPlay?: (projectId: number) => void
+    onPause?: () => void
+    onStop?: () => void
+    isTimerPending?: boolean
+  } = {},
 ) {
   return renderWithProviders(
     <TimeEntryList
@@ -95,7 +102,7 @@ describe('TimeEntryList', () => {
   it('calls onPlay when play button clicked', async () => {
     const onPlay = vi.fn()
     const { project, entry } = await setup()
-    renderList([entry], [project], onPlay)
+    renderList([entry], [project], { onPlay })
     fireEvent.click(screen.getByRole('button', { name: /start timer for alpha/i }))
     expect(onPlay).toHaveBeenCalledWith(project.id)
   })
@@ -103,14 +110,14 @@ describe('TimeEntryList', () => {
   it('disables the play button for an archived project', async () => {
     const onPlay = vi.fn()
     const { project, entry } = await setup()
-    renderList([entry], [{ ...project, archived: true }], onPlay)
+    renderList([entry], [{ ...project, archived: true }], { onPlay })
     expect(screen.getByRole('button', { name: /start timer for alpha/i })).toBeDisabled()
   })
 
   it('keeps pausing a running entry of an archived project', async () => {
     const onPause = vi.fn()
     const { project, entry } = await setup()
-    renderList([{ ...entry, endTime: null }], [{ ...project, archived: true }], vi.fn(), onPause)
+    renderList([{ ...entry, endTime: null }], [{ ...project, archived: true }], { onPause })
     fireEvent.click(screen.getByRole('button', { name: /pause timer for alpha/i }))
     expect(onPause).toHaveBeenCalled()
   })
@@ -119,7 +126,7 @@ describe('TimeEntryList', () => {
     const onPause = vi.fn()
     const onStop = vi.fn()
     const { project, entry } = await setup()
-    renderList([{ ...entry, endTime: null }], [project], vi.fn(), onPause, onStop)
+    renderList([{ ...entry, endTime: null }], [project], { onPause, onStop })
 
     fireEvent.click(screen.getByRole('button', { name: /stop timer for alpha/i }))
 
@@ -130,13 +137,7 @@ describe('TimeEntryList', () => {
   it('keeps stopping a running entry of an archived project', async () => {
     const onStop = vi.fn()
     const { project, entry } = await setup()
-    renderList(
-      [{ ...entry, endTime: null }],
-      [{ ...project, archived: true }],
-      vi.fn(),
-      vi.fn(),
-      onStop,
-    )
+    renderList([{ ...entry, endTime: null }], [{ ...project, archived: true }], { onStop })
     fireEvent.click(screen.getByRole('button', { name: /stop timer for alpha/i }))
     expect(onStop).toHaveBeenCalled()
   })
@@ -145,7 +146,11 @@ describe('TimeEntryList', () => {
     const onPause = vi.fn()
     const onStop = vi.fn()
     const { project, entry } = await setup()
-    renderList([{ ...entry, endTime: null }], [project], vi.fn(), onPause, onStop, true)
+    renderList([{ ...entry, endTime: null }], [project], {
+      isTimerPending: true,
+      onPause,
+      onStop,
+    })
 
     expect(screen.getByRole('button', { name: /stop timer for alpha/i })).toBeDisabled()
     expect(screen.getByRole('button', { name: /pause timer for alpha/i })).toBeDisabled()
