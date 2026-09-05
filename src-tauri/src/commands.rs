@@ -518,6 +518,7 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::policy_compliant_password;
 
     /// The command source without the test module, so that the scanning tests
     /// below do not read their own string literals as commands.
@@ -569,6 +570,10 @@ mod tests {
                     .to_owned()
             })
             .collect()
+    }
+
+    fn wrong_password() -> String {
+        format!("{}B", policy_compliant_password())
     }
 
     #[test]
@@ -654,8 +659,9 @@ mod tests {
     #[test]
     fn verifies_a_dummy_hash_when_the_email_is_unknown() {
         let before = auth::dummy_verifications();
+        let known_password = policy_compliant_password();
 
-        assert_eq!(verify_credentials(None, "Str0ng-Passphrase!!x"), None);
+        assert_eq!(verify_credentials(None, &known_password), None);
 
         assert_eq!(
             auth::dummy_verifications(),
@@ -666,14 +672,16 @@ mod tests {
 
     #[test]
     fn verifies_the_stored_hash_of_a_known_email() {
-        let hash = auth::hash_password("Str0ng-Passphrase!!x").unwrap();
+        let known_password = policy_compliant_password();
+        let hash = auth::hash_password(&known_password).unwrap();
+        let wrong_password = wrong_password();
         let before = auth::dummy_verifications();
 
         assert_eq!(
-            verify_credentials(Some((7, hash.clone())), "Str0ng-Passphrase!!x"),
+            verify_credentials(Some((7, hash.clone())), &known_password),
             Some(7)
         );
-        assert_eq!(verify_credentials(Some((7, hash)), "wrong-password"), None);
+        assert_eq!(verify_credentials(Some((7, hash)), &wrong_password), None);
 
         assert_eq!(auth::dummy_verifications(), before);
     }
