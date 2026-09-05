@@ -89,6 +89,7 @@ export function TimeEntryList({
               </span>
               {running ? (
                 <>
+                  {/* Stop applies the rounding path; pause keeps the running entry open. */}
                   <Button
                     aria-label={`Stop timer for ${name}`}
                     disabled={isTimerPending}
