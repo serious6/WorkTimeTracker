@@ -130,7 +130,6 @@ export function TimeByProjectCard({
                       className="size-2.5 rounded-full"
                       style={{ backgroundColor: item.color }}
                     />
-                    {/* The name is truncated by CSS, so the title reveals it on hover. */}
                     <span className="min-w-0 flex-1 truncate" title={item.name}>
                       {item.name}
                     </span>
