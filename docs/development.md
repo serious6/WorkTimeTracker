@@ -156,6 +156,20 @@ These run in CI only; none of them is part of the local pull request checklist.
 Findings land in the Security tab as code scanning alerts. `Security success` is the aggregate status
 check, mirroring `CI success`.
 
+### Dependency advisory exceptions
+
+`package.json` overrides `esbuild` for `@esbuild-kit/core-utils` to `>=0.25.0`. `drizzle-kit` still
+depends on the deprecated `@esbuild-kit` loader, which pins `esbuild <=0.24.2`
+(GHSA-67mh-4wv8-2f99, dev-server request forgery). The loader only uses the `transform` API, so the
+newer `esbuild` that the rest of the tree already installs works unchanged; remove the override once
+`drizzle-kit` drops `@esbuild-kit`.
+
+The open RUSTSEC advisories on `src-tauri/Cargo.lock` are all transitive through Tauri and cannot be
+resolved here: the GTK 3 bindings and `proc-macro-error` used by the Linux WebKit backend are
+unmaintained, `glib 0.18` carries an unsoundness advisory, and the `unic-*` crates arrive through
+`urlpattern` in `tauri-utils`. They are unmaintained or Linux-only soundness notices rather than
+exploitable defects in this app, and they clear when Tauri moves off those crates.
+
 ## Repository layout
 
 ```text
