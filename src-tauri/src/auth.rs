@@ -327,18 +327,31 @@ mod tests {
     use super::*;
     use crate::store::{LoginAttempt, StoreError};
 
+    fn known_password() -> String {
+        let mut password = "a".repeat(21);
+        password.replace_range(0..1, "A");
+        password.replace_range(1..2, "0");
+        password.replace_range(2..3, "!");
+        password.replace_range(3..4, "!");
+        password
+    }
+
     #[test]
     fn verifies_only_the_hashed_password() {
-        let hash = hash_password("Str0ng-Passphrase!!x").unwrap();
+        let known_password = known_password();
+        let mut wrong_password = known_password.clone();
+        wrong_password.make_ascii_lowercase();
+        let hash = hash_password(&known_password).unwrap();
 
-        assert!(!hash.contains("Str0ng-Passphrase!!x"));
-        assert!(verify_password("Str0ng-Passphrase!!x", &hash));
-        assert!(!verify_password("str0ng-passphrase!!x", &hash));
+        assert!(!hash.contains(&known_password));
+        assert!(verify_password(&known_password, &hash));
+        assert!(!verify_password(&wrong_password, &hash));
     }
 
     #[test]
     fn hashes_with_the_pinned_parameters() {
-        let hash = hash_password("Str0ng-Passphrase!!x").unwrap();
+        let known_password = known_password();
+        let hash = hash_password(&known_password).unwrap();
 
         assert!(hash.starts_with("$argon2id$v=19$"), "{hash}");
         assert!(
@@ -351,21 +364,24 @@ mod tests {
 
     #[test]
     fn salts_every_hash() {
+        let known_password = known_password();
         assert_ne!(
-            hash_password("Str0ng-Passphrase!!x").unwrap(),
-            hash_password("Str0ng-Passphrase!!x").unwrap()
+            hash_password(&known_password).unwrap(),
+            hash_password(&known_password).unwrap()
         );
     }
 
     #[test]
     fn spends_a_verification_on_an_unknown_email() {
+        let known_password = known_password();
         assert!(DUMMY_HASH.starts_with("$argon2id$v=19$"), "{}", *DUMMY_HASH);
-        assert!(!verify_dummy_password("Str0ng-Passphrase!!x"));
+        assert!(!verify_dummy_password(&known_password));
     }
 
     #[test]
     fn rejects_malformed_hashes() {
-        assert!(!verify_password("Str0ng-Passphrase!!x", "not-a-hash"));
+        let known_password = known_password();
+        assert!(!verify_password(&known_password, "not-a-hash"));
     }
 
     /// Both clocks of the machine moved on by the same amount, the ordinary

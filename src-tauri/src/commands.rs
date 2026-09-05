@@ -571,6 +571,21 @@ mod tests {
             .collect()
     }
 
+    fn known_password() -> String {
+        let mut password = "a".repeat(21);
+        password.replace_range(0..1, "A");
+        password.replace_range(1..2, "0");
+        password.replace_range(2..3, "!");
+        password.replace_range(3..4, "!");
+        password
+    }
+
+    fn wrong_password() -> String {
+        let mut password = known_password();
+        password.replace_range(0..1, "B");
+        password
+    }
+
     #[test]
     fn the_hand_written_commands_are_exactly_the_public_ones() {
         let mut hand_written = hand_written_commands();
@@ -654,8 +669,9 @@ mod tests {
     #[test]
     fn verifies_a_dummy_hash_when_the_email_is_unknown() {
         let before = auth::dummy_verifications();
+        let known_password = known_password();
 
-        assert_eq!(verify_credentials(None, "Str0ng-Passphrase!!x"), None);
+        assert_eq!(verify_credentials(None, &known_password), None);
 
         assert_eq!(
             auth::dummy_verifications(),
@@ -666,14 +682,16 @@ mod tests {
 
     #[test]
     fn verifies_the_stored_hash_of_a_known_email() {
-        let hash = auth::hash_password("Str0ng-Passphrase!!x").unwrap();
+        let known_password = known_password();
+        let hash = auth::hash_password(&known_password).unwrap();
+        let wrong_password = wrong_password();
         let before = auth::dummy_verifications();
 
         assert_eq!(
-            verify_credentials(Some((7, hash.clone())), "Str0ng-Passphrase!!x"),
+            verify_credentials(Some((7, hash.clone())), &known_password),
             Some(7)
         );
-        assert_eq!(verify_credentials(Some((7, hash)), "wrong-password"), None);
+        assert_eq!(verify_credentials(Some((7, hash)), &wrong_password), None);
 
         assert_eq!(auth::dummy_verifications(), before);
     }

@@ -1033,9 +1033,23 @@ mod tests {
         }
     }
 
+    fn placeholder_password() -> String {
+        "x".repeat(24)
+    }
+
+    fn policy_compliant_password() -> String {
+        let mut password = "a".repeat(21);
+        password.replace_range(0..1, "A");
+        password.replace_range(1..2, "0");
+        password.replace_range(2..3, "!");
+        password.replace_range(3..4, "!");
+        password
+    }
+
     #[test]
     fn normalizes_the_email_of_credentials() {
-        let mut input = credentials(" User@Example.COM ", "secret");
+        let placeholder_password = placeholder_password();
+        let mut input = credentials(" User@Example.COM ", &placeholder_password);
         input.validate().unwrap();
         assert_eq!(input.email, "user@example.com");
     }
@@ -1048,6 +1062,7 @@ mod tests {
 
     #[test]
     fn rejects_malformed_emails() {
+        let placeholder_password = placeholder_password();
         for email in [
             "user",
             "user@example",
@@ -1057,7 +1072,7 @@ mod tests {
             "user@.example.com",
         ] {
             assert_eq!(
-                credentials(email, "secret").validate(),
+                credentials(email, &placeholder_password).validate(),
                 Err("invalid email"),
                 "{email}"
             );
@@ -1079,25 +1094,31 @@ mod tests {
 
     #[test]
     fn accepts_a_policy_compliant_password() {
-        check_password_policy("Str0ng-Passphrase!!x").unwrap();
+        let password = policy_compliant_password();
+        check_password_policy(&password).unwrap();
     }
 
     #[test]
     fn rejects_passwords_that_break_the_policy() {
+        let too_short = "x".repeat(8);
+        let without_uppercase = policy_compliant_password().to_lowercase();
+        let without_lowercase = policy_compliant_password().to_uppercase();
+        let mut one_special = policy_compliant_password();
+        one_special.replace_range(2..3, "x");
         assert_eq!(
-            check_password_policy("Short!!a"),
+            check_password_policy(&too_short),
             Err("password must have at least 20 characters")
         );
         assert_eq!(
-            check_password_policy("str0ng-passphrase!!x"),
+            check_password_policy(&without_uppercase),
             Err("password must contain an uppercase letter")
         );
         assert_eq!(
-            check_password_policy("STR0NG-PASSPHRASE!!X"),
+            check_password_policy(&without_lowercase),
             Err("password must contain a lowercase letter")
         );
         assert_eq!(
-            check_password_policy("Str0ngPassphrase!xxxx"),
+            check_password_policy(&one_special),
             Err("password must contain at least two special characters")
         );
     }
