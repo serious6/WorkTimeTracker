@@ -130,6 +130,7 @@ export function DashboardPage() {
           />
           <DayEntriesCard
             entries={dayEntries}
+            isTimerPending={timer.isPending}
             now={now}
             onAddEntry={() => setEntryDialogOpen(true)}
             onPause={() => void timer.pause()}

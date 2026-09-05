@@ -35,10 +35,12 @@ function renderList(
   onPlay = vi.fn(),
   onPause = vi.fn(),
   onStop = vi.fn(),
+  isTimerPending = false,
 ) {
   return renderWithProviders(
     <TimeEntryList
       entries={entries}
+      isTimerPending={isTimerPending}
       projects={projects}
       now={Date.now()}
       onPlay={onPlay}
@@ -137,6 +139,16 @@ describe('TimeEntryList', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: /stop timer for alpha/i }))
     expect(onStop).toHaveBeenCalled()
+  })
+
+  it('disables timer row controls while a timer mutation is pending', async () => {
+    const onPause = vi.fn()
+    const onStop = vi.fn()
+    const { project, entry } = await setup()
+    renderList([{ ...entry, endTime: null }], [project], vi.fn(), onPause, onStop, true)
+
+    expect(screen.getByRole('button', { name: /stop timer for alpha/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /pause timer/i })).toBeDisabled()
   })
 
   it('opens edit dialog via menu', async () => {

@@ -22,6 +22,7 @@ export function TimeEntryList({
   onPlay,
   onPause,
   onStop,
+  isTimerPending = false,
   emptyState,
 }: {
   entries: TimeEntry[]
@@ -31,6 +32,7 @@ export function TimeEntryList({
   onPause: () => void
   /** Ends the session through the timer stop, which rounds or discards it. */
   onStop: () => void
+  isTimerPending?: boolean
   emptyState?: React.ReactNode
 }) {
   const updateNote = useUpdateTimeEntryNote()
@@ -89,20 +91,27 @@ export function TimeEntryList({
                 <>
                   <Button
                     aria-label={`Stop timer for ${name}`}
+                    disabled={isTimerPending}
                     onClick={onStop}
                     size="icon"
                     variant="destructive"
                   >
                     <Square className="size-4" />
                   </Button>
-                  <Button aria-label="Pause timer" onClick={onPause} size="icon" variant="subtle">
+                  <Button
+                    aria-label="Pause timer"
+                    disabled={isTimerPending}
+                    onClick={onPause}
+                    size="icon"
+                    variant="subtle"
+                  >
                     <Pause className="size-4" />
                   </Button>
                 </>
               ) : (
                 <Button
                   aria-label={`Start timer for ${name}`}
-                  disabled={!project || project.archived}
+                  disabled={isTimerPending || !project || project.archived}
                   onClick={() => project && !project.archived && onPlay(project.id)}
                   size="icon"
                   variant="subtle"

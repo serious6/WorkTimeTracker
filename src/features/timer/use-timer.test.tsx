@@ -600,23 +600,28 @@ describe('useTimer – retroactive start correction', () => {
  */
 describe('useTimer – sessions started from the entries list', () => {
   async function trackFromEntriesList(projectId: number, elapsedMs: number) {
-    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
-    await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
-
-    await act(async () => {
-      await result.current.switchTo(projectId)
-    })
-    await waitFor(() => expect(result.current.status.running).toBeDefined())
-
-    // Only the clock is faked, so the session lasts exactly the given time.
+    const startedAt = Date.now()
     vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(Date.now() + elapsedMs)
-    await act(async () => {
-      await result.current.stop()
-    })
-    vi.useRealTimers()
+    vi.setSystemTime(startedAt)
 
-    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    try {
+      const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+      await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
+
+      await act(async () => {
+        await result.current.switchTo(projectId)
+      })
+      await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+      vi.setSystemTime(startedAt + elapsedMs)
+      await act(async () => {
+        await result.current.stop()
+      })
+
+      await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    } finally {
+      vi.useRealTimers()
+    }
   }
 
   async function storedMinutes() {

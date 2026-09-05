@@ -96,6 +96,7 @@ export function TimeEntriesPage() {
                 entries={[...dayEntries].sort((left, right) =>
                   left.startTime.localeCompare(right.startTime),
                 )}
+                isTimerPending={timer.isPending}
                 now={now}
                 onPause={() => void timer.pause()}
                 onPlay={(projectId) => void timer.switchTo(projectId)}

@@ -136,6 +136,7 @@ export function TimeManagementPage() {
           <TimeEntryList
             emptyState={<p className="text-sm text-muted-foreground">No time tracked on this day.</p>}
             entries={dayEntries}
+            isTimerPending={timer.isPending}
             now={now}
             onPause={() => void timer.pause()}
             onPlay={(id) => void timer.switchTo(id)}
