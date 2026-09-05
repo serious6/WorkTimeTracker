@@ -212,6 +212,81 @@ describe('useTimer', () => {
     expect(stored.reduce((total, entry) => total + entryMinutes(entry), 0)).toBe(1)
   })
 
+  it('start tracks again right after a session was rounded up', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 35_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.stop()
+    })
+    await waitFor(() => expect(result.current.status.running).toBeUndefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.start(project.id)
+    })
+
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    expect(useToastStore.getState().toasts.every((toast) => toast.variant === 'default')).toBe(true)
+    const stored = await createLocalRepository().listTimeEntries()
+    const rounded = stored.filter((entry) => entry.endTime !== null)
+    expect(rounded.map((entry) => entryMinutes(entry))).toEqual([1])
+    // The rounding grew into the free time before the session, so the stored
+    // minute does not reach into the future.
+    expect(Date.parse(rounded[0]?.endTime ?? '')).toBeLessThanOrEqual(Date.now())
+  })
+
+  it('start tracks again when the rounded session could not grow into the past', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    const now = Date.now()
+    // The session directly follows another entry, so the rounding has to reach
+    // beyond the moment the timer is stopped.
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 95_000),
+      endTime: new Date(now - 35_000),
+    })
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 35_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.stop()
+    })
+    await waitFor(() => expect(result.current.status.running).toBeUndefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.start(project.id)
+    })
+
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    expect(useToastStore.getState().toasts.every((toast) => toast.variant === 'default')).toBe(true)
+    const stored = await createLocalRepository().listTimeEntries()
+    const rounded = stored.filter((entry) => entry.endTime !== null)
+    expect(rounded.map((entry) => entryMinutes(entry))).toEqual([1, 1])
+    // The stored minute reaches past the stop, so tracking continues at its end.
+    expect(result.current.status.running?.startTime).toBe(rounded[1]?.endTime)
+  })
+
   it('pause closes the running entry and sets paused state', async () => {
     const project = await seedProject('Website')
     const now = new Date()

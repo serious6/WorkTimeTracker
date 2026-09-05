@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/features/projects/project-schema'
-import type { TimeEntry } from '@/features/time-entries/time-entry-schema'
+import { DELETED_PROJECT_NAME, type TimeEntry } from '@/features/time-entries/time-entry-schema'
 import { TimeByProjectCard } from './time-by-project-card'
 
 function project(id: number, name: string, color = '#22c55e'): Project {
@@ -148,5 +148,38 @@ describe('TimeByProjectCard', () => {
     fireEvent.change(screen.getByLabelText('Chart range'), { target: { value: 'custom' } })
     fireEvent.change(screen.getByLabelText('Range end'), { target: { value: '2026-08-15' } })
     expect((screen.getByLabelText('Range end') as HTMLInputElement).value).toBe('2026-08-15')
+  })
+
+  it('shows the full project name of a truncated legend entry as a tooltip', () => {
+    const longName = 'Website Redesign for the Marketing Department 2026'
+    const projects = [project(1, longName)]
+    const entries = [entry(1, 1, localIso(27, 0), localIso(27, 1))]
+    render(
+      <TimeByProjectCard
+        entries={entries}
+        now={now}
+        onSelectProject={vi.fn()}
+        projects={projects}
+        referenceDate={referenceDate}
+        weekStartsOn="monday"
+      />,
+    )
+    expect(screen.getByTitle(longName)).toHaveTextContent(longName)
+    expect(screen.getByRole('button', { name: new RegExp(longName) })).toBeInTheDocument()
+  })
+
+  it('shows the deleted project fallback name as a tooltip', () => {
+    const entries = [entry(1, 99, localIso(27, 0), localIso(27, 1))]
+    render(
+      <TimeByProjectCard
+        entries={entries}
+        now={now}
+        onSelectProject={vi.fn()}
+        projects={[]}
+        referenceDate={referenceDate}
+        weekStartsOn="monday"
+      />,
+    )
+    expect(screen.getByTitle(DELETED_PROJECT_NAME)).toHaveTextContent(DELETED_PROJECT_NAME)
   })
 })

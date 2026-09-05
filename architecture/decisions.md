@@ -111,10 +111,12 @@ sleep without trusting a client-side clock.
 
 **Decision:** Mutations write audit rows in the same transaction as the change. A running timer is a
 `time_entries` row with `end_time` null. Recovery reconciles the stored entries; stopping rounds once
-and stores the rounded result.
+and stores the rounded result. A segment that rounds up grows into the free time before it instead of
+ending ahead of the clock, and a new timer starts at that end when the space was too small.
 
 **Consequences:** Rejected writes do not produce audit rows. Reports, exports, and balances derive
-from stored timestamps and do not round a second time.
+from stored timestamps and do not round a second time. Rounding never blocks tracking the current
+moment.
 
 ## Harden development and webview entry points
 
