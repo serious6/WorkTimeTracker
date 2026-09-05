@@ -518,7 +518,6 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::Ordering;
 
     /// The command source without the test module, so that the scanning tests
     /// below do not read their own string literals as commands.
@@ -654,12 +653,12 @@ mod tests {
 
     #[test]
     fn verifies_a_dummy_hash_when_the_email_is_unknown() {
-        let before = auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst);
+        let before = auth::dummy_verifications();
 
         assert_eq!(verify_credentials(None, "Str0ng-Passphrase!!x"), None);
 
         assert_eq!(
-            auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst),
+            auth::dummy_verifications(),
             before + 1,
             "an unknown email must still verify a password"
         );
@@ -668,7 +667,7 @@ mod tests {
     #[test]
     fn verifies_the_stored_hash_of_a_known_email() {
         let hash = auth::hash_password("Str0ng-Passphrase!!x").unwrap();
-        let before = auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst);
+        let before = auth::dummy_verifications();
 
         assert_eq!(
             verify_credentials(Some((7, hash.clone())), "Str0ng-Passphrase!!x"),
@@ -676,6 +675,6 @@ mod tests {
         );
         assert_eq!(verify_credentials(Some((7, hash)), "wrong-password"), None);
 
-        assert_eq!(auth::DUMMY_VERIFICATIONS.load(Ordering::SeqCst), before);
+        assert_eq!(auth::dummy_verifications(), before);
     }
 }

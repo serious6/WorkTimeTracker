@@ -292,14 +292,23 @@ static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
 });
 
 #[cfg(test)]
-pub static DUMMY_VERIFICATIONS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+thread_local! {
+    /// Counted per thread, so that tests running in parallel never observe the
+    /// verifications of another test.
+    static DUMMY_VERIFICATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Number of dummy verifications spent by the calling thread.
+#[cfg(test)]
+pub fn dummy_verifications() -> usize {
+    DUMMY_VERIFICATIONS.with(std::cell::Cell::get)
+}
 
 /// Spends the work of a verification without a stored hash. Always false, the
 /// dummy password is never known to a caller.
 pub fn verify_dummy_password(password: &str) -> bool {
     #[cfg(test)]
-    DUMMY_VERIFICATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    DUMMY_VERIFICATIONS.with(|spent| spent.set(spent.get() + 1));
     verify_password(password, &DUMMY_HASH)
 }
 
