@@ -30,8 +30,9 @@ export function TimeEntryList({
   now: number
   onPlay: (projectId: number) => void
   onPause: () => void
-  /** Ends the session through the timer stop, which rounds or discards it. */
+  /** Required for running rows: timer stop rounds or discards, while pause keeps the entry open. */
   onStop: () => void
+  /** Optional so list-only callers keep the normal non-pending state by default. */
   isTimerPending?: boolean
   emptyState?: React.ReactNode
 }) {
@@ -89,7 +90,7 @@ export function TimeEntryList({
               </span>
               {running ? (
                 <>
-                  {/* Stop applies the rounding path; pause keeps the running entry open. */}
+                  {/* Stop stays available for archived projects and applies the rounding path. */}
                   <Button
                     aria-label={`Stop timer for ${name}`}
                     disabled={isTimerPending}
