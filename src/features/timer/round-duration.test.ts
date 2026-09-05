@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { roundToMinutes } from './round-duration'
+import { MINUTE_MS } from '@/lib/date'
+import { roundedStart, roundToMinutes } from './round-duration'
 
 function elapsedMs(hours: number, minutes: number, seconds: number): number {
   return ((hours * 60 + minutes) * 60 + seconds) * 1000
@@ -32,5 +33,36 @@ describe('roundToMinutes', () => {
 
   it('treats negative durations as zero', () => {
     expect(roundToMinutes(-1_000)).toBe(0)
+  })
+})
+
+describe('roundedStart', () => {
+  const FREE = Number.NEGATIVE_INFINITY
+  /** A session of 35 seconds, stored as the minute it rounds to. */
+  const startMs = new Date(2026, 0, 15, 9, 0, 0).getTime()
+  const stoppedAt = startMs + elapsedMs(0, 0, 35)
+
+  it('keeps the start when the rounded segment ends before the stop', () => {
+    expect(roundedStart(startMs, elapsedMs(0, 0, 30), stoppedAt, FREE)).toBe(startMs)
+  })
+
+  it('grows into the free time before the segment instead of into the future', () => {
+    expect(roundedStart(startMs, MINUTE_MS, stoppedAt, FREE)).toBe(stoppedAt - MINUTE_MS)
+  })
+
+  it('stops at the entry before it and leaves the rest in the future', () => {
+    expect(roundedStart(startMs, MINUTE_MS, stoppedAt, startMs)).toBe(startMs)
+  })
+
+  it('grows only as far as the entry before it allows', () => {
+    const free = startMs - elapsedMs(0, 0, 10)
+    expect(roundedStart(startMs, MINUTE_MS, stoppedAt, free)).toBe(free)
+  })
+
+  it('does not move tracked time into the previous day', () => {
+    const afterMidnight = new Date(2026, 0, 15, 0, 0, 5).getTime()
+    expect(
+      roundedStart(afterMidnight, MINUTE_MS, afterMidnight + elapsedMs(0, 0, 35), FREE),
+    ).toBe(new Date(2026, 0, 15).getTime())
   })
 })

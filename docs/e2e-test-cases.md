@@ -69,6 +69,7 @@ timer on it.
 | E12 | `E12: keeps a discarded session out of every total` | A timer ran for 29 seconds and was stopped | The user opens the dashboard, "Time Entries" and "Reports" | The session is nowhere: "No time tracked today", "No time entries yet." and "No time tracked this week." |
 | E13 | `E13: shows the rounded duration in every view` | A session of 2h 30m 30s was stopped | The user opens "Time Entries", "Reports" and "Working Time" and exports the month | Every view shows the same rounded 2h 31m and both the downloaded CSV and PDF contain 02:31 |
 | E14 | `E14: keeps the rounded duration after a reload` | A session of 1m 30s was stopped | The user reloads the application | The stored entry still shows 00:02:00, so the rounding is persisted and not only formatted |
+| E15 | `E15: starts the next session right after a rounded up session` | A session of 35 seconds was stopped and stored as "0h 01m" | The user starts the timer again at once, tracks 30 seconds, stops and starts once more | Both starts track without an overlap conflict, and the day keeps the two rounded minutes |
 
 ## Calendar
 

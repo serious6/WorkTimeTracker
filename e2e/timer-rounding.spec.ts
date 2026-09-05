@@ -42,6 +42,13 @@ async function stopTimer(page: Page) {
   await expect(trackingCard(page).getByRole('button', { name: 'Start timer' })).toBeVisible()
 }
 
+/** Starts the timer again on the project the tracking card still holds. */
+async function restartTimer(page: Page) {
+  await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
+  await expect(trackingCard(page).getByRole('button', { name: 'Stop timer' })).toBeVisible()
+  await expect(page.getByText('This time overlaps with another time entry')).toBeHidden()
+}
+
 /**
  * The clock ticks while the application starts, so no timer of the page stays
  * pending, and is frozen afterwards. From then on only `clock.fastForward`
@@ -182,4 +189,24 @@ test('E14: keeps the rounded duration after a reload', async ({ page }) => {
 
   await expect(page.getByText('Total: 0h 02m')).toBeVisible()
   await expect(page.getByText('00:02:00')).toBeVisible()
+})
+
+// E15 in docs/e2e-test-cases.md
+test('E15: starts the next session right after a rounded up session', async ({ page }) => {
+  await startTimer(page, PROJECT)
+  await page.clock.fastForward('00:00:35')
+  await stopTimer(page)
+  await expect(page.getByText(`0h 01m added to ${PROJECT}`)).toBeVisible()
+
+  // The stored minute is a rounding convention and must not block tracking now.
+  await restartTimer(page)
+
+  // The second session directly follows the first one, so its rounded minute
+  // reaches past the stop and the next session continues at that end.
+  await page.clock.fastForward('00:00:30')
+  await stopTimer(page)
+  await expect(page.getByText('Total: 0h 02m')).toBeVisible()
+
+  await restartTimer(page)
+  await expect(page.getByText('00:01:00')).toHaveCount(2)
 })
