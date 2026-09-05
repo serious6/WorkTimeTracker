@@ -5,6 +5,7 @@ import {
   renderWithProviders,
   resetAppState,
   seedProject,
+  seedTimeEntry,
   signIn,
 } from '@/test/harness'
 import { TimeManagementPage } from './time-management-page'
@@ -83,5 +84,21 @@ describe('TimeManagementPage', () => {
   it('shows empty state for the day list', async () => {
     renderWithProviders(<TimeManagementPage />)
     expect(await screen.findByText(/no time tracked on this day/i)).toBeInTheDocument()
+  })
+
+  it('stops a running entry from the day list', async () => {
+    const project = await seedProject('Alpha')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 60_000),
+      endTime: null,
+    })
+
+    renderWithProviders(<TimeManagementPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /stop timer for alpha/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop timer for alpha/i })).not.toBeInTheDocument(),
+    )
   })
 })
