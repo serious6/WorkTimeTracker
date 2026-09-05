@@ -1,3 +1,8 @@
+// A fuzz build drops the application entry point (see `run` below), so most of
+// the backend is only reachable from the `fuzzing` module and would otherwise
+// be reported as dead.
+#![cfg_attr(feature = "fuzzing", allow(dead_code, unused_imports))]
+
 mod auth;
 mod commands;
 mod config;
@@ -14,6 +19,9 @@ mod store;
 #[cfg(test)]
 mod test_support;
 mod window_state;
+
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 
 use auth::Sessions;
 use config::DbConfig;
@@ -84,6 +92,11 @@ pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// `tauri::generate_context!` expands to a value whose shape depends on
+// `debug_assertions`, which a fuzz build turns on inside an otherwise
+// optimized profile. The fuzz targets drive the pure parsers and validators
+// only, so the application entry point stays out of that build.
+#[cfg(not(feature = "fuzzing"))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log_panics();

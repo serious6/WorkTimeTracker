@@ -315,7 +315,7 @@ fn verify_owner_only(path: &Path) -> Result<(), PortableError> {
 /// Reads the `NAME=value` settings of the file. A line that is neither blank,
 /// a comment nor a setting the application reads fails the start, so a typo
 /// never passes as an unconfigured connection.
-fn parse(contents: &str) -> Result<HashMap<String, String>, PortableError> {
+pub(crate) fn parse(contents: &str) -> Result<HashMap<String, String>, PortableError> {
     let mut settings = HashMap::new();
     for (index, line) in contents.lines().enumerate() {
         let number = index + 1;

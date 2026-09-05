@@ -103,6 +103,43 @@ Run `npx playwright install --with-deps chromium` before the first e2e run in a 
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
 
+## Fuzzing
+
+Parsers and validators see input nobody wrote an example for: a driver error that ends up in a log,
+a hand-edited `WorkTimeTracker.env`, or a payload from a frontend that is one release ahead. They are
+covered from both sides.
+
+Property based tests run in the normal unit test suite, as `*.property.test.ts` next to their
+subject, and use [fast-check](https://fast-check.dev). They share the fixed seed configured in
+`src/test/setup.ts`, so a failure reproduces from its report.
+
+The Rust targets live in `src-tauri/fuzz` and are driven by
+[cargo-fuzz](https://rust-fuzz.github.io/book/cargo-fuzz.html), which needs a nightly toolchain:
+
+```sh
+rustup toolchain install nightly
+cargo install cargo-fuzz --locked
+cd src-tauri/fuzz
+cargo fuzz list
+cargo fuzz run redact -- -max_total_time=60
+```
+
+| Target | What it drives |
+| --- | --- |
+| `redact` | `logging::redact` and `redact_keeping_layout`: no panic, no secret left behind, stable after one pass. |
+| `database_url` | `config::redact_database_url`: a password never survives, and a value that is no URL is handled. |
+| `save_input` | `SaveTimeEntry`, `SaveProject` and `SaveAbsence` validation: what passes is canonical, trimmed, and within its limits. |
+| `portable_settings` | The `WorkTimeTracker.env` parser: only known settings are accepted, and the same file reads the same way twice. |
+
+The targets reach the backend through the `fuzzing` feature of `src-tauri/Cargo.toml`, which opens
+the `fuzzing` module and leaves the Tauri entry point out of the build. The feature is off in every
+shipped build.
+
+A finding is written to `src-tauri/fuzz/artifacts/<target>/`. Reproduce it with
+`cargo fuzz run <target> artifacts/<target>/<crash file>`, shrink it with `cargo fuzz tmin`, then turn
+it into a unit test next to the code before fixing it. The `Fuzz` workflow runs a short search for
+every backend pull request and a longer one weekly, and uploads the artifacts of a failing run.
+
 ## Security checks
 
 These run in CI only; none of them is part of the local pull request checklist.
@@ -110,7 +147,7 @@ These run in CI only; none of them is part of the local pull request checklist.
 | Workflow | What it does |
 | --- | --- |
 | `codeql.yml` | CodeQL `security-extended` for `javascript-typescript` and `rust` (public preview) on pushes, pull requests, and weekly. |
-| `security.yml` → `osv-scanner` | OSV advisories for `package-lock.json` and `src-tauri/Cargo.lock`. A pull request fails only on advisories it adds; the run on `main` reports the full inventory to Security > Code scanning without failing, because the Tauri dependency tree carries GTK crates with open RUSTSEC advisories that cannot be resolved here. |
+| `security.yml` → `osv-scanner` | OSV advisories for `package-lock.json` and `src-tauri/Cargo.lock`. `src-tauri/fuzz/Cargo.lock` is excluded through `src-tauri/fuzz/osv-scanner.toml`, because the dev-only fuzz harness duplicates the tree that is already scanned. A pull request fails only on advisories it adds; the run on `main` reports the full inventory to Security > Code scanning without failing, because the Tauri dependency tree carries GTK crates with open RUSTSEC advisories that cannot be resolved here. |
 | `security.yml` → `npm-audit` | `npm audit --audit-level=high`; moderate and lower findings are left to Dependabot. |
 | `security.yml` → `semgrep` | Named Semgrep packs (`p/typescript`, `p/react`, `p/secrets`, `p/github-actions`) on pull requests, so the rule set that gates the check is visible in the workflow rather than resolved from the repository URL. Rust is left to CodeQL. |
 | `security.yml` → `gitleaks` | Full-history secret scan, complementing GitHub push protection. |
@@ -131,6 +168,7 @@ portable/           Example configuration shipped with the portable archives
 scripts/            Repository tooling
 src/                React app: app, components, db, features, lib, pages, test
 src-tauri/src/      Rust backend: auth, commands, config, connection, contract, models, store
+src-tauri/fuzz/     cargo-fuzz targets for the backend parsers and validators
 ```
 
 ## Release checks
