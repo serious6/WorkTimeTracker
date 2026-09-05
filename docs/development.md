@@ -198,8 +198,8 @@ pauses after `bundle` and waits for a reviewer to approve the `production` envir
 anything becomes public, so the reviewer can inspect the produced artifacts first. This only gates
 the run when `production` has **Required reviewers** configured under Settings → Environments →
 production; without that, the `environment:` key adds no approval step. A deployment branch rule
-can additionally restrict `production` to `main`, so a release cannot be dispatched from an
-arbitrary branch.
+can additionally restrict the `production` jobs to `main`; a run dispatched from another branch can
+still build artifacts, but it cannot migrate the database or publish a release.
 
 ### Portable archives
 
