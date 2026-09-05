@@ -103,6 +103,43 @@ Run `npx playwright install --with-deps chromium` before the first e2e run in a 
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
 
+## Fuzzing
+
+Parsers and validators see input nobody wrote an example for: a driver error that ends up in a log,
+a hand-edited `WorkTimeTracker.env`, or a payload from a frontend that is one release ahead. They are
+covered from both sides.
+
+Property based tests run in the normal unit test suite, as `*.property.test.ts` next to their
+subject, and use [fast-check](https://fast-check.dev). They share the fixed seed configured in
+`src/test/setup.ts`, so a failure reproduces from its report.
+
+The Rust targets live in `src-tauri/fuzz` and are driven by
+[cargo-fuzz](https://rust-fuzz.github.io/book/cargo-fuzz.html), which needs a nightly toolchain:
+
+```sh
+rustup toolchain install nightly
+cargo install cargo-fuzz --locked
+cd src-tauri/fuzz
+cargo fuzz list
+cargo fuzz run redact -- -max_total_time=60
+```
+
+| Target | What it drives |
+| --- | --- |
+| `redact` | `logging::redact` and `redact_keeping_layout`: no panic, no secret left behind, stable after one pass. |
+| `database_url` | `config::redact_database_url`: a password never survives, and a value that is no URL is handled. |
+| `save_input` | `SaveTimeEntry`, `SaveProject` and `SaveAbsence` validation: what passes is canonical, trimmed, and within its limits. |
+| `portable_settings` | The `WorkTimeTracker.env` parser: only known settings are accepted, and the same file reads the same way twice. |
+
+The targets reach the backend through the `fuzzing` feature of `src-tauri/Cargo.toml`, which opens
+the `fuzzing` module and leaves the Tauri entry point out of the build. The feature is off in every
+shipped build.
+
+A finding is written to `src-tauri/fuzz/artifacts/<target>/`. Reproduce it with
+`cargo fuzz run <target> artifacts/<target>/<crash file>`, shrink it with `cargo fuzz tmin`, then turn
+it into a unit test next to the code before fixing it. The `Fuzz` workflow runs a short search for
+every backend pull request and a longer one weekly, and uploads the artifacts of a failing run.
+
 ## Security checks
 
 These run in CI only; none of them is part of the local pull request checklist.
@@ -131,6 +168,7 @@ portable/           Example configuration shipped with the portable archives
 scripts/            Repository tooling
 src/                React app: app, components, db, features, lib, pages, test
 src-tauri/src/      Rust backend: auth, commands, config, connection, contract, models, store
+src-tauri/fuzz/     cargo-fuzz targets for the backend parsers and validators
 ```
 
 ## Release checks

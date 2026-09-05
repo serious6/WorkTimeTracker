@@ -170,14 +170,31 @@ pub fn redact_keeping_layout(message: &str) -> String {
     redacted
 }
 
+/// Whether any token of `message` still carries an e-mail address, a password
+/// hash or a file system path. The fuzz target in `src-tauri/fuzz` asserts
+/// this is false for everything [`redact`] returns.
+#[cfg(feature = "fuzzing")]
+pub fn leaks_secret(message: &str) -> bool {
+    message.split_whitespace().any(needs_redaction)
+}
+
+/// Redacts one whitespace-separated token. A `key=value` token keeps its key,
+/// so a log line stays readable, but only while that key is no secret itself
+/// and while what remains of the token no longer reads as one - a hash cut at
+/// a colon must not survive as the label of its own redacted value.
 fn redact_token(token: &str) -> String {
-    match split_pair(token) {
-        Some((key, separator, value)) if !is_path(token) && needs_redaction(value) => {
-            format!("{key}{separator}{}", replacement(value))
+    if let Some((key, separator, value)) = split_pair(token) {
+        if !is_path(token) && !needs_redaction(key) && needs_redaction(value) {
+            let redacted = format!("{key}{separator}{}", replacement(value));
+            if !needs_redaction(&redacted) {
+                return redacted;
+            }
         }
-        _ if needs_redaction(token) => replacement(token).to_owned(),
-        _ => token.to_owned(),
     }
+    if needs_redaction(token) {
+        return replacement(token).to_owned();
+    }
+    token.to_owned()
 }
 
 fn replacement(token: &str) -> &'static str {
@@ -270,7 +287,11 @@ fn match_sensitive_key(message: &str, index: usize) -> Option<(&'static str, usi
 
     SENSITIVE_KEYS.iter().find_map(|key| {
         let key_end = key_start + key.len();
-        if key_end > message.len() || !message[key_start..key_end].eq_ignore_ascii_case(key) {
+        // A key is ASCII, so comparing bytes both avoids slicing a multi-byte
+        // character in half and proves `key_end` is a character boundary.
+        if key_end > message.len()
+            || !message.as_bytes()[key_start..key_end].eq_ignore_ascii_case(key.as_bytes())
+        {
             return None;
         }
 
@@ -328,7 +349,10 @@ fn authorization_value_end(message: &str, index: usize) -> Option<usize> {
 
     SCHEMES.iter().find_map(|scheme| {
         let scheme_end = index + scheme.len();
-        if scheme_end > message.len() || !message[index..scheme_end].eq_ignore_ascii_case(scheme) {
+        // Byte comparison for the same reason as in `match_sensitive_key`.
+        if scheme_end > message.len()
+            || !message.as_bytes()[index..scheme_end].eq_ignore_ascii_case(scheme.as_bytes())
+        {
             return None;
         }
 
@@ -387,6 +411,29 @@ mod tests {
         assert_eq!(
             redact("This time overlaps with another time entry"),
             "This time overlaps with another time entry"
+        );
+    }
+
+    /// A key that carries a secret itself must not stay readable next to the
+    /// redacted value it labels. Found by
+    /// `src-tauri/fuzz/fuzz_targets/redact.rs`.
+    #[test]
+    fn removes_a_token_whose_key_is_a_secret() {
+        assert_eq!(redact("$2y$abc:jane@example.com"), "[redacted]");
+        assert_eq!(redact("jane@example.com=john@example.com"), "[redacted]");
+    }
+
+    /// A driver error, a path or a panic payload can carry any UTF-8, and the
+    /// message is redacted inside the panic hook, where a second panic would
+    /// lose the report. Found by `src-tauri/fuzz/fuzz_targets/redact.rs`.
+    #[test]
+    fn survives_multi_byte_characters() {
+        assert_eq!(redact("\u{5b4}"), "\u{5b4}");
+        assert_eq!(redact("'\u{5b4}"), "'\u{5b4}");
+        assert_eq!(redact("token\u{5b4}: kept"), "token\u{5b4}: kept");
+        assert_eq!(
+            redact("Authorization: Bearer\u{5b4}"),
+            "Authorization: [redacted]"
         );
     }
 

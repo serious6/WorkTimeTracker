@@ -1,6 +1,15 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
+import fc from 'fast-check'
 import { afterEach } from 'vitest'
+
+/**
+ * The property based tests (`*.property.test.ts`) explore generated input, so
+ * they get a fixed seed: a failure reproduces from the report instead of only
+ * on the machine that saw it. Broad, unseeded exploration of the same code is
+ * the job of the fuzz targets in `src-tauri/fuzz`.
+ */
+fc.configureGlobal({ seed: 20_260_827, numRuns: 500 })
 
 afterEach(cleanup)
 

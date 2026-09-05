@@ -14,6 +14,12 @@ rust-version = "1.95"
 name = "work_time_tracker_lib"
 crate-type = ["rlib"]
 
+[features]
+# Opens the `fuzzing` module of `src/lib.rs` for the fuzz targets in
+# `src-tauri/fuzz`. It stays off for every shipped build, so the modules the
+# targets reach into remain private outside of a fuzzing run.
+fuzzing = []
+
 [build-dependencies]
 tauri-build = { version = "2.6.3", features = [] }
 

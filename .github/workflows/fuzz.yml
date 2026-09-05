@@ -1,0 +1,63 @@
+name: Fuzz
+
+# Fuzzing explores input no example based test was written for, so it runs on a
+# schedule and for changes to the backend or the targets themselves. Each run is
+# a short smoke run; findings are reproduced locally with the crash artifact.
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - '.github/workflows/fuzz.yml'
+  schedule:
+    # Mondays, 04:17 UTC.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Seconds each target runs. A pull request gets a smoke run, the weekly run
+  # and a manual one search longer.
+  FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '60' || '600' }}
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # cargo-fuzz builds the targets with the sanitizer and coverage
+      # instrumentation of the nightly compiler.
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri/fuzz
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Fuzz
+        working-directory: src-tauri/fuzz
+        run: |
+          for target in redact database_url save_input portable_settings; do
+            echo "::group::$target"
+            cargo fuzz run "$target" -- -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=4096
+            echo "::endgroup::"
+          done
+      # The input that reproduces a finding is the only thing needed to turn it
+      # into a failing unit test, so it must survive the run.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: fuzz-artifacts
+          path: src-tauri/fuzz/artifacts/
+          retention-days: 7

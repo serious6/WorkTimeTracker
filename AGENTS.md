@@ -27,6 +27,9 @@ See [`docs/development.md`](docs/development.md#repository-layout).
 ## Test conventions
 
 - Frontend unit tests sit next to the subject as `<name>.test.ts` or `<name>.test.tsx` under `src/`.
+- Property based tests sit next to the subject as `<name>.property.test.ts` and use `fast-check`;
+  `src/test/setup.ts` pins their seed. The matching Rust fuzz targets live in `src-tauri/fuzz` and
+  reach the backend through its `fuzzing` feature.
 - Script tests sit next to the script as `scripts/<name>.test.mjs`.
 - Rust tests are `#[cfg(test)]` modules in the file they cover; shared helpers live in
   `src-tauri/src/test_support.rs`.
@@ -54,6 +57,7 @@ See [`docs/development.md`](docs/development.md#repository-layout).
 | Rust tests | `cargo test --manifest-path src-tauri/Cargo.toml` |
 | Architecture model | `npm run architecture:check` |
 | License notice | `npm run licenses:check` |
+| Fuzz one Rust target | `cd src-tauri/fuzz && cargo fuzz run redact -- -max_total_time=60` |
 
 ## Change rules
 

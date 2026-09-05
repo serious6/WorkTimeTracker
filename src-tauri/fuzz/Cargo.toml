@@ -1,0 +1,53 @@
+[package]
+name = "work-time-tracker-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "MIT"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+
+[dependencies.work-time-tracker]
+path = ".."
+features = ["fuzzing"]
+
+# Own workspace, so the Tauri build and `cargo clippy --all-targets` of
+# `src-tauri` never pull in the nightly-only fuzz targets.
+[workspace]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "redact"
+path = "fuzz_targets/redact.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "database_url"
+path = "fuzz_targets/database_url.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "save_input"
+path = "fuzz_targets/save_input.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "portable_settings"
+path = "fuzz_targets/portable_settings.rs"
+test = false
+doc = false
+bench = false

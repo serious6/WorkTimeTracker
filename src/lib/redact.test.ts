@@ -43,6 +43,11 @@ describe('redact', () => {
     )
   })
 
+  it('removes tokens whose key carries a secret itself', () => {
+    expect(redact('$2y$abc:jane@example.com')).toBe('[redacted]')
+    expect(redact('jane@example.com=john@example.com')).toBe('[redacted]')
+  })
+
   it('keeps plain words that only look similar', () => {
     expect(redact('Email or password is incorrect')).toBe('Email or password is incorrect')
     expect(redact('ratio 1:2 stays')).toBe('ratio 1:2 stays')

@@ -166,6 +166,21 @@ function splitPair(token: string): [string, string, string] | null {
 }
 
 /**
+ * Redacts one whitespace-separated token. A `key=value` token keeps its key,
+ * so a log line stays readable, but only while that key is no secret itself
+ * and while what remains of the token no longer reads as one - a hash cut at a
+ * colon must not survive as the label of its own redacted value.
+ */
+function redactToken(token: string): string {
+  const pair = splitPair(token)
+  if (pair && !isPath(token) && !needsRedaction(pair[0]) && needsRedaction(pair[2])) {
+    const redacted = `${pair[0]}${pair[1]}${replacement(pair[2])}`
+    if (!needsRedaction(redacted)) return redacted
+  }
+  return needsRedaction(token) ? replacement(token) : token
+}
+
+/**
  * Removes credentials, hashes, e-mail addresses and file system paths from a
  * message before it reaches a log. The Rust logger applies the same rules.
  */
@@ -173,12 +188,7 @@ export function redact(message: string): string {
   const parts: string[] = []
 
   for (const token of redactSensitiveValues(message).split(/\s+/).filter(Boolean)) {
-    const pair = splitPair(token)
-    if (pair && !isPath(token) && needsRedaction(pair[2])) {
-      parts.push(`${pair[0]}${pair[1]}${replacement(pair[2])}`)
-      continue
-    }
-    parts.push(needsRedaction(token) ? replacement(token) : token)
+    parts.push(redactToken(token))
   }
 
   return parts.join(' ')
