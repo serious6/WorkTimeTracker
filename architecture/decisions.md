@@ -1,9 +1,9 @@
 # Architecture decisions
 
-Each record follows the arc42 decision template: **Context**, **Decision**, and **Consequences**,
-followed by the implementation detail that decision commits the code to. Every rule is recorded
-once: other documents link to a record here instead of restating it. Superseded implementation notes
-are intentionally omitted; keep this file for decisions that affect future changes.
+Each record is short on purpose: a **Status**, then **Context**, **Decision**, and **Consequences**.
+Implementation detail belongs in the module documentation and in the tests that hold the decision;
+records are never numbered, so one can be added or retired without renumbering the rest. Every rule
+is written down once - other documents link to the record instead of restating it.
 
 ## Keep the Rust backend and browser fallback behind one contract
 
@@ -83,22 +83,10 @@ or let a new code path forget the check.
 reference a caller-supplied foreign key first prove that the referenced row belongs to the user.
 Foreign ids and unknown ids both map to `notFound`.
 
-**Consequences:** New reads, updates, deletes, and foreign-key writes must keep the ownership check in
-SQL or in the equivalent browser fallback filter. A write that changes no row is an error, not a
-silent success.
-
-Every statement in `src-tauri/src/postgres_store.rs` that names a record by an id the caller
-supplied carries `AND user_id = $n`, and a write that names a project (`create_time_entry`,
-`update_time_entry`, `switch_running_time_entry`, the budget writers) checks that reference the same
-way. The module documentation of `postgres_store.rs` lists the few statements that carry no
-`user_id` - the account lookups of a sign in, the lockout counters, the auth trail and the
-installation metadata - with the reason each is safe.
-
-A read, an update and a delete of a record of another account therefore answer `notFound`, the same
-answer an unknown id gets, so the id space of another account stays indistinguishable from an empty
-one. A delete of an id that matches nothing reports `notFound` as well, because a silent success
-cannot be told apart from a delete that was refused. `local-repository.ts` follows the same rule, so
-the browser fallback and the Rust backend answer alike.
+**Consequences:** New reads, updates, deletes, and foreign-key writes must keep the ownership check
+in SQL or in the equivalent browser fallback filter. A write that changes no row answers `notFound`
+instead of reporting a silent success. The module documentation of `postgres_store.rs` lists the few
+statements that carry no `user_id`, with the reason each is safe.
 
 ## Bound history queries and page full-account calculations
 
@@ -132,195 +120,69 @@ from stored timestamps and do not round a second time.
 
 **Status:** accepted
 
-**Context:** The dev server, CSP, and web inspector determine whether an injected script or a network
-peer can read application data.
+**Context:** The dev server, the CSP, and the web inspector decide whether an injected script or a
+network peer can read application data.
 
-**Decision:** The dev server binds `127.0.0.1` unless `TAURI_DEV_HOST` is set deliberately. The Tauri
-CSP allows bundled scripts and styles only, no inline/eval execution, and IPC-only connections.
-Zod is imported through `src/lib/zod.ts` so schemas run without eval. Web inspector support remains
+**Decision:** The dev server binds `127.0.0.1` unless `TAURI_DEV_HOST` is set deliberately.
+`app.security.csp` names every directive explicitly, grants neither `'unsafe-inline'` nor
+`'unsafe-eval'`, and limits `connect-src` to the IPC channel. Zod is imported through
+`src/lib/zod.ts`, which configures `jitless`, so no schema needs `eval`. The web inspector stays
 compiled into debug builds only.
 
-**Consequences:** LAN testing is opt-in and temporary. New frontend dependencies must work under the
-CSP. Release builds must not enable `tauri/devtools` or release `debug-assertions`.
-
-### Content security policy
-
-`app.security.csp` in `src-tauri/tauri.conf.json` names every directive it relies on instead of
-falling back to `default-src`, and it grants neither `'unsafe-inline'` nor `'unsafe-eval'`:
-scripts and stylesheets come from the bundle (`'self'`), plugins are refused (`object-src 'none'`),
-the document base cannot be rewritten (`base-uri 'self'`), no form may leave the application
-(`form-action 'none'`) and nothing may embed it (`frame-ancestors 'none'`). `connect-src` stays
-limited to the IPC channel, so an injected script has no channel to exfiltrate a session id.
-`dangerousDisableAssetCspModification` stays unset, so Tauri adds the nonces of its own injected
-script on top.
-
-The application needs no inline style: React writes the dynamic project colors and progress widths
-through the CSSOM (`element.style`), which the policy does not gate, and Vite links the compiled
-stylesheet as a file. Zod is the one dependency that wants `eval`: it compiles an object schema with
-`new Function` when the environment allows it and probes for that capability with a `new Function`
-that it catches, which the policy still reports as a violation. `src/lib/zod.ts` therefore configures
-`jitless` once and re-exports `z`; every schema imports Zod from there, so the configuration is
-applied before the first schema is constructed, and `no-restricted-imports` in `.oxlintrc.json`
-keeps a direct `zod` import from slipping back in.
-
-`e2e/security-csp.spec.ts` reads the policy from the Tauri configuration, serves the production
-bundle with it and fails on any `securitypolicyviolation`, so a change that needs inline code is
-noticed in CI instead of in the packaged application. The policy is not applied by the dev server:
-`tauri dev` loads `devUrl` directly, where Vite injects its stylesheets and its HMR client inline.
-
-### The web inspector belongs to a debug build only
-
-An open web inspector reads the running application: the session id in `sessionStorage`, the
-arguments and answers of every IPC command, and the data of the signed in account. A shipped build
-therefore carries no devtools, while `tauri dev` keeps them.
-
-Tauri already draws that line. Everything that opens the inspector is compiled under
-`cfg(any(debug_assertions, feature = "devtools"))`: the `with_devtools` call that turns the
-developer extras of the webview and its "Inspect Element" entry on, the `toggle-devtools.js` that
-tauri injects for the keyboard shortcut, the `internal_toggle_devtools` command behind it and
-`WebviewWindow::open_devtools`. `devtools` is not one of the default features of the `tauri` crate,
-so `tauri dev` compiles the dev profile and keeps them while `npm run tauri build` compiles the
-release profile and drops them — as long as no cargo feature switches them back on and the bundle
-is not built with `--debug`.
-
-Tests in `src-tauri/src/lib.rs` hold that guarantee instead of leaving it to whoever reads the
-manifest next: `devtools_stay_out_of_a_release_build` fails when a feature of `src-tauri/Cargo.toml`
-enables `tauri/devtools` or a profile turns `debug-assertions` back on for the release build, and
-`a_devtools_call_carries_a_debug_assertions_guard` fails when a backend source reaches the devtools
-without a condition that governs the call. That scan reads the `cfg` attribute of the item or the
-statement, the attributes of the enclosing items and blocks and a `cfg!` around the block, and it
-evaluates the predicate with `debug_assertions` off and every other flag on, so
-`any(debug_assertions, windows)` and `not(debug_assertions)` count as no guard at all. Comments and
-string literals are stripped before the scan. `a_guard_that_governs_the_call_is_accepted` and
-`a_guard_that_governs_nothing_is_rejected` pin that behaviour on fixtures. What the tests cannot see
-is a `debug-assertions` flag handed to the compiler from outside the manifest, through `RUSTFLAGS`
-or a `.cargo/config.toml`; the release workflow sets neither.
-
-The window in `tauri.conf.json` names no `devtools` field on purpose. `false` would remove the
-inspector from `tauri dev` as well, and `true` cannot bring back what the release profile has
-already compiled out.
+**Consequences:** LAN testing is opt-in and temporary. A new frontend dependency has to work under
+the CSP; `e2e/security-csp.spec.ts` fails a bundle that needs inline code, and the tests in
+`src-tauri/src/lib.rs` fail a release build that enables `tauri/devtools` or `debug-assertions`.
 
 ## Separate local development databases from verified production databases
 
 **Status:** accepted
 
-**Context:** Development, tests, and CI must never reach a deployed database. Production needs a
-remote database, but only with verified transport and an explicit migration step.
+**Context:** Development, tests, and CI must never reach a deployed database. A production build
+needs a remote database, but only with verified transport and a deliberate migration step.
 
-**Decision:** `WORK_TIME_TRACKER_ENV` defaults to `development`, where database hosts must be
-`localhost`, loopback, or the compose host `db` without TLS. `production` refuses local hosts and
-requires `sslmode=verify-full` with a pinned CA from connection-string `sslrootcert` or
-`SUPABASE_DB_ROOT_CERT`. The release workflow injects production connection values from the
-protected `production` environment.
+**Decision:** The mode is explicit rather than derived from the host. `WORK_TIME_TRACKER_ENV`
+defaults to `development`, which accepts `localhost`, a loopback address, or the compose host `db`
+only. `production` refuses local hosts and accepts a remote one only with `sslmode=verify-full`
+against the certificate authority pinned in `sslrootcert` or `SUPABASE_DB_ROOT_CERT`; nothing
+relaxes that verification. Connection details are configuration: the release workflow injects them
+from the protected `production` environment, and a portable installation reads them from
+`WorkTimeTracker.env`, whose secrets move into the credential store of the user account on the first
+start.
 
-**Consequences:** Test helpers refuse to create or drop databases outside development/local hosts.
-Remote connection strings are redacted before logging. Production database credentials never belong
-in the repository or CI jobs outside the protected migration step.
-
-A deployment reaches a managed Postgres, which is a remote host, so the strict local-only guard of
-`connection::plan` could not stay the only rule. The mode is explicit rather than derived from the
-host: `WORK_TIME_TRACKER_ENV` is `development` unless it says `production`, and only a production
-process may name a remote host. That keeps a developer checkout, a test run and a CI job on a local
-database even when a remote connection string happens to be present in the environment, and
-`test_support` refuses to create or drop a database whenever the mode is production or the host is
-not local, so a deployed server can never be the target of a test.
-
-A remote connection is only accepted with `sslmode=verify-full` and a pinned certificate
-authority. The chain and the host name are verified by `rustls` against that one authority instead
-of the certificate store of the machine, and there is deliberately no environment variable, flag or
-debug switch that relaxes the verification: a remote host without a verifiable certificate fails to
-connect instead of falling back to an unencrypted session. The driver itself only knows
-`disable`, `prefer` and `require`, so `connection.rs` splits `sslmode` and `sslrootcert` off the
-connection string, asks the driver for `require`, and implements the verification in the connector.
-A local connection keeps the plain session the compose database offers and is rejected if it asks
-for an ssl mode that verifies nothing, so a half-secure configuration is never silently accepted.
-The rule holds in both directions: a production process that is pointed at `localhost`, a loopback
-address or a Unix socket is refused as well, so production cannot fall back to a plaintext local
-database.
-
-A deployment shares one database between clients, so migrating it on every start is not
-acceptable: a production process only verifies that every migration of `MIGRATIONS` is recorded and
-refuses to start otherwise. Applying them is a deliberate step, `WORK_TIME_TRACKER_DB_MIGRATE=true`
-in a separately approved job that runs after the release artifacts are built. Only that step reads
-the flag: `DbConfig::resolve`, which every application process uses, resolves a production
-database as verify-only whatever the environment asks for, and `DbConfig::for_migration` of the
-`migrate` entry point is the single place that may authorize applying them. The version of the
-running build is reported from the binary, so no client writes into the shared `app_metadata` row;
-only the migration step records the release that established the schema.
-
-The connection details are configuration, not code. No host, project reference, user or password is
-part of the repository: they are read from `DATABASE_URL` or assembled from `SUPABASE_DB_HOST`,
-`SUPABASE_DB_PORT`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD`, `SUPABASE_DB_NAME` and
-`SUPABASE_DB_ROOT_CERT`, and the release workflow injects them from the secrets of the protected
-`production` environment only. Every message that names a connection string passes
-`redact_database_url` first.
-
-A portable installation has no deployment that could inject them, so `portable.rs` reads the same
-settings from `WorkTimeTracker.env` next to the application, ahead of the resolution and with the
-process environment winning over the file, and resolves a relative `SUPABASE_DB_ROOT_CERT` against
-the folder of the application. Only a portable archive ships that file; without it the resolution
-sees the process environment alone, so an installed build and local development are unchanged. The
-file never migrates a database, and it is the configuration of a client of a remote database: it
-cannot relax the verification, because there is no setting for that.
-
-The folder of such an installation may be copied or synchronised, so it holds no secret. On the
-first start `DATABASE_URL` and `SUPABASE_DB_PASSWORD` are moved into the credential store of the
-user account - the Windows Credential Manager, which protects them with DPAPI in the scope of the
-current user, and the macOS Keychain, both of which work without administrator rights - and the
-file keeps a marker in their place. They are filed under the folder of that installation, resolved
-of its links and folded to lower case only on a filesystem that ignores case, so a second copy keeps
-its own connection and a build that carries no file removes none; deleting the file forgets the
-secrets of that folder again, and a removal that fails is reported instead of leaving a secret the
-user believes to be gone. A secret that can neither be stored nor read back fails the start instead
-of staying readable in the folder, unless the process environment carries it, which overrides the
-file as everywhere else. So does a file another account may reach: the file carries the connection
-in clear text until the first start absorbs it, which is a mode on macOS and a permission list on
-Windows, and the application checks it before reading and writes the file back for its owner alone.
-The failures name the file and the setting, never a value, and the release job refuses to pack an
-archive whose env file carries a secret.
+**Consequences:** Test helpers refuse to create or drop a database outside development and a local
+host. Connection strings pass `redact_database_url` before they are logged. Credentials never live
+in the repository, in a CI job outside the protected migration step, or in a portable folder that
+may be copied.
 
 ## The legal texts are versioned content, not layout
 
-The terms of service and the privacy policy are declared as data in
-`src/features/legal/legal-documents.ts` and rendered by one `LegalDocumentView`. A wording change
-therefore never touches a component, and both pages stay identical in structure and in the
-accessibility of their headings.
+**Status:** accepted
 
-Each document carries its own version and an ISO day. The day is shown as it is written instead of
-being formatted for the locale of the reader: it identifies a revision of a text, not a moment in a
-timezone, and every timestamp the application derives from the clock is already timezone dependent
-enough. An installed build keeps the revision it was released with, so a user can tell which text
-that build includes.
+**Context:** The terms of service and the privacy policy have to be comparable revisions, and they
+must state which of the two storage modes applies to the build the reader runs.
 
-Neither document is stored or synchronised, and the acceptance itself is not persisted. The
-registration form requires accepting both texts before it creates an account; after sign-in, the
-texts remain reachable from the account menu next to the third-party license notices.
+**Decision:** Both documents are data in `src/features/legal/legal-documents.ts`, rendered by one
+`LegalDocumentView`, each carrying its own version and an ISO day that is shown as written. Both
+texts name the two storage modes and state that the authors administer the hosted production
+database.
 
-Because the record above gives the application two storage modes, both texts name them instead of
-promising a single one: desktop development builds, browser development or test runs, and
-self-hosted production deployments keep the data in storage controlled by you or the organisation
-that deploys the application for you, while a released production build stores it in the hosted
-Postgres database in the EU. That is content again, so the distinction lives in the text, not in a
-component that would have to know the mode. The texts also state that the authors administer the
-production database and may read its contents to fix errors and evaluate usage, because a promise
-the deployment cannot keep would be worse than no promise.
+**Consequences:** A wording change is a content change and never touches a component. Registration
+requires accepting both texts; the acceptance itself is not persisted, and an installed build keeps
+the revision it was released with.
 
 ## Archiving retires a project, it never touches its records
 
-A project that is no longer worked on is archived instead of deleted: deletion detaches its entries
-(`project_id` becomes `NULL`) and the past reads as "Deleted project", which loses information the
-monthly record needs. The `archived` flag only removes the project from the selections that create
-time: the tracking picker, the time entry dialog and the quick add of the Time Management and Week
-views. It stays on the Projects page with an `archived` marker, keeps its total, and its entries,
-reports and exports are unchanged. A selection that already names an archived project — the edit of
-an existing entry, the budget of that project — keeps offering it, so an edit cannot silently drop
-the booked project.
+**Status:** accepted
 
-Archiving is therefore allowed while the timer runs on that project: the running entry is a normal
-row and stopping it must not fail because of a configuration change. The card keeps naming the
-project until the user stops or switches; the archived project is only gone from the picker list.
+**Context:** A project that is no longer worked on has to leave the selections that create time,
+while its history stays intact. Deleting it detaches its entries and the past reads as "Deleted
+project", which the monthly record cannot use.
 
-An overdue budget follows the same idea. Once the due date has passed or the tracked time exceeds
-the budget, selecting or tracking the project shows a status message next to the picker. It names
-the reason in text with an icon, never by colour alone, and it never blocks starting, switching or
-stopping the timer: recording what actually happened outweighs the plan.
+**Decision:** The `archived` flag removes the project from the pickers that create time only. It
+stays on the Projects page with a marker, keeps its total, entries, reports, and exports, and a
+selection that already names it keeps offering it. Archiving is allowed while its timer runs. An
+overdue or exhausted budget shows a status message with an icon next to the picker, never colour
+alone.
+
+**Consequences:** Recording what happened outweighs the plan: neither archiving nor a budget may
+block starting, switching, or stopping a timer, and no edit silently drops the booked project.
