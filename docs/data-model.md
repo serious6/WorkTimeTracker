@@ -467,6 +467,32 @@ retention of the auth events.
 | `key` | TEXT | yes | Only `app_version` today | PK |
 | `value` | TEXT | yes | Version of the release that applied the migrations | — |
 
+## Row level security
+
+Every query the backend runs already carries its own `AND user_id = $n` predicate. The policies in
+`drizzle/0000_init.sql` stand behind those predicates, so a statement that loses one reads and writes
+nothing instead of reaching another account.
+
+The application connects as one Postgres role for all of its users, so the signed-in account is named
+per connection rather than per database role: `PostgresStore::conn_for` sets `wtt.user_id` on the
+connection it hands out and `PostgresStore::conn` clears it again, and `wtt.current_user_id()` reads
+it back. A connection that names no user reaches no user-owned row at all.
+
+- Every table with a `user_id` has RLS `ENABLE`d **and** `FORCE`d. The application owns its tables,
+  and an owner bypasses a policy that is only enabled.
+- The role the application connects as must be neither a superuser nor `BYPASSRLS`; both ignore the
+  policies entirely. See [`development.md`](development.md#the-application-database-role).
+- `wtt.users`, `wtt.login_attempts`, `wtt.app_metadata` and `wtt.schema_migrations` carry no
+  `user_id` and have no policies: the first two are read to sign a user in, which is precisely when
+  no session exists yet, and the last two describe the database rather than an account.
+- `wtt.security_audits` is the one trail written before a session exists — a failed login has none,
+  and a registration records the account it just created. Such a connection may append a record and
+  may read and prune the `auth` events, because the lockout decides from them whether it was already
+  recorded; it reaches no other entity and no record of a signed-in user.
+- The four tables that predate the accounts still allow a NULL `user_id`. Such a row belongs to
+  nobody, stays readable, and can only be claimed by the first registration, which hands it to the
+  account it is creating.
+
 ## Invariants and allowed values
 
 Validation, overlap detection, and the security limits are defined once in

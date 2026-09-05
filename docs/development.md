@@ -22,7 +22,7 @@ Xcode Command Line Tools on macOS, and `libwebkit2gtk-4.1-dev`, `librsvg2-dev`, 
 
 ```sh
 npm ci
-cp .env.example .env       # set POSTGRES_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
+cp .env.example .env       # set POSTGRES_PASSWORD, POSTGRES_APP_PASSWORD, DATABASE_URL, POSTGRES_CONTAINER_URL
 podman compose up -d db    # or: docker compose up -d db
 npm run tauri dev          # desktop application, needs Postgres
 npm run dev                # browser UI on http://127.0.0.1:1420, localStorage only
@@ -40,6 +40,24 @@ Leave `WORK_TIME_TRACKER_ENV` unset for development, tests, and CI. It defaults 
 production build may reach instead is recorded in
 [`architecture/decisions.md`](../architecture/decisions.md#separate-local-development-databases-from-verified-production-databases);
 every variable is documented in [`.env.example`](../.env.example).
+
+## The application database role
+
+The tables are protected by row level security
+([`data-model.md`](data-model.md#row-level-security)), and a superuser or a `BYPASSRLS` role ignores
+those policies entirely. `DATABASE_URL` therefore names `POSTGRES_APP_USER`, a role that may log in,
+own the `wtt` schema and create the throwaway databases of the Rust tests, and nothing else — never
+`POSTGRES_USER`, which is the bootstrap superuser of the cluster.
+
+`scripts/postgres-init/10-application-role.sh` creates that role, and the Postgres image only runs it
+while it initialises its data directory. An existing database therefore keeps the state it was
+created with: run `podman compose down -v && podman compose up -d db` to recreate the volume, which
+also applies the current baseline schema. CI creates the same kind of role before it runs the Rust
+tests.
+
+`the_application_role_cannot_bypass_row_level_security` fails when `DATABASE_URL` still names a
+superuser, so a database that is set up the old way is reported instead of silently losing the
+protection.
 
 ## Npm scripts and common invocations
 
@@ -140,7 +158,7 @@ the application at run time. The workflow reads, by name only:
 | `SUPABASE_DATABASE_URL` | complete connection string including `sslmode=verify-full`; wins over the parts below |
 | `SUPABASE_DB_HOST` | host of the database, for example the connection pooler of the project |
 | `SUPABASE_DB_PORT` | port, `6543` for the pooler and `5432` for a direct connection |
-| `SUPABASE_DB_USER` | the dedicated least-privilege application role, never `postgres` |
+| `SUPABASE_DB_USER` | the dedicated least-privilege application role, never `postgres`, and neither a superuser nor `BYPASSRLS`, which would ignore the row level security policies |
 | `SUPABASE_DB_PASSWORD` | password of that role |
 | `SUPABASE_DB_NAME` | database name |
 | `SUPABASE_DB_ROOT_CERT` | the certificate authority in PEM form; the job writes it to a file and passes its path to the application |
