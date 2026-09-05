@@ -6,7 +6,8 @@ version for humans.
 ## Prerequisites and local checks
 
 Required tool versions, local setup, npm scripts, and quality commands are maintained in
-[`docs/development.md`](docs/development.md).
+[`docs/development.md`](docs/development.md). Installing a released build instead of running from
+source is described in [`docs/installation.md`](docs/installation.md).
 
 ## Branches
 

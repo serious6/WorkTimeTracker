@@ -1,5 +1,8 @@
 # Development guide
 
+Setting up a checkout to work on the application. Installing a released build instead is described
+in [`docs/installation.md`](installation.md).
+
 ## Tooling
 
 | Tool | Version | Source |
@@ -117,9 +120,34 @@ the job when an env file in it names a filled-in configuration or carries a valu
 well over 100 MB to every artifact of the release and has to be raised by hand for each WebView2
 security update, while the evergreen runtime ships with Windows 11 and reaches most Windows 10
 machines through Edge. A portable archive therefore documents WebView2 as a requirement instead of
-shipping it, and the README names the per-user bootstrapper for the managed and LTSC images that
-carry no runtime.
+shipping it, and [`docs/installation.md`](installation.md) names the per-user bootstrapper for the
+managed and LTSC images that carry no runtime.
 
 The Windows archive is unsigned and the macOS archive is neither signed nor notarized, so SmartScreen
-and Gatekeeper warn about them; the README describes how a user gets past that. Portable archives are
-updated by hand: they carry no updater.
+and Gatekeeper warn about them; [`docs/installation.md`](installation.md) describes how a user gets
+past that. Portable archives are updated by hand: they carry no updater.
+
+## Production database secrets
+
+The `migrate-production-database` job of the `Release` workflow is the only place that sees the
+production database. It runs in the protected `production` environment, so its secrets are available
+to no other job, none of them is ever printed, and it only runs when the dispatch input
+`migrate_production_database` asks for it — a shared database is migrated deliberately, never by an
+installation that starts. The bundles contain none of these values; a deployment provides them to
+the application at run time. The workflow reads, by name only:
+
+| Secret | Purpose |
+| --- | --- |
+| `SUPABASE_DATABASE_URL` | complete connection string including `sslmode=verify-full`; wins over the parts below |
+| `SUPABASE_DB_HOST` | host of the database, for example the connection pooler of the project |
+| `SUPABASE_DB_PORT` | port, `6543` for the pooler and `5432` for a direct connection |
+| `SUPABASE_DB_USER` | the dedicated least-privilege application role, never `postgres` |
+| `SUPABASE_DB_PASSWORD` | password of that role |
+| `SUPABASE_DB_NAME` | database name |
+| `SUPABASE_DB_ROOT_CERT` | the certificate authority in PEM form; the job writes it to a file and passes its path to the application |
+
+To rotate the credentials, change the password of the role in the Supabase dashboard (or create the
+replacement role), update `SUPABASE_DB_PASSWORD` — or `SUPABASE_DATABASE_URL`, if that is the form
+in use — in the `production` environment, and run the workflow again. Rotating the certificate
+authority means replacing `SUPABASE_DB_ROOT_CERT` with the downloaded PEM file; nothing in the
+repository has to change for either.

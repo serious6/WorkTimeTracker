@@ -24,11 +24,13 @@ database you control, for example the bundled compose service.
 Tauri 2 with typed Rust commands, React, TypeScript, Vite, Tailwind CSS, Zustand, TanStack Query,
 Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and LikeC4.
 
-## Getting started
+## Installation
 
-Install Node.js 26+ and Rust 1.95+, copy `.env.example` to `.env`, start the bundled
-Postgres service, then run `npm run tauri dev` for the desktop application or `npm run dev` for the
-browser-only UI at <http://127.0.0.1:1420>. Commands and prerequisites are in
+Installers and portable archives for every release, the required database settings, and what to do
+when a start fails are described in one place: [`docs/installation.md`](docs/installation.md).
+
+Running the application from the source code — prerequisites, the bundled Postgres service,
+`npm run tauri dev` and the browser-only UI — is described in
 [`docs/development.md`](docs/development.md). The contribution workflow is in
 [`CONTRIBUTING.md`](CONTRIBUTING.md); coding agents follow [`AGENTS.md`](AGENTS.md).
 
@@ -52,7 +54,8 @@ The production connection is configuration, never part of the repository: `DATAB
 it is set, otherwise it is assembled from `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`,
 `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD` and `SUPABASE_DB_NAME`. A missing or malformed value
 fails the start with a redacted message. See [`.env.example`](.env.example) for every variable and
-the release section below for the secrets the workflow injects.
+[`docs/development.md`](docs/development.md#production-database-secrets) for the secrets the release
+workflow injects.
 
 Removing the `postgres_data` volume permanently deletes the local database. Database files of
 earlier versions are neither read nor migrated; export what you need before switching.
@@ -83,71 +86,25 @@ release tagged `v<version>`.
 
 ### Portable archives
 
-Every release also contains `windows-x86_64-WorkTimeTracker-portable.zip` and
-`macos-aarch64-WorkTimeTracker-portable.zip` for machines where the application itself may not be
-installed. Unpack the archive into any folder you may write to and start `WorkTimeTracker.exe` or
-`WorkTimeTracker.app` from there; no administrator rights are needed. The Windows archive does not
-bundle the WebView2 runtime it renders in: Windows 11 carries that runtime, and Windows 10 usually
-does, but a managed or LTSC image may not. Where it is missing it has to be added once, which the
-Evergreen Bootstrapper of Microsoft does for the current account without administrator rights. The
-archives are not signed, so SmartScreen and Gatekeeper warn about them once; on macOS the
-quarantine flag is removed with
-`xattr -d com.apple.quarantine WorkTimeTracker.app`.
-
-A portable installation requires the remote database described above, because it can neither
-install nor run a local Postgres. It reads its connection from `WorkTimeTracker.env` next to the
-application — beside `WorkTimeTracker.exe` on Windows and beside `WorkTimeTracker.app` on macOS, so
-the file survives replacing the bundle. Copy the included `WorkTimeTracker.env.example`, fill in the
-settings of [`.env.example`](.env.example), and restrict the file to your account —
-`chmod 600 WorkTimeTracker.env` on macOS, and on Windows a permission list that names your account
-alone, which the first start writes and every later start checks, so the Windows archive needs a
-volume that keeps permissions rather than a FAT formatted stick; a relative `SUPABASE_DB_ROOT_CERT` path is resolved against that
-folder, so the pinned certificate authority travels with the archive. A value that the process
-environment already carries wins over the file, so a managed deployment can still override it.
-
-The folder may be copied or synchronized, so it never keeps a secret. On the first start
-`DATABASE_URL` and `SUPABASE_DB_PASSWORD` are moved into the credential store of the user
-account — the Windows Credential Manager, which protects them with DPAPI in the scope of the
-current user, and the macOS Keychain, both available without administrator rights — and the file
-keeps the marker `stored-in-credential-store` in their place. Only the host, the port, the database
-name and the path of the certificate authority stay readable. The stored secrets belong to the
-folder the file sits in, so a second copy keeps its own connection. Deleting the file forgets that
-connection: the next start from that folder removes its stored secrets as well. The application refuses to start on a
-file that others may read, on a secret it can neither store nor read back, and on a certificate it
-cannot verify against the pinned authority; every message names the file and the setting, never a
-value. Application data and logs stay in the user profile directory, and a portable installation is
-updated by hand.
+Every release also carries `windows-x86_64-WorkTimeTracker-portable.zip` and
+`macos-aarch64-WorkTimeTracker-portable.zip` for machines where nothing may be installed. They run
+from any writable folder without administrator rights, need the remote database above because they
+can neither install nor run a local Postgres, and read it from `WorkTimeTracker.env` next to the
+application. The first start moves `DATABASE_URL` and `SUPABASE_DB_PASSWORD` into the credential
+store of the user account — Windows Credential Manager or macOS Keychain — so the folder itself
+never keeps a secret. Setting the file up is described in
+[`docs/installation.md`](docs/installation.md), the bundling in
+[`docs/development.md`](docs/development.md#portable-archives).
 
 `src/data/licenses.json` is the committed license notice for shipped dependencies. Run
 `npm run licenses:generate` after updating either lockfile; `npm run licenses:check` verifies it.
 
-### Production database secrets
-
-The `migrate-production-database` job of the workflow is the only place that sees the production
-database. It runs in the protected `production` environment, so its secrets are available to no
-other job, none of them is ever printed, and it only runs when the dispatch input
-`migrate_production_database` asks for it — a shared database is migrated deliberately, never by an
-installation that starts. The bundles contain none of these values; a deployment provides them to
-the application at run time. The workflow reads, by name only:
-
-| Secret | Purpose |
-| --- | --- |
-| `SUPABASE_DATABASE_URL` | complete connection string including `sslmode=verify-full`; wins over the parts below |
-| `SUPABASE_DB_HOST` | host of the database, for example the connection pooler of the project |
-| `SUPABASE_DB_PORT` | port, `6543` for the pooler and `5432` for a direct connection |
-| `SUPABASE_DB_USER` | the dedicated least-privilege application role, never `postgres` |
-| `SUPABASE_DB_PASSWORD` | password of that role |
-| `SUPABASE_DB_NAME` | database name |
-| `SUPABASE_DB_ROOT_CERT` | the certificate authority in PEM form; the job writes it to a file and passes its path to the application |
-
-To rotate the credentials, change the password of the role in the Supabase dashboard (or create the
-replacement role), update `SUPABASE_DB_PASSWORD` — or `SUPABASE_DATABASE_URL`, if that is the form
-in use — in the `production` environment, and run the workflow again. Rotating the certificate
-authority means replacing `SUPABASE_DB_ROOT_CERT` with the downloaded PEM file; nothing in the
-repository has to change for either.
+The secrets the release workflow reads for the production database, and how they are rotated, are
+listed in [`docs/development.md`](docs/development.md#production-database-secrets).
 
 ## Documentation
 
+- [`docs/installation.md`](docs/installation.md) — download, install, configure, and troubleshoot the application
 - [`docs/development.md`](docs/development.md) — required tools, local setup, scripts, checks, and release checks
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution workflow, commit convention, and the pull request checklist
 - [`AGENTS.md`](AGENTS.md) — concise instructions for coding agents and automation
