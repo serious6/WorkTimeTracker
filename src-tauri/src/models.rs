@@ -1104,8 +1104,9 @@ mod tests {
 
     #[test]
     fn rejects_registrations_that_break_the_password_policy() {
+        let weak_password = "x".repeat(6);
         assert_eq!(
-            credentials("user@example.com", "secret").validate_registration(),
+            credentials("user@example.com", &weak_password).validate_registration(),
             Err("password must have at least 20 characters")
         );
     }
