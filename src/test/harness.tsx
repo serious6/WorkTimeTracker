@@ -3,6 +3,7 @@ import { render } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { useToastStore } from '@/components/ui/toast-store'
+import type { Absence, SaveAbsence } from '@/features/absences/absence-schema'
 import type { AuthUser } from '@/features/auth/auth-schema'
 import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
@@ -107,6 +108,10 @@ export async function seedBreak(input: {
   endTime: Date | string
 }): Promise<TimeEntry> {
   return seedTimeEntry({ ...input, projectId: null, entryType: 'break' })
+}
+
+export async function seedAbsence(input: SaveAbsence): Promise<Absence> {
+  return createLocalRepository().createAbsence(input)
 }
 
 export async function seedBudget(input: SaveProjectBudget) {

@@ -1,6 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
+import { useToastStore } from '@/components/ui/toast-store'
+import { toDateKey } from '@/lib/date'
 import {
   atTime,
   renderWithProviders,
@@ -11,9 +13,21 @@ import {
 } from '@/test/harness'
 import { WeekPage } from './week-page'
 
+/** jsdom has no layout, so the scroll of the day breakdown is only recorded. */
+const scrollIntoView = vi.fn()
+Element.prototype.scrollIntoView = scrollIntoView
+
+/** The quick-add buttons stay disabled until the project list has loaded. */
+async function selectQuickAddProject(projectId: number) {
+  const select = await screen.findByRole('combobox', { name: 'Quick add project' })
+  await screen.findByRole('option', { name: 'Alpha' })
+  fireEvent.change(select, { target: { value: String(projectId) } })
+}
+
 beforeEach(async () => {
   await resetAppState()
   await signIn()
+  scrollIntoView.mockClear()
   useDashboardStore.setState({ selectedDate: '2026-08-27' })
 })
 
@@ -96,5 +110,77 @@ describe('WeekPage', () => {
     expect(within(monthSection).queryByRole('button', { name: /Add entry/i })).not.toBeInTheDocument()
     expect(within(monthSection).queryByRole('button', { name: /Delete/i })).not.toBeInTheDocument()
     expect(within(monthSection).queryByRole('button', { name: /Edit/i })).not.toBeInTheDocument()
+  })
+
+  it('steps back a week and returns to the current one', async () => {
+    renderWithProviders(<WeekPage />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Previous week' }))
+
+    await waitFor(() => expect(useDashboardStore.getState().selectedDate).toBe('2026-08-20'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'This week' }))
+
+    await waitFor(() =>
+      expect(useDashboardStore.getState().selectedDate).toBe(toDateKey(new Date())),
+    )
+  })
+
+  it('selects a week of the overview list', async () => {
+    renderWithProviders(<WeekPage />)
+    const weeks = (await screen.findByText('Weeks in month')).parentElement as HTMLElement
+    fireEvent.click(within(weeks).getAllByRole('button')[0]!)
+
+    await waitFor(() => expect(useDashboardStore.getState().selectedDate).not.toBe('2026-08-27'))
+  })
+
+  it('scrolls to the day picked in the breakdown', async () => {
+    renderWithProviders(<WeekPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Thu, 27/ }))
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Selected quick-add day')).toHaveValue('2026-08-27'),
+    )
+    expect(scrollIntoView).toHaveBeenCalled()
+  })
+
+  it('books a full day and a custom duration on the picked day', async () => {
+    const project = await seedProject('Alpha')
+    renderWithProviders(<WeekPage />)
+    await selectQuickAddProject(project.id)
+    fireEvent.change(screen.getByLabelText('Selected quick-add day'), {
+      target: { value: '2026-08-26' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^1 day$/i }))
+
+    await waitFor(() => expect(useToastStore.getState().toasts[0]?.title).toBe('Time added'))
+
+    fireEvent.change(screen.getByLabelText('Quick add custom duration'), {
+      target: { value: '1h 30m' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
+
+    await waitFor(() => expect(screen.getByLabelText('Quick add custom duration')).toHaveValue(''))
+    expect(screen.getAllByText('9h 30m').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('reports an unparsable custom duration without booking it', async () => {
+    const project = await seedProject('Alpha')
+    renderWithProviders(<WeekPage />)
+    await selectQuickAddProject(project.id)
+    fireEvent.change(screen.getByLabelText('Quick add custom duration'), {
+      target: { value: 'a while' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
+
+    await waitFor(() => expect(useToastStore.getState().toasts[0]?.title).toBe('Invalid duration'))
+    expect(screen.getByLabelText('Quick add custom duration')).toHaveValue('a while')
+  })
+
+  it('opens the entry dialog prefilled with the day it was started from', async () => {
+    renderWithProviders(<WeekPage />)
+    fireEvent.click((await screen.findAllByRole('button', { name: /Add entry/i }))[0]!)
+
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByLabelText(/date/i)).toHaveValue('2026-08-24')
   })
 })
