@@ -597,3 +597,17 @@ test('returns to the login page when the session expires', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Session Project', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Unsaved Project', exact: true })).toBeHidden()
 })
+
+// #25 in docs/e2e-test-cases.md
+test('shows the full project name of the chart legend as a tooltip', async ({ page }) => {
+  const longName = 'Website Redesign for the Marketing Department 2026'
+  await createProject(page, longName)
+  await addEntry(page, longName, '09:00', '11:30')
+  await expect(dialog(page)).toBeHidden()
+
+  const legendName = page.getByTitle(longName)
+  await expect(legendName).toHaveText(longName)
+  await expect(page.getByRole('button').filter({ has: legendName })).toHaveAccessibleName(
+    new RegExp(longName),
+  )
+})
