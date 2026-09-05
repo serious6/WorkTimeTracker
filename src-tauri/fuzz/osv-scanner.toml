@@ -1,0 +1,11 @@
+# Applies to src-tauri/fuzz/Cargo.lock only; osv-scanner reads this file from the
+# scanned lockfile's own directory and does not propagate it to other directories.
+#
+# The fuzz harness is a development-only target that is never shipped, and its
+# dependency tree is a superset of src-tauri/Cargo.lock, which is scanned. Without
+# this override the same unresolvable transitive GTK/Tauri advisories are reported
+# a second time under a new path, which the pull request diff scan then treats as
+# advisories introduced by the branch.
+[[PackageOverrides]]
+ignore = true
+reason = "Dev-only fuzzing harness; its dependencies are covered by src-tauri/Cargo.lock"
