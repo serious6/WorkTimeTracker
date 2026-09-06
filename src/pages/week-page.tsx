@@ -30,7 +30,15 @@ import {
   monthOverviewMetrics,
   weekMetrics,
 } from '@/features/week/week-metrics'
-import { addDays, formatDay, formatDuration, formatSignedDuration, startOfWeek, toDateKey } from '@/lib/date'
+import {
+  addDays,
+  formatDay,
+  formatDuration,
+  formatSignedDuration,
+  isFutureDay,
+  startOfWeek,
+  toDateKey,
+} from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 
@@ -75,6 +83,8 @@ export function WeekPage() {
     ? selectedDayKey
     : week.days[0]?.dateKey
   const quickAddProjectId = projectValue ? Number(projectValue) : undefined
+  /** The current week reaches into days that carry no work yet. */
+  const quickAddBlocked = !quickAddProjectId || !activeDayKey || isFutureDay(activeDayKey)
 
   async function addQuick(minutes: number) {
     if (!quickAddProjectId || !activeDayKey) return
@@ -320,6 +330,7 @@ export function WeekPage() {
                 Selected day
                 <Input
                   aria-label="Selected quick-add day"
+                  max={toDateKey(new Date())}
                   onChange={(event) => setSelectedDayKey(event.target.value)}
                   type="date"
                   value={activeDayKey ?? ''}
@@ -330,7 +341,7 @@ export function WeekPage() {
               <div className="flex flex-wrap gap-2">
                 {QUICK_ADD_MINUTES.map((minutes) => (
                   <Button
-                    disabled={!quickAddProjectId || !activeDayKey}
+                    disabled={quickAddBlocked}
                     key={minutes}
                     onClick={() =>
                       addQuick(minutes).catch((failure) =>
@@ -344,7 +355,7 @@ export function WeekPage() {
                   </Button>
                 ))}
                 <Button
-                  disabled={!quickAddProjectId || !activeDayKey}
+                  disabled={quickAddBlocked}
                   onClick={() =>
                     addQuick(dailyTargetMinutes(settings)).catch((failure) =>
                       errorToast('Time not added', errorMessage(failure, 'The time could not be added.')),
@@ -367,7 +378,7 @@ export function WeekPage() {
                   />
                 </label>
                 <Button
-                  disabled={!quickAddProjectId || !activeDayKey}
+                  disabled={quickAddBlocked}
                   onClick={() => {
                     const minutes = parseDurationMinutes(customDuration)
                     if (!minutes) {

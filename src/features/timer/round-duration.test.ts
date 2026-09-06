@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MINUTE_MS } from '@/lib/date'
-import { roundedStart, roundToMinutes } from './round-duration'
+import { roundedEnd, roundedStart, roundToMinutes } from './round-duration'
 
 function elapsedMs(hours: number, minutes: number, seconds: number): number {
   return ((hours * 60 + minutes) * 60 + seconds) * 1000
@@ -64,5 +64,26 @@ describe('roundedStart', () => {
     expect(
       roundedStart(afterMidnight, MINUTE_MS, afterMidnight + elapsedMs(0, 0, 35), FREE),
     ).toBe(new Date(2026, 0, 15).getTime())
+  })
+})
+
+describe('roundedEnd', () => {
+  const startMs = new Date(2026, 0, 15, 23, 59, 20).getTime()
+  const stoppedAt = new Date(2026, 0, 15, 23, 59, 50).getTime()
+  const dayEndMs = new Date(2026, 0, 16).getTime() - 1
+
+  it('ends where the rounded segment reaches', () => {
+    const morning = new Date(2026, 0, 15, 9, 0, 0).getTime()
+    expect(roundedEnd(morning, MINUTE_MS, morning + MINUTE_MS)).toBe(morning + MINUTE_MS)
+  })
+
+  it('stops at the end of the day when the rounding would reach into the next one', () => {
+    expect(roundedEnd(startMs, MINUTE_MS, stoppedAt)).toBe(dayEndMs)
+  })
+
+  it('keeps a session that was stopped after midnight', () => {
+    const stoppedAfterMidnight = new Date(2026, 0, 16, 0, 10, 0).getTime()
+    const running = new Date(2026, 0, 15, 23, 50, 0).getTime()
+    expect(roundedEnd(running, 20 * MINUTE_MS, stoppedAfterMidnight)).toBe(stoppedAfterMidnight)
   })
 })

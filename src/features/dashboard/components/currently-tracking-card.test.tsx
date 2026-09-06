@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/features/projects/project-schema'
+import { FUTURE_DAY_MESSAGE } from '@/features/time-entries/time-entry-schema'
 import type { useTimer } from '@/features/timer/use-timer'
 import { createTestQueryClient, renderWithProviders } from '@/test/harness'
 import { combineDateAndTime, toDateKey, toTimeKey } from '@/lib/date'
@@ -15,6 +16,7 @@ function makeTimer(overrides: Partial<ReturnType<typeof useTimer>> = {}): Return
   return {
     status: { running: undefined, paused: false, projectId: null, elapsedMs: 0 },
     isPending: false,
+    futureDay: false,
     start: vi.fn(),
     stop: vi.fn(),
     pause: vi.fn(),
@@ -201,6 +203,83 @@ describe('CurrentlyTrackingCard – paused state', () => {
       />,
     )
     expect(screen.getAllByText('Deleted project').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('CurrentlyTrackingCard – days that have not happened yet', () => {
+  it('disables the start button and explains why', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ futureDay: true })}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Start timer/i })).toBeDisabled()
+    expect(screen.getByText(FUTURE_DAY_MESSAGE)).toBeInTheDocument()
+  })
+
+  it('disables resuming a paused timer', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({
+          futureDay: true,
+          status: { running: undefined, paused: true, projectId: 1, elapsedMs: 3_600_000 },
+        })}
+      />,
+    )
+
+    expect(screen.getByLabelText('Resume timer')).toBeDisabled()
+    expect(screen.getByText(FUTURE_DAY_MESSAGE)).toBeInTheDocument()
+  })
+
+  it('disables the project picker of the idle state', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ futureDay: true })}
+      />,
+    )
+
+    expect(screen.getByRole('button', { expanded: false })).toBeDisabled()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('disables the project picker of a running timer, so no switch is offered', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({
+          futureDay: true,
+          status: {
+            running: undefined,
+            paused: true,
+            projectId: 1,
+            elapsedMs: 3_600_000,
+          },
+        })}
+      />,
+    )
+
+    expect(screen.getByRole('button', { expanded: false })).toBeDisabled()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   })
 })
 

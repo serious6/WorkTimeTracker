@@ -10,6 +10,7 @@ import {
   formatTimeOfDay,
   formatWeekRange,
   fromDateKey,
+  isFutureDay,
   startOfDay,
   startOfWeek,
   toDateKey,
@@ -51,6 +52,23 @@ describe('date and time keys', () => {
   it('round-trips a date key through the local calendar', () => {
     expect(toDateKey(fromDateKey('2026-08-28'))).toBe('2026-08-28')
     expect(fromDateKey('2026-08-28')).toEqual(new Date(2026, 7, 28))
+  })
+
+  it('marks only days after the reference day as future', () => {
+    const reference = new Date(2026, 7, 28, 23, 30)
+
+    expect(isFutureDay(new Date(2026, 7, 29), reference)).toBe(true)
+    expect(isFutureDay('2026-08-29', reference)).toBe(true)
+    expect(isFutureDay(new Date(2026, 7, 28, 0, 1), reference)).toBe(false)
+    expect(isFutureDay('2026-08-28', reference)).toBe(false)
+    expect(isFutureDay('2026-08-27', reference)).toBe(false)
+  })
+
+  it('compares whole local days across a daylight saving change', () => {
+    const beforeSwitch = new Date(2026, 2, 28, 12)
+
+    expect(isFutureDay(new Date(2026, 2, 29, 12), beforeSwitch)).toBe(true)
+    expect(isFutureDay(new Date(2026, 2, 28, 0, 30), beforeSwitch)).toBe(false)
   })
 
   it('formats the time of day for a time input', () => {

@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, SecondsFormat};
+use chrono::{DateTime, Local, NaiveDate, SecondsFormat};
 use serde::{Deserialize, Serialize};
 
 const MAX_NAME: usize = 100;
@@ -29,6 +29,16 @@ fn is_color(value: &str) -> bool {
 
 fn is_date(value: &str) -> bool {
     NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok_and(|date| date.to_string() == value)
+}
+
+/// Whether a canonical timestamp falls on a local calendar day after `today`.
+///
+/// Work is only recorded for days that have happened. The limit is a whole
+/// local day, not an instant, so daylight saving shifts and the clock skew
+/// between the front end and the backend cannot reject a timer that starts now.
+fn is_future_day(value: &str, today: NaiveDate) -> bool {
+    DateTime::parse_from_rfc3339(value)
+        .is_ok_and(|date| date.with_timezone(&Local).date_naive() > today)
 }
 
 /// Rows a list command returns when the caller names no limit.
@@ -261,12 +271,19 @@ impl SaveTimeEntry {
         if !is_timestamp(&self.start_time) {
             return Err("invalid start time");
         }
+        let today = Local::now().date_naive();
+        if is_future_day(&self.start_time, today) {
+            return Err("start time must not be on a future day");
+        }
         if let Some(end_time) = &self.end_time {
             if !is_timestamp(end_time) {
                 return Err("invalid end time");
             }
             if end_time.as_str() <= self.start_time.as_str() {
                 return Err("end time must be later than start time");
+            }
+            if is_future_day(end_time, today) {
+                return Err("end time must not be on a future day");
             }
         }
         if self
@@ -678,6 +695,7 @@ impl WorkSettings {
 mod tests {
     use super::*;
     use crate::test_support::policy_compliant_password;
+    use chrono::TimeZone;
 
     #[test]
     fn validates_and_normalizes_project_input() {
@@ -782,6 +800,48 @@ mod tests {
         };
 
         assert_eq!(input.validate(), Err("invalid start time"));
+    }
+
+    #[test]
+    fn rejects_entries_on_a_day_that_has_not_happened_yet() {
+        let entry = |start: &str, end: Option<&str>| SaveTimeEntry {
+            project_id: Some(1),
+            start_time: start.into(),
+            end_time: end.map(str::to_owned),
+            entry_type: None,
+            note: None,
+        };
+
+        assert_eq!(
+            entry("2999-12-31T08:00:00.000Z", None).validate(),
+            Err("start time must not be on a future day")
+        );
+        assert_eq!(
+            entry("2026-08-27T08:00:00.000Z", Some("2999-12-31T09:00:00.000Z")).validate(),
+            Err("end time must not be on a future day")
+        );
+        entry("2026-08-27T08:00:00.000Z", Some("2026-08-27T09:00:00.000Z"))
+            .validate()
+            .unwrap();
+    }
+
+    #[test]
+    fn compares_whole_local_days_when_looking_ahead() {
+        let today = Local
+            .with_ymd_and_hms(2026, 8, 27, 12, 0, 0)
+            .unwrap()
+            .date_naive();
+
+        assert!(!is_future_day("2026-08-27T00:00:00.000Z", today));
+        assert!(!is_future_day("2026-08-26T23:00:00.000Z", today));
+        assert!(is_future_day(
+            &Local
+                .with_ymd_and_hms(2026, 8, 28, 0, 30, 0)
+                .unwrap()
+                .to_utc()
+                .to_rfc3339_opts(SecondsFormat::Millis, true),
+            today
+        ));
     }
 
     #[test]

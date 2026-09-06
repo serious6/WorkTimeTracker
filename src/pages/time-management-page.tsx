@@ -87,6 +87,7 @@ export function TimeManagementPage() {
             </Field>
             <Field className="sm:w-48" label="Date">
               <Input
+                max={toDateKey(new Date())}
                 name="date"
                 onChange={(event) => setDateKey(event.target.value)}
                 type="date"

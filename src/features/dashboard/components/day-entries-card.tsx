@@ -18,6 +18,7 @@ export function DayEntriesCard({
   onAddEntry,
   onStartTimer,
   isTimerPending = false,
+  isStartDisabled = false,
 }: {
   title: string
   entries: TimeEntry[]
@@ -29,6 +30,8 @@ export function DayEntriesCard({
   onAddEntry: () => void
   onStartTimer: () => void
   isTimerPending?: boolean
+  /** Blocks starting a timer, for example on a day that has not happened yet. */
+  isStartDisabled?: boolean
 }) {
   return (
     <Card aria-label={title} role="region">
@@ -44,7 +47,9 @@ export function DayEntriesCard({
             <div className="flex flex-col items-start gap-3 py-6">
               <p className="text-sm text-muted-foreground">No time tracked today</p>
               <div className="flex gap-2">
-                <Button onClick={onStartTimer}>Start timer</Button>
+                <Button disabled={isStartDisabled} onClick={onStartTimer}>
+                  Start timer
+                </Button>
                 <Button onClick={onAddEntry} variant="outline">
                   Add entry
                 </Button>
@@ -52,6 +57,7 @@ export function DayEntriesCard({
             </div>
           }
           entries={entries}
+          isStartDisabled={isStartDisabled}
           isTimerPending={isTimerPending}
           now={now}
           onPause={onPause}

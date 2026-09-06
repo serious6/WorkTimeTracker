@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { FUTURE_DAY_MESSAGE } from '../src/features/time-entries/time-entry-schema'
 import {
   addEntry,
   ageSession,
@@ -289,6 +290,27 @@ test('navigates between days and views', async ({ page }) => {
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'Work schedule' })).toBeVisible()
   await expect(page.getByRole('contentinfo')).toContainText('Build with ❤️ in Hamburg')
+})
+
+// #26 in docs/e2e-test-cases.md
+test('blocks the selection of a day that has not happened yet', async ({ page }) => {
+  await createProject(page, 'Future Guard')
+  const selectedDate = page.getByLabel('Selected date')
+  const nextDay = page.getByRole('button', { name: 'Next day' })
+
+  await expect(selectedDate).toHaveValue(dateKey(0))
+  await expect(selectedDate).toHaveAttribute('max', dateKey(0))
+  await expect(nextDay).toBeDisabled()
+
+  await selectedDate.fill(dateKey(1))
+  await expect(selectedDate).toHaveValue(dateKey(0))
+  await expect(trackingCard(page).getByText(FUTURE_DAY_MESSAGE)).toBeHidden()
+
+  await page.getByRole('button', { name: 'Previous day' }).click()
+  await expect(nextDay).toBeEnabled()
+  await nextDay.click()
+  await expect(selectedDate).toHaveValue(dateKey(0))
+  await expect(nextDay).toBeDisabled()
 })
 
 // #14 in docs/e2e-test-cases.md

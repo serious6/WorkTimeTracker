@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { toDateKey } from '@/lib/date'
+import { addDays, toDateKey } from '@/lib/date'
 import { useDashboardStore } from './dashboard-store'
 
 beforeEach(() => {
@@ -28,6 +28,20 @@ describe('useDashboardStore', () => {
   it('goToToday resets to the current date', () => {
     useDashboardStore.getState().setSelectedDate('2025-01-01')
     useDashboardStore.getState().goToToday()
+    expect(useDashboardStore.getState().selectedDate).toBe(toDateKey(new Date()))
+  })
+
+  it('does not select a day after today', () => {
+    const tomorrow = toDateKey(addDays(new Date(), 1))
+
+    useDashboardStore.getState().setSelectedDate(tomorrow)
+
+    expect(useDashboardStore.getState().selectedDate).toBe(toDateKey(new Date()))
+  })
+
+  it('stops shifting forward at today', () => {
+    useDashboardStore.getState().shiftSelectedDate(1)
+
     expect(useDashboardStore.getState().selectedDate).toBe(toDateKey(new Date()))
   })
 

@@ -33,6 +33,16 @@ export function fromDateKey(dateKey: string): Date {
   return new Date(year, month - 1, day)
 }
 
+/**
+ * Whether a day lies after the day of `reference`. Time is only tracked for
+ * days that have happened, and the limit is the local calendar day: comparing
+ * whole days instead of instants keeps the rule free of daylight saving shifts
+ * and of the clock skew between the front end and the backend.
+ */
+export function isFutureDay(day: Date | string, reference: Date = new Date()): boolean {
+  return (typeof day === 'string' ? day : toDateKey(day)) > toDateKey(reference)
+}
+
 /** Local time of day of a date as `HH:MM`, ready for a time input. */
 export function toTimeKey(date: Date): string {
   return `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`

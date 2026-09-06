@@ -153,6 +153,7 @@ export function TimeEntryDialog({
         </Field>
         <Field error={fieldError('date')} label="Date">
           <Input
+            max={toDateKey(new Date())}
             name="date"
             onChange={(event) => update('date', event.target.value)}
             type="date"

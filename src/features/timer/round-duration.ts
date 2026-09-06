@@ -1,4 +1,4 @@
-import { MINUTE_MS, startOfDay } from '@/lib/date'
+import { addDays, MINUTE_MS, startOfDay } from '@/lib/date'
 
 export const DISCARDED_ENTRY_TITLE = 'Timer discarded'
 export const DISCARDED_ENTRY_MESSAGE = 'Sessions shorter than 30 seconds are not saved'
@@ -30,4 +30,16 @@ export function roundedStart(
 ): number {
   if (startMs + keptMs <= stoppedAt) return startMs
   return Math.max(freeSinceMs, startOfDay(new Date(startMs)).getTime(), stoppedAt - keptMs)
+}
+
+/**
+ * Where a segment of `keptMs` that begins at `keptStartMs` ends. The entry
+ * before the segment can keep it from growing backwards, so rounding may reach
+ * past `stoppedAt` and, close to midnight, into the day that follows. A day
+ * that has not happened yet records no work, so the end stops at the last
+ * millisecond of the day the timer was stopped in.
+ */
+export function roundedEnd(keptStartMs: number, keptMs: number, stoppedAt: number): number {
+  const dayEndMs = startOfDay(addDays(new Date(stoppedAt), 1)).getTime() - 1
+  return Math.min(keptStartMs + keptMs, dayEndMs)
 }

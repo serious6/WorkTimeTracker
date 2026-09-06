@@ -72,12 +72,19 @@ describe('WeekPage', () => {
     expect(await screen.findByText(/KW /)).toBeInTheDocument()
     expect(screen.getByText(/August 2026 – month to date/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next week' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Next week' }))
+    // The selection stops at today, so the navigation is exercised backwards
+    // and forwards inside weeks that have already happened.
+    for (let week = 0; week < 4; week += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Previous week' }))
+    }
 
-    await waitFor(() =>
-      expect(screen.getByText(/September 2026 – month to date/)).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText(/July 2026 – month to date/)).toBeInTheDocument())
+
+    for (let week = 0; week < 4; week += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next week' }))
+    }
+
+    await waitFor(() => expect(screen.getByText(/August 2026 – month to date/)).toBeInTheDocument())
   })
 
   it('adding and deleting an entry updates week and month totals', async () => {

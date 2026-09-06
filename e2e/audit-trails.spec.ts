@@ -79,6 +79,9 @@ test('AT2: merged trails list time entries, absences, overtime and configuration
   page,
 }) => {
   await page.clock.install({ time: new Date(`${AUDIT_DAY}T09:00:00`) })
+  // The dashboard still shows the day it was opened with, so it has to follow the faked clock
+  // before an entry can be added: time cannot be tracked ahead of today.
+  await page.getByRole('button', { name: 'Today' }).click()
   await createProject(page, 'Merged Audit Project')
   await addEntry(page, 'Merged Audit Project', '09:00', '10:00')
   await page.clock.fastForward(1_000)

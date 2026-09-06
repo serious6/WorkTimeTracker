@@ -667,6 +667,122 @@ describe('useTimer – retroactive start correction', () => {
   })
 })
 
+describe('useTimer – days that have not happened yet', () => {
+  /** The selection is bounded to today, so the guard is set on the store. */
+  async function selectTomorrow() {
+    const { useDashboardStore } = await import('@/features/dashboard/dashboard-store')
+    const { addDays, toDateKey } = await import('@/lib/date')
+    useDashboardStore.setState({ selectedDate: toDateKey(addDays(new Date(), 1)) })
+  }
+
+  it('reports the selected day as a future day', async () => {
+    await selectTomorrow()
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+
+    await waitFor(() => expect(result.current.futureDay).toBe(true))
+  })
+
+  it('start records nothing and explains why', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const { FUTURE_DAY_MESSAGE } = await import('@/features/time-entries/time-entry-schema')
+    const project = await seedProject('Website')
+    await selectTomorrow()
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.start(project.id)
+    })
+
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useTimerStore.getState().session).toBeNull()
+    expect(
+      useToastStore.getState().toasts.some((toast) => toast.description === FUTURE_DAY_MESSAGE),
+    ).toBe(true)
+  })
+
+  it('resume keeps the session paused', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    useTimerStore.setState({
+      session: { projectId: project.id, carriedMs: 60_000, paused: true },
+    })
+    await selectTomorrow()
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.paused).toBe(true))
+
+    await act(async () => {
+      await result.current.resume()
+    })
+
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useTimerStore.getState().session?.paused).toBe(true)
+  })
+
+  it('switchTo records nothing', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    await selectTomorrow()
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status).toBeDefined())
+
+    await act(async () => {
+      await result.current.switchTo(project.id)
+    })
+
+    expect(await createLocalRepository().listTimeEntries()).toEqual([])
+    expect(useTimerStore.getState().session).toBeNull()
+  })
+})
+
+/**
+ * Rounding may reach past the stop when the entry before the session keeps it
+ * from growing backwards. Close to midnight that would place the end on a day
+ * that has not happened yet, which no entry may record.
+ */
+describe('useTimer – stopping close to midnight', () => {
+  it('stop keeps the rounded end inside the day of the stop', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const { toDateKey } = await import('@/lib/date')
+    const project = await seedProject('Website')
+    const startedAt = new Date(2026, 0, 15, 23, 59, 20)
+    const stoppedAt = new Date(2026, 0, 15, 23, 59, 50)
+    /** The entry before the session ends at its start, so nothing can move back. */
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(2026, 0, 15, 23, 50, 0),
+      endTime: startedAt,
+    })
+    await seedTimeEntry({ projectId: project.id, startTime: startedAt, endTime: null })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(stoppedAt)
+    const { result } = renderHook(() => useTimer(stoppedAt.getTime()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    const entries = await createLocalRepository().listTimeEntries()
+    const stopped = entries.find((entry) => Date.parse(entry.startTime) === startedAt.getTime())
+    expect(stopped?.endTime).toBeTruthy()
+    expect(toDateKey(new Date(stopped?.endTime ?? ''))).toBe('2026-01-15')
+    expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'destructive')).toBe(
+      false,
+    )
+  })
+})
+
 /**
  * The play control of a row in the entries list starts a session through
  * `switchTo`, its stop control ends it through `stop`. These cases run that

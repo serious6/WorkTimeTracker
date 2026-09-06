@@ -7,7 +7,11 @@ import { OverdueBudgetWarning } from '@/features/budgets/components/overdue-budg
 import { ProjectPicker } from '@/features/projects/components/project-picker'
 import type { ProjectBudget } from '@/features/budgets/budget-schema'
 import type { Project } from '@/features/projects/project-schema'
-import { DELETED_PROJECT_NAME, type TimeEntry } from '@/features/time-entries/time-entry-schema'
+import {
+  DELETED_PROJECT_NAME,
+  FUTURE_DAY_MESSAGE,
+  type TimeEntry,
+} from '@/features/time-entries/time-entry-schema'
 import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
@@ -33,7 +37,8 @@ export function CurrentlyTrackingCard({
   onPickerOpenChange: (open: boolean) => void
   onCreateProject: () => void
 }) {
-  const { status, isPending, start, stop, pause, resume, switchTo, correctStart, setNote } = timer
+  const { status, isPending, futureDay, start, stop, pause, resume, switchTo, correctStart, setNote } =
+    timer
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [note, setNoteValue] = useState('')
@@ -60,6 +65,7 @@ export function CurrentlyTrackingCard({
         ) : (
           <div className="flex flex-col gap-3 pt-3 sm:flex-row sm:items-center">
             <ProjectPicker
+              disabled={futureDay}
               onCreate={onCreateProject}
               onOpenChange={onPickerOpenChange}
               onSelect={setSelectedProjectId}
@@ -67,7 +73,7 @@ export function CurrentlyTrackingCard({
               value={selectedProjectId}
             />
             <Button
-              disabled={selectedProjectId === null || isPending}
+              disabled={selectedProjectId === null || isPending || futureDay}
               onClick={() => selectedProjectId !== null && void start(selectedProjectId)}
               size="lg"
             >
@@ -75,6 +81,11 @@ export function CurrentlyTrackingCard({
               {isPending ? 'Starting…' : 'Start timer'}
             </Button>
           </div>
+        )}
+        {futureDay && (
+          <p className="pt-3 text-sm text-muted-foreground" role="status">
+            {FUTURE_DAY_MESSAGE}
+          </p>
         )}
         <OverdueBudgetWarning
           budgets={budgets}
@@ -142,7 +153,7 @@ export function CurrentlyTrackingCard({
           {status.paused ? (
             <Button
               aria-label="Resume timer"
-              disabled={isPending}
+              disabled={isPending || futureDay}
               onClick={() => void resume()}
               variant="subtle"
             >
@@ -161,6 +172,12 @@ export function CurrentlyTrackingCard({
         </div>
       </div>
 
+      {futureDay && (
+        <p className="pt-3 text-sm text-muted-foreground" role="status">
+          {FUTURE_DAY_MESSAGE}
+        </p>
+      )}
+
       <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 items-center gap-2">
           <Tag className="size-4 shrink-0 text-muted-foreground" />
@@ -175,6 +192,7 @@ export function CurrentlyTrackingCard({
           />
         </div>
         <ProjectPicker
+          disabled={futureDay}
           onCreate={onCreateProject}
           onOpenChange={(open) => !isPending && onPickerOpenChange(open)}
           onSelect={(projectId) => {
