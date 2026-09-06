@@ -415,9 +415,11 @@ export function WeekPage() {
                 <TimeEntryList
                   emptyState={<p className="text-sm text-muted-foreground">No bookings on this day.</p>}
                   entries={dayEntries}
+                  isTimerPending={timer.isPending}
                   now={now}
                   onPause={() => void timer.pause()}
                   onPlay={(projectId) => void timer.switchTo(projectId)}
+                  onStop={() => void timer.stop()}
                   projects={projects}
                 />
               </div>

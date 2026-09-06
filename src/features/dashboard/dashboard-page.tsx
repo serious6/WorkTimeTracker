@@ -130,11 +130,13 @@ export function DashboardPage() {
           />
           <DayEntriesCard
             entries={dayEntries}
+            isTimerPending={timer.isPending}
             now={now}
             onAddEntry={() => setEntryDialogOpen(true)}
             onPause={() => void timer.pause()}
             onPlay={(projectId) => void timer.switchTo(projectId)}
             onStartTimer={() => setPickerOpen(true)}
+            onStop={() => void timer.stop()}
             projects={projects}
             title="Today's Entries"
           />

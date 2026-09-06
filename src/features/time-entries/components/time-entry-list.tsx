@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MoreVertical, Pause, Play } from 'lucide-react'
+import { MoreVertical, Pause, Play, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog } from '@/components/ui/dialog'
@@ -21,6 +21,8 @@ export function TimeEntryList({
   now,
   onPlay,
   onPause,
+  onStop,
+  isTimerPending = false,
   emptyState,
 }: {
   entries: TimeEntry[]
@@ -28,6 +30,10 @@ export function TimeEntryList({
   now: number
   onPlay: (projectId: number) => void
   onPause: () => void
+  /** Required for running rows: timer stop rounds or discards, while pause keeps the entry open. */
+  onStop: () => void
+  /** Optional so list-only callers keep the normal non-pending state by default. */
+  isTimerPending?: boolean
   emptyState?: React.ReactNode
 }) {
   const updateNote = useUpdateTimeEntryNote()
@@ -83,13 +89,31 @@ export function TimeEntryList({
                 {formatStopwatch(entryMinutes(entry, now) * 60_000)}
               </span>
               {running ? (
-                <Button aria-label="Pause timer" onClick={onPause} size="icon" variant="subtle">
-                  <Pause className="size-4" />
-                </Button>
+                <>
+                  {/* Stop stays available for archived projects and applies the rounding path. */}
+                  <Button
+                    aria-label={`Stop timer for ${name}`}
+                    disabled={isTimerPending}
+                    onClick={onStop}
+                    size="icon"
+                    variant="destructive"
+                  >
+                    <Square className="size-4" />
+                  </Button>
+                  <Button
+                    aria-label={`Pause timer for ${name}`}
+                    disabled={isTimerPending}
+                    onClick={onPause}
+                    size="icon"
+                    variant="subtle"
+                  >
+                    <Pause className="size-4" />
+                  </Button>
+                </>
               ) : (
                 <Button
                   aria-label={`Start timer for ${name}`}
-                  disabled={!project || project.archived}
+                  disabled={isTimerPending || !project || project.archived}
                   onClick={() => project && !project.archived && onPlay(project.id)}
                   size="icon"
                   variant="subtle"

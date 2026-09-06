@@ -183,4 +183,21 @@ describe('WeekPage', () => {
     const dialog = within(await screen.findByRole('dialog'))
     expect(dialog.getByLabelText(/date/i)).toHaveValue('2026-08-24')
   })
+
+  it('stops a running entry from the week day list', async () => {
+    const project = await seedProject('Alpha')
+    const ref = new Date(2026, 7, 27)
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: atTime(ref, 9),
+      endTime: null,
+    })
+
+    renderWithProviders(<WeekPage />)
+    fireEvent.click((await screen.findAllByRole('button', { name: /stop timer for alpha/i }))[0]!)
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop timer for alpha/i })).not.toBeInTheDocument(),
+    )
+  })
 })

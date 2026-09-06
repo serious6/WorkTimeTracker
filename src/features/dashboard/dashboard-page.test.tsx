@@ -96,6 +96,23 @@ describe('DashboardPage', () => {
     renderWithProviders(<DashboardPage />)
     await waitFor(() => expect(screen.getAllByText('Website').length).toBeGreaterThanOrEqual(1))
   })
+
+  it('stops a running entry from Today Entries', async () => {
+    const project = await seedProject('Website')
+    const ref = new Date(2026, 7, 27)
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: atTime(ref, 9),
+      endTime: null,
+    })
+
+    renderWithProviders(<DashboardPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /stop timer for website/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop timer for website/i })).not.toBeInTheDocument(),
+    )
+  })
 })
 
 describe('DashboardPage – keyboard shortcuts', () => {
