@@ -14,8 +14,10 @@ export function DayEntriesCard({
   now,
   onPlay,
   onPause,
+  onStop,
   onAddEntry,
   onStartTimer,
+  isTimerPending = false,
 }: {
   title: string
   entries: TimeEntry[]
@@ -23,8 +25,10 @@ export function DayEntriesCard({
   now: number
   onPlay: (projectId: number) => void
   onPause: () => void
+  onStop: () => void
   onAddEntry: () => void
   onStartTimer: () => void
+  isTimerPending?: boolean
 }) {
   return (
     <Card aria-label={title} role="region">
@@ -48,9 +52,11 @@ export function DayEntriesCard({
             </div>
           }
           entries={entries}
+          isTimerPending={isTimerPending}
           now={now}
           onPause={onPause}
           onPlay={onPlay}
+          onStop={onStop}
           projects={projects}
         />
         <div className="pt-3">

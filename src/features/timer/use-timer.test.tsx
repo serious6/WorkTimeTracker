@@ -739,3 +739,77 @@ describe('useTimer – days that have not happened yet', () => {
     expect(useTimerStore.getState().session).toBeNull()
   })
 })
+
+/**
+ * The play control of a row in the entries list starts a session through
+ * `switchTo`, its stop control ends it through `stop`. These cases run that
+ * path, so the rounding rules also apply when a session never touches the
+ * tracking card.
+ */
+describe('useTimer – sessions started from the entries list', () => {
+  async function trackFromEntriesList(projectId: number, elapsedMs: number) {
+    const startedAt = Date.now()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(startedAt)
+
+    try {
+      const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+      await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
+
+      await act(async () => {
+        await result.current.switchTo(projectId)
+      })
+      await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+      vi.setSystemTime(startedAt + elapsedMs)
+      await act(async () => {
+        await result.current.stop()
+      })
+
+      await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  async function storedMinutes() {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    return createLocalRepository()
+      .listTimeEntries()
+      .then((entries) => entries.map((entry) => entryMinutes(entry)))
+  }
+
+  it('discards a session of 10 seconds and reports it', async () => {
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+
+    await trackFromEntriesList(project.id, 10_000)
+
+    expect(await storedMinutes()).toEqual([])
+    expect(useToastStore.getState().toasts.some((t) => t.title === DISCARDED_ENTRY_TITLE)).toBe(true)
+  })
+
+  it('discards a session of 29 seconds', async () => {
+    const project = await seedProject('Website')
+
+    await trackFromEntriesList(project.id, 29_000)
+
+    expect(await storedMinutes()).toEqual([])
+  })
+
+  it('stores a session of 35 seconds as one minute', async () => {
+    const project = await seedProject('Website')
+
+    await trackFromEntriesList(project.id, 35_000)
+
+    expect(await storedMinutes()).toEqual([1])
+  })
+
+  it('stores a session of 90 seconds as two minutes', async () => {
+    const project = await seedProject('Website')
+
+    await trackFromEntriesList(project.id, 90_000)
+
+    expect(await storedMinutes()).toEqual([2])
+  })
+})

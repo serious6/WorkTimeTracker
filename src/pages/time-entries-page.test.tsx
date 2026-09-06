@@ -63,4 +63,20 @@ describe('TimeEntriesPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /add time entry/i }))
     expect(await screen.findByRole('heading', { name: /add time entry/i })).toBeInTheDocument()
   })
+
+  it('stops a running entry from the list', async () => {
+    const project = await seedProject('Alpha')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 60_000),
+      endTime: null,
+    })
+
+    renderWithProviders(<TimeEntriesPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /stop timer for alpha/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /stop timer for alpha/i })).not.toBeInTheDocument(),
+    )
+  })
 })

@@ -49,7 +49,7 @@ tracked session to whole minutes. They never wait for real time: the clock is in
 `page.clock.install`, frozen with `page.clock.pauseAt` once the application has loaded and then moved
 with `page.clock.fastForward`, so every elapsed session is exact to the second and the suite stays
 fast. Every test registers `first@example.com`, creates the project `Website Redesign` and starts the
-timer on it.
+timer on it. E16 and E17 start and end the session with the row controls of "Today's Entries" instead.
 
 | #  | Elapsed time | When | Then |
 |----|--------------|------|------|
@@ -71,6 +71,8 @@ timer on it.
 | E13 | `E13: shows the rounded duration in every view` | A session of 2h 30m 30s was stopped | The user opens "Time Entries", "Reports" and "Working Time" and exports the month | Every view shows the same rounded 2h 31m and both the downloaded CSV and PDF contain 02:31 |
 | E14 | `E14: keeps the rounded duration after a reload` | A session of 1m 30s was stopped | The user reloads the application | The stored entry still shows 00:02:00, so the rounding is persisted and not only formatted |
 | E15 | `E15: starts the next session right after a rounded up session` | A session of 35 seconds was stopped and stored as "0h 01m" | The user starts the timer again at once, tracks 30 seconds, stops and starts once more | Both starts track without an overlap conflict, and the day keeps the two rounded minutes |
+| E16 | `E16: discards a short session that is started and stopped in the entry list` | An entry of 08:00–08:30 exists, so "Today's Entries" shows a row for the project | The user starts the timer with the row's play control, tracks 10 seconds and ends it with the row's stop control | "Sessions shorter than 30 seconds are not saved" appears, the row count stays at one and the day total stays "0h 30m" |
+| E17 | `E17: rounds a session that is started and stopped in the entry list` | An entry of 08:00–08:30 exists, so "Today's Entries" shows a row for the project | The user starts the timer with the row's play control, tracks 35 seconds and ends it with the row's stop control | "0h 01m added to Website Redesign" appears, the new entry shows 00:01:00 and the day total is "0h 31m" |
 
 ## Calendar
 
