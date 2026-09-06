@@ -21,7 +21,13 @@ import {
 import { formatDuration, formatTimeOfDay, isFutureDay, MINUTE_MS } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { reconcileSession } from './recover-session'
-import { DISCARDED_ENTRY_MESSAGE, DISCARDED_ENTRY_TITLE, roundToMinutes } from './round-duration'
+import {
+  DISCARDED_ENTRY_MESSAGE,
+  DISCARDED_ENTRY_TITLE,
+  MAX_ROUNDING_MS,
+  roundedStart,
+  roundToMinutes,
+} from './round-duration'
 import { useTimerStore, withSegment } from './timer-store'
 
 export type TimerStatus = {
@@ -46,6 +52,33 @@ function sessionSegments(
   return entries
     .filter((entry) => ids.includes(entry.id))
     .sort((a, b) => Date.parse(a.startTime) - Date.parse(b.startTime))
+}
+
+/**
+ * The moment from which the time before `startMs` is free of other entries, so
+ * a rounded up segment can grow into the past instead of into the future.
+ */
+function freeSince(entries: TimeEntry[], sessionIds: number[], startMs: number): number {
+  return entries.reduce((free, entry) => {
+    if (!entry.endTime || sessionIds.includes(entry.id)) return free
+    const endMs = Date.parse(entry.endTime)
+    return endMs <= startMs && endMs > free ? endMs : free
+  }, Number.NEGATIVE_INFINITY)
+}
+
+/**
+ * The moment a new entry begins. Rounding up stores whole minutes, so the last
+ * entry can still end a few seconds ahead of the clock when the rounding did
+ * not fit into the past. Tracking then continues at that end instead of being
+ * rejected as an overlap.
+ */
+function trackingStart(entries: TimeEntry[], now = Date.now()): string {
+  const reach = now + MAX_ROUNDING_MS
+  const startMs = entries.reduce((latest, entry) => {
+    const endMs = entry.endTime ? Date.parse(entry.endTime) : 0
+    return endMs > latest && endMs <= reach ? endMs : latest
+  }, now)
+  return new Date(startMs).toISOString()
 }
 
 export function useTimer(now: number) {
@@ -98,17 +131,17 @@ export function useTimer(now: number) {
   )
 
   const closeSegment = useCallback(
-    async (entry: TimeEntry, endTime: string) => {
+    async (entry: TimeEntry, endTime: string, startTime = entry.startTime) => {
       await updateEntry.mutateAsync({
         id: entry.id,
         input: {
           projectId: entry.projectId,
-          startTime: entry.startTime,
+          startTime,
           endTime,
           note: entry.note,
         },
       })
-      return entryDurationMs(entry, Date.parse(endTime))
+      return entryDurationMs({ ...entry, startTime }, Date.parse(endTime))
     },
     [updateEntry],
   )
@@ -122,7 +155,7 @@ export function useTimer(now: number) {
       try {
         const entry = await createEntry.mutateAsync({
           projectId,
-          startTime: new Date().toISOString(),
+          startTime: trackingStart(entries),
           endTime: null,
           note,
         })
@@ -132,7 +165,7 @@ export function useTimer(now: number) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
-    [createEntry, futureDay, projectName, setSession],
+    [createEntry, entries, futureDay, projectName, setSession],
   )
 
   /**
@@ -149,7 +182,9 @@ export function useTimer(now: number) {
       )
       const projectId = running?.projectId ?? session?.projectId ?? null
       const segments = sessionSegments(entries, session?.segmentIds ?? [], running)
+      const sessionIds = segments.map((segment) => segment.id)
       let remainingMs = minutes * MINUTE_MS
+      let closedAtMs = Number.NEGATIVE_INFINITY
       for (const [index, segment] of segments.entries()) {
         const durationMs = entryDurationMs(segment, stoppedAt)
         /** The last segment absorbs the rounding, the earlier ones keep their time. */
@@ -157,10 +192,25 @@ export function useTimer(now: number) {
         remainingMs -= keptMs
         if (keptMs <= 0) {
           await deleteEntry.mutateAsync(segment.id)
-        } else if (keptMs !== durationMs || segment.endTime === null) {
+          continue
+        }
+        const startMs = Date.parse(segment.startTime)
+        /**
+         * The rounding of the last segment may reach past the stop, so the
+         * segment is placed where it does not book time ahead of the clock.
+         */
+        const keptStartMs = roundedStart(
+          startMs,
+          keptMs,
+          stoppedAt,
+          Math.max(freeSince(entries, sessionIds, startMs), closedAtMs),
+        )
+        closedAtMs = keptStartMs + keptMs
+        if (keptStartMs !== startMs || keptMs !== durationMs || segment.endTime === null) {
           await closeSegment(
             segment,
-            new Date(Date.parse(segment.startTime) + keptMs).toISOString(),
+            new Date(closedAtMs).toISOString(),
+            new Date(keptStartMs).toISOString(),
           )
         }
       }
@@ -226,7 +276,7 @@ export function useTimer(now: number) {
         errorToast('The project was not switched', FUTURE_DAY_MESSAGE)
         return
       }
-      const timestamp = new Date().toISOString()
+      const timestamp = running ? new Date().toISOString() : trackingStart(entries)
       try {
         const entry = running
           ? await switchEntry.mutateAsync({
@@ -240,7 +290,7 @@ export function useTimer(now: number) {
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
-    [createEntry, futureDay, projectName, running, setSession, switchEntry],
+    [createEntry, entries, futureDay, projectName, running, setSession, switchEntry],
   )
 
   /**

@@ -39,7 +39,8 @@ each other and of their execution order.
 | 22 | `adds an explicit overtime record on top of the tracked time` | Working time is configured and the tracked time matches the target, so the automatic overtime is zero | The user opens "Overtime" from the menu, is rejected with an invalid value and then saves an opening balance of 2h 30m | The balance is split into "+0h 00m" automatic and "+2h 30m" explicit, the record is listed as "Manual" and the dashboard shows "+2h 30m" |
 | 23 | `returns to the login page when the session expires` | The user is signed in and a project exists | The stored session is aged past its idle timeout while the user opens "Audit Trails", and past its absolute lifetime while a project dialog holds unsaved input | Both expiries return the application to the login page; signing in again continues on the interrupted view, the data is unchanged and the unsaved input was not stored |
 | 24 | `blocks registration until both legal texts are accepted` | The registration form is open | The user opens both legal texts, submits with a valid e-mail and password without accepting them, then accepts them one by one | The legal texts are readable before sign-in; the form first requires the terms of service, then the privacy policy, and only creates the account after both are accepted |
-| 25 | `blocks the selection of a day that has not happened yet` | A project exists and the dashboard is open | The user checks "Next day", types tomorrow into the date field and navigates back and forth | "Next day" is disabled on today, the date field is limited to today and keeps today after a future date was typed, and the tracking card shows no future-day hint |
+| 25 | `shows the full project name of the chart legend as a tooltip` | A project with a long name has tracked time today | The user looks at the legend of "Time by Project" on the dashboard | The truncated legend entry carries the full project name as its tooltip and keeps it as the accessible name of the button |
+| 26 | `blocks the selection of a day that has not happened yet` | A project exists and the dashboard is open | The user checks "Next day", types tomorrow into the date field and navigates back and forth | "Next day" is disabled on today, the date field is limited to today and keeps today after a future date was typed, and the tracking card shows no future-day hint |
 
 ## Rounding of a stopped timer
 
@@ -69,6 +70,7 @@ timer on it.
 | E12 | `E12: keeps a discarded session out of every total` | A timer ran for 29 seconds and was stopped | The user opens the dashboard, "Time Entries" and "Reports" | The session is nowhere: "No time tracked today", "No time entries yet." and "No time tracked this week." |
 | E13 | `E13: shows the rounded duration in every view` | A session of 2h 30m 30s was stopped | The user opens "Time Entries", "Reports" and "Working Time" and exports the month | Every view shows the same rounded 2h 31m and both the downloaded CSV and PDF contain 02:31 |
 | E14 | `E14: keeps the rounded duration after a reload` | A session of 1m 30s was stopped | The user reloads the application | The stored entry still shows 00:02:00, so the rounding is persisted and not only formatted |
+| E15 | `E15: starts the next session right after a rounded up session` | A session of 35 seconds was stopped and stored as "0h 01m" | The user starts the timer again at once, tracks 30 seconds, stops and starts once more | Both starts track without an overlap conflict, and the day keeps the two rounded minutes |
 
 ## Calendar
 

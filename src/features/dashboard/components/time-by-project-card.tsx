@@ -130,7 +130,9 @@ export function TimeByProjectCard({
                       className="size-2.5 rounded-full"
                       style={{ backgroundColor: item.color }}
                     />
-                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                    <span className="min-w-0 flex-1 truncate" title={item.name}>
+                      {item.name}
+                    </span>
                     <span className="tabular-nums text-muted-foreground">
                       {formatDuration(item.minutes)} ({item.percentage}%)
                     </span>
