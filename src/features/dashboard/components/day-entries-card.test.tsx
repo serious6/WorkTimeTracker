@@ -48,6 +48,42 @@ describe('DayEntriesCard', () => {
     expect(screen.getByRole('button', { name: 'Add entry' })).toBeInTheDocument()
   })
 
+  it('disables the start controls on a day that has not happened yet', () => {
+    renderWithProviders(
+      <DayEntriesCard
+        entries={[entry(1, 1, -60, -30)]}
+        isStartDisabled
+        now={now}
+        onAddEntry={vi.fn()}
+        onPause={vi.fn()}
+        onPlay={vi.fn()}
+        onStartTimer={vi.fn()}
+        onStop={vi.fn()}
+        projects={projects}
+        title="Today's Entries"
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Start timer for Website' })).toBeDisabled()
+  })
+
+  it('disables the start button of the empty state on a day that has not happened yet', () => {
+    renderWithProviders(
+      <DayEntriesCard
+        entries={[]}
+        isStartDisabled
+        now={now}
+        onAddEntry={vi.fn()}
+        onPause={vi.fn()}
+        onPlay={vi.fn()}
+        onStartTimer={vi.fn()}
+        onStop={vi.fn()}
+        projects={projects}
+        title="Today's Entries"
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Start timer' })).toBeDisabled()
+  })
+
   it('calls onStartTimer when Start timer is clicked from empty state', () => {
     const onStartTimer = vi.fn()
     renderWithProviders(

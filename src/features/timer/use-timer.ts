@@ -25,6 +25,7 @@ import {
   DISCARDED_ENTRY_MESSAGE,
   DISCARDED_ENTRY_TITLE,
   MAX_ROUNDING_MS,
+  roundedEnd,
   roundedStart,
   roundToMinutes,
 } from './round-duration'
@@ -205,7 +206,7 @@ export function useTimer(now: number) {
           stoppedAt,
           Math.max(freeSince(entries, sessionIds, startMs), closedAtMs),
         )
-        closedAtMs = keptStartMs + keptMs
+        closedAtMs = roundedEnd(keptStartMs, keptMs, stoppedAt)
         if (keptStartMs !== startMs || keptMs !== durationMs || segment.endTime === null) {
           await closeSegment(
             segment,

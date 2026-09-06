@@ -241,6 +241,46 @@ describe('CurrentlyTrackingCard – days that have not happened yet', () => {
     expect(screen.getByLabelText('Resume timer')).toBeDisabled()
     expect(screen.getByText(FUTURE_DAY_MESSAGE)).toBeInTheDocument()
   })
+
+  it('disables the project picker of the idle state', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ futureDay: true })}
+      />,
+    )
+
+    expect(screen.getByRole('button', { expanded: false })).toBeDisabled()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('disables the project picker of a running timer, so no switch is offered', () => {
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({
+          futureDay: true,
+          status: {
+            running: undefined,
+            paused: true,
+            projectId: 1,
+            elapsedMs: 3_600_000,
+          },
+        })}
+      />,
+    )
+
+    expect(screen.getByRole('button', { expanded: false })).toBeDisabled()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
 })
 
 describe('CurrentlyTrackingCard – note behaviour', () => {

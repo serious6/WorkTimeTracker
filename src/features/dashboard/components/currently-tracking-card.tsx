@@ -65,6 +65,7 @@ export function CurrentlyTrackingCard({
         ) : (
           <div className="flex flex-col gap-3 pt-3 sm:flex-row sm:items-center">
             <ProjectPicker
+              disabled={futureDay}
               onCreate={onCreateProject}
               onOpenChange={onPickerOpenChange}
               onSelect={setSelectedProjectId}
@@ -191,6 +192,7 @@ export function CurrentlyTrackingCard({
           />
         </div>
         <ProjectPicker
+          disabled={futureDay}
           onCreate={onCreateProject}
           onOpenChange={(open) => !isPending && onPickerOpenChange(open)}
           onSelect={(projectId) => {

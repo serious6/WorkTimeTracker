@@ -67,6 +67,7 @@ export function DashboardPage() {
 
   function toggleTimer() {
     if (timer.status.running) void timer.stop()
+    else if (timer.futureDay) return
     else if (timer.status.paused) void timer.resume()
     else setPickerOpen(true)
   }
@@ -130,6 +131,7 @@ export function DashboardPage() {
           />
           <DayEntriesCard
             entries={dayEntries}
+            isStartDisabled={timer.futureDay}
             isTimerPending={timer.isPending}
             now={now}
             onAddEntry={() => setEntryDialogOpen(true)}

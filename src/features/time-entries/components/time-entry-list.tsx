@@ -23,6 +23,7 @@ export function TimeEntryList({
   onPause,
   onStop,
   isTimerPending = false,
+  isStartDisabled = false,
   emptyState,
 }: {
   entries: TimeEntry[]
@@ -34,6 +35,8 @@ export function TimeEntryList({
   onStop: () => void
   /** Optional so list-only callers keep the normal non-pending state by default. */
   isTimerPending?: boolean
+  /** Blocks starting a timer, for example on a day that has not happened yet. */
+  isStartDisabled?: boolean
   emptyState?: React.ReactNode
 }) {
   const updateNote = useUpdateTimeEntryNote()
@@ -113,7 +116,7 @@ export function TimeEntryList({
               ) : (
                 <Button
                   aria-label={`Start timer for ${name}`}
-                  disabled={isTimerPending || !project || project.archived}
+                  disabled={isTimerPending || isStartDisabled || !project || project.archived}
                   onClick={() => project && !project.archived && onPlay(project.id)}
                   size="icon"
                   variant="subtle"

@@ -13,12 +13,15 @@ export function ProjectPicker({
   onOpenChange,
   onSelect,
   onCreate,
+  disabled = false,
 }: {
   value: number | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (projectId: number) => void
   onCreate: () => void
+  /** Blocks the selection, for example while the timer cannot run. */
+  disabled?: boolean
 }) {
   const { data: projects = [] } = useProjects()
   const [search, setSearch] = useState('')
@@ -37,7 +40,7 @@ export function ProjectPicker({
   }
 
   useEffect(() => {
-    if (!open) return
+    if (!open || disabled) return
     container.current?.querySelector<HTMLInputElement>('input')?.focus()
     function onPointerDown(event: MouseEvent) {
       if (!container.current?.contains(event.target as Node)) openChangeRef.current(false)
@@ -51,7 +54,7 @@ export function ProjectPicker({
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open])
+  }, [disabled, open])
 
   const matches = selectableProjects(projects).filter(
     (project) => project.active && project.name.toLowerCase().includes(search.trim().toLowerCase()),
@@ -60,9 +63,10 @@ export function ProjectPicker({
   return (
     <div className="relative w-full sm:w-72" ref={container}>
       <Button
-        aria-expanded={open}
+        aria-expanded={open && !disabled}
         aria-haspopup="listbox"
         className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+        disabled={disabled}
         onClick={() => onOpenChange(!open)}
         variant="outline"
       >
@@ -81,7 +85,7 @@ export function ProjectPicker({
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
       </Button>
 
-      {open && (
+      {open && !disabled && (
         <div className="absolute z-40 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-lg">
           <div className="relative border-b border-border">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

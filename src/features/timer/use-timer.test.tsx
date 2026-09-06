@@ -741,6 +741,49 @@ describe('useTimer – days that have not happened yet', () => {
 })
 
 /**
+ * Rounding may reach past the stop when the entry before the session keeps it
+ * from growing backwards. Close to midnight that would place the end on a day
+ * that has not happened yet, which no entry may record.
+ */
+describe('useTimer – stopping close to midnight', () => {
+  it('stop keeps the rounded end inside the day of the stop', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const { toDateKey } = await import('@/lib/date')
+    const project = await seedProject('Website')
+    const startedAt = new Date(2026, 0, 15, 23, 59, 20)
+    const stoppedAt = new Date(2026, 0, 15, 23, 59, 50)
+    /** The entry before the session ends at its start, so nothing can move back. */
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(2026, 0, 15, 23, 50, 0),
+      endTime: startedAt,
+    })
+    await seedTimeEntry({ projectId: project.id, startTime: startedAt, endTime: null })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(stoppedAt)
+    const { result } = renderHook(() => useTimer(stoppedAt.getTime()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    useToastStore.setState({ toasts: [] })
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    const entries = await createLocalRepository().listTimeEntries()
+    const stopped = entries.find((entry) => Date.parse(entry.startTime) === startedAt.getTime())
+    expect(stopped?.endTime).toBeTruthy()
+    expect(toDateKey(new Date(stopped?.endTime ?? ''))).toBe('2026-01-15')
+    expect(useToastStore.getState().toasts.some((toast) => toast.variant === 'destructive')).toBe(
+      false,
+    )
+  })
+})
+
+/**
  * The play control of a row in the entries list starts a session through
  * `switchTo`, its stop control ends it through `stop`. These cases run that
  * path, so the rounding rules also apply when a session never touches the
