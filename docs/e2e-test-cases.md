@@ -172,6 +172,7 @@ spec answers the GitHub Releases API itself, so the cases stay independent of pu
 |----|------------------------------|-------|------|------|
 | WEB1 | `WEB1: the landing page renders the latest release with its installer` | The Releases API returns a release with a Windows installer | The user opens the landing page | The release tag, its notes and the installer link with platform, size and download count are shown |
 | WEB2 | `WEB2: the landing page explains a rate-limited and a failed release request` | The Releases API answers with 429 and later fails | The user opens the landing page | The rate-limit panel is shown, the failed request shows the connection message, and both link to GitHub Releases |
+| WEB3 | `WEB3: the landing page explains how to obtain, give feedback and contribute` | The landing page is served | The user follows the "Get involved" navigation entry | The section names obtaining the software, providing feedback and contributing, and links to the installation guide, the new-issue form, `SECURITY.md` and `CONTRIBUTING.md` |
 
 ## Cross-cutting journeys
 
