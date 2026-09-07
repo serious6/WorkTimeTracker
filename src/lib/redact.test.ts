@@ -53,11 +53,14 @@ describe('redact', () => {
     expect(redact('token: "unfinished')).toBe('token: "[redacted]"')
   })
 
-  it('redacts an unquoted value ending at a bracket idempotently', () => {
+  it('redacts unquoted values idempotently', () => {
     const key = ['pass', 'word'].join('')
-    const once = redact(`${key}=secret]`)
 
-    expect(redact(once)).toBe(once)
+    for (const suffix of ['', ' next', ',', '}', ']']) {
+      const once = redact(`${key}=secret${suffix}`)
+
+      expect(redact(once)).toBe(once)
+    }
   })
 
   it('matches the longest sensitive key of a quoted field', () => {

@@ -332,6 +332,18 @@ fn redact_sensitive_at(message: &str, index: usize) -> Option<(String, usize)> {
             quoted_value_end(message, value_start, value),
         ));
     }
+    if message[value_start..].starts_with(REDACTED) {
+        let redacted_end = value_start + REDACTED.len();
+        if message[redacted_end..]
+            .chars()
+            .next()
+            .is_none_or(|character| {
+                character.is_whitespace() || matches!(character, ',' | '}' | ']')
+            })
+        {
+            return Some((format!("{prefix}{REDACTED}"), redacted_end));
+        }
+    }
 
     let value_end = if key == "authorization" {
         authorization_value_end(message, value_start)
@@ -343,12 +355,7 @@ fn redact_sensitive_at(message: &str, index: usize) -> Option<(String, usize)> {
         return None;
     }
 
-    let replacement = if message[value_end..].starts_with(']') {
-        format!("{prefix}\"{REDACTED}\"")
-    } else {
-        format!("{prefix}{REDACTED}")
-    };
-    Some((replacement, value_end))
+    Some((format!("{prefix}{REDACTED}"), value_end))
 }
 
 fn is_boundary(message: &str, index: usize) -> bool {
@@ -660,10 +667,13 @@ mod tests {
     }
 
     #[test]
-    fn redaction_of_an_unquoted_value_ending_at_a_bracket_is_idempotent() {
-        let once = redact(&format!("{}=secret]", SENSITIVE_KEYS[0]));
+    fn redaction_of_unquoted_values_is_idempotent() {
+        for suffix in ["", " next", ",", "}", "]"] {
+            let message = format!("{}=secret{suffix}", SENSITIVE_KEYS[0]);
+            let once = redact(&message);
 
-        assert_eq!(redact(&once), once);
+            assert_eq!(redact(&once), once, "{message}");
+        }
     }
 
     #[test]

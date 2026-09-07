@@ -127,6 +127,13 @@ function redactSensitiveAt(message: string, index: number): [string, number] | n
   if (quote === '"' || quote === "'") {
     return [`${prefix}${quote}${REDACTED}${quote}`, quotedValueEnd(message, valueStart, quote)]
   }
+  if (message.startsWith(REDACTED, valueStart)) {
+    const redactedEnd = valueStart + REDACTED.length
+    const next = message[redactedEnd]
+    if (next === undefined || /[\s,}\]]/.test(next)) {
+      return [`${prefix}${REDACTED}`, redactedEnd]
+    }
+  }
 
   const valueEnd =
     key === 'authorization'
@@ -134,9 +141,7 @@ function redactSensitiveAt(message: string, index: number): [string, number] | n
       : unquotedValueEnd(message, valueStart)
   if (valueEnd === valueStart) return null
 
-  const replacement =
-    message[valueEnd] === ']' ? `${prefix}"${REDACTED}"` : `${prefix}${REDACTED}`
-  return [replacement, valueEnd]
+  return [`${prefix}${REDACTED}`, valueEnd]
 }
 
 function redactSensitiveValues(message: string): string {
