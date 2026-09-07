@@ -287,4 +287,21 @@ impl Database {
         })?;
         Ok(Self(Box::new(store)))
     }
+
+    /// Opens Postgres and reports migration progress while migrations run.
+    pub(crate) fn open_with_migration_progress(
+        config: &DbConfig,
+        progress: impl FnMut(&str),
+    ) -> Result<Self, OpenError> {
+        let url = config.database_url.as_str();
+        let store =
+            PostgresStore::open_with_migration_progress(config, progress).map_err(|error| {
+                OpenError(format!(
+                    "postgres: could not connect to the {} database ({}): {error}",
+                    config.mode,
+                    crate::config::redact_database_url(url)
+                ))
+            })?;
+        Ok(Self(Box::new(store)))
+    }
 }

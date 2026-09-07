@@ -17,7 +17,7 @@ const REDACTED: &str = "[redacted]";
 const REDACTED_PATH: &str = "[redacted path]";
 
 /// Words whose value is never written to the log.
-const SENSITIVE_KEYS: [&str; 11] = [
+const SENSITIVE_KEYS: [&str; 15] = [
     "password",
     "passwort",
     "secret",
@@ -29,6 +29,10 @@ const SENSITIVE_KEYS: [&str; 11] = [
     "api_key",
     "authorization",
     "cookie",
+    "host",
+    "user",
+    "dbname",
+    "database",
 ];
 
 /// Prefixes of the password hash formats that may appear in a message.
@@ -63,6 +67,11 @@ pub fn file_path() -> Option<PathBuf> {
 /// an unwritable log must never break the running application.
 pub fn error(source: &str, message: &str) {
     write_line("ERROR", source, message);
+}
+
+/// Appends one redacted informational line.
+pub fn info(source: &str, message: &str) {
+    write_line("INFO", source, message);
 }
 
 /// Logs the failure of a command and hands the result back unchanged.
@@ -183,6 +192,9 @@ pub fn leaks_secret(message: &str) -> bool {
 /// and while what remains of the token no longer reads as one - a hash cut at
 /// a colon must not survive as the label of its own redacted value.
 fn redact_token(token: &str) -> String {
+    if contains_database_url(token) {
+        return REDACTED.to_owned();
+    }
     if let Some((key, separator, value)) = split_pair(token) {
         if !is_path(token) && !needs_redaction(key) && needs_redaction(value) {
             let redacted = format!("{key}{separator}{}", replacement(value));
@@ -195,6 +207,11 @@ fn redact_token(token: &str) -> String {
         return replacement(token).to_owned();
     }
     token.to_owned()
+}
+
+fn contains_database_url(token: &str) -> bool {
+    let token = token.to_ascii_lowercase();
+    token.contains("postgresql://") || token.contains("postgres://")
 }
 
 fn replacement(token: &str) -> &'static str {

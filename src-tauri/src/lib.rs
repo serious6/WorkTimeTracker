@@ -79,6 +79,11 @@ fn startup_panic_error(payload: &(dyn std::any::Any + Send)) -> std::io::Error {
 /// every client that starts; see `examples/migrate.rs` and
 /// `architecture/decisions.md#separate-local-development-databases-from-verified-production-databases`.
 pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
+    migrate_with_progress(|_| {})
+}
+
+/// Applies the schema migrations and reports each migration step.
+pub fn migrate_with_progress(progress: impl FnMut(&str)) -> Result<(), Box<dyn std::error::Error>> {
     let db_config = DbConfig::for_migration()?;
     if !db_config.run_migrations {
         return Err(format!(
@@ -88,8 +93,13 @@ pub fn migrate() -> Result<(), Box<dyn std::error::Error>> {
         )
         .into());
     }
-    Database::open(&db_config)?;
+    Database::open_with_migration_progress(&db_config, progress)?;
     Ok(())
+}
+
+/// Redacts an error before it is displayed outside the application logger.
+pub fn redact_error_message(error: &dyn std::error::Error) -> String {
+    logging::redact(&error.to_string())
 }
 
 // `tauri::generate_context!` expands to a value whose shape depends on

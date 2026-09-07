@@ -541,7 +541,8 @@ later migration upgrades a database that already recorded the baseline and stays
 `PostgresStore::connect` applies the not yet recorded migrations in a single transaction that is
 guarded by an advisory lock and records every applied version in the `wtt.schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
-directory.
+directory. The migration step logs its start, each applied or skipped version, failures, and summary
+durations. Dynamic error details are redacted, so those logs never contain connection details.
 
 ## Derived data (not persisted)
 
