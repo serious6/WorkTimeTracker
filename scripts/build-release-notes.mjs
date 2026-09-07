@@ -47,12 +47,13 @@ export function extractSection(changelog, version) {
 // Splits the upgrade impact out of the section, so it is stated once and under
 // its own heading in the release notes.
 export function splitUpgradeImpact(section) {
-  const lines = String(section ?? '').split('\n')
+  const text = String(section ?? '')
+  const lines = text.split('\n')
   const start = lines.findIndex((line) => {
     const match = /^#{3,}\s+(.+?)\s*$/.exec(line)
     return match !== null && upgradeHeadings.includes(match[1].toLowerCase())
   })
-  if (start === -1) return { highlights: section.trim(), upgrade: null }
+  if (start === -1) return { highlights: text.trim(), upgrade: null }
   let end = lines.length
   for (let index = start + 1; index < lines.length; index += 1) {
     if (/^#{2,}\s+/.test(lines[index])) {

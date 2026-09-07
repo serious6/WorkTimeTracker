@@ -56,6 +56,10 @@ describe('splitUpgradeImpact', () => {
     })
   })
 
+  test('tolerates a missing section', () => {
+    expect(splitUpgradeImpact(null)).toEqual({ highlights: '', upgrade: null })
+  })
+
   test('reports no upgrade note when the section has none', () => {
     expect(splitUpgradeImpact('### Fixed\n\n- A rounding error.')).toEqual({
       highlights: '### Fixed\n\n- A rounding error.',
