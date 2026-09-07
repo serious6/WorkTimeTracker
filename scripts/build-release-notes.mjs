@@ -21,7 +21,8 @@ function headingVersion(line) {
 }
 
 // The body of the section of one version, without its heading, or `null` when
-// the changelog has no section for it.
+// the changelog has no section for it or the section is empty - both mean that
+// the release carries no written notes.
 export function extractSection(changelog, version) {
   const wanted = String(version).replace(/^v/, '')
   const lines = changelog.split(/\r?\n/)
@@ -41,7 +42,7 @@ export function extractSection(changelog, version) {
     .filter((line) => !/^\[[^\]]+\]:\s/.test(line))
     .join('\n')
     .trim()
-  return body
+  return body || null
 }
 
 // Splits the upgrade impact out of the section, so it is stated once and under

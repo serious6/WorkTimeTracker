@@ -43,8 +43,9 @@ describe('extractSection', () => {
     expect(extractSection(changelog, 'Unreleased')).toBe('Nothing yet.')
   })
 
-  test('returns null for a version the changelog does not describe', () => {
+  test('returns null for a version the changelog does not describe or leaves empty', () => {
     expect(extractSection(changelog, '9.9.9')).toBeNull()
+    expect(extractSection('## [1.0.0] - 2026-01-01\n\n## [0.9.0]\n\n- Older.', '1.0.0')).toBeNull()
   })
 })
 

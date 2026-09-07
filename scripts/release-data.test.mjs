@@ -21,6 +21,7 @@ describe('release page helpers', () => {
     const body = ['## Highlights', '', '- A weekly report.', '', '## Upgrade impact', '', 'None.', '', '<details><summary>Commits in this release</summary>', '', '- [`abc1234`](https://example.test/commit/abc1234) chore: bump', '', '</details>'].join('\n')
 
     expect(releaseSummary(body)).toBe('• A weekly report.')
+    expect(releaseSummary('## Highlights\n\n- See [the guide](https://example.test/guide).')).toBe('• See the guide.')
     expect(releaseSummary(undefined)).toBe('')
   })
   test('caches successful results and uses stale results after a failed request', async () => {

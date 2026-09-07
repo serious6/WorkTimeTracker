@@ -50,7 +50,12 @@ export function releaseSummary(body) {
       if (summary.length > 0) break
       continue
     }
-    const text = line.replace(/^#{1,6}\s+/, '').replace(/^\s*[-*]\s+/, '• ').replace(/`/g, '').trim()
+    const text = line
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^\s*[-*]\s+/, '• ')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/`/g, '')
+      .trim()
     if (text) summary.push(text)
   }
   return summary.join(' ')
