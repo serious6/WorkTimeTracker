@@ -24,7 +24,7 @@ A contribution is accepted when it meets all of the following:
 - **Commit and pull request titles** - see [Conventional Commits](#conventional-commits).
 - **Pull request** - every item of the [pull request checklist](#pull-request-checklist) is done.
 - **Documentation** - every document the change invalidates is updated, following the
-  [conventions](#conventions).
+  [documentation conventions](#conventions).
 - **Dependencies** - only dependencies with an OSI-approved open-source license;
   `npm run licenses:check` verifies the bundled notices.
 - **Architecture and UI rules** - changes follow
