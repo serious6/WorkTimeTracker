@@ -37,18 +37,23 @@ export function formatReleaseDate(value) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(date)
 }
-// A release body starts with the written summary from `CHANGELOG.md` and ends
-// with a collapsed list of commits; the panel shows the summary as plain text.
+// `scripts/build-release-notes.mjs` writes a body whose first section is the
+// written summary from `CHANGELOG.md`, followed by the upgrade impact and a
+// collapsed list of commits. The panel shows that first section as plain text,
+// so it stops at the next second-level heading or at the collapsed block
+// instead of matching a particular wording.
 export function releaseSummary(body) {
-  const text = typeof body === 'string' ? body : ''
-  return text
-    .split(/<details|^## Upgrade impact/m)[0]
-    .split(/\r?\n/)
-    .filter((line) => !/^#{1,6}\s/.test(line))
-    .map((line) => line.replace(/^\s*[-*]\s+/, '• ').replace(/`/g, '').trim())
-    .filter(Boolean)
-    .join(' ')
-    .trim()
+  const summary = []
+  for (const line of (typeof body === 'string' ? body : '').split(/\r?\n/)) {
+    if (line.startsWith('<details')) break
+    if (/^##\s/.test(line)) {
+      if (summary.length > 0) break
+      continue
+    }
+    const text = line.replace(/^#{1,6}\s+/, '').replace(/^\s*[-*]\s+/, '• ').replace(/`/g, '').trim()
+    if (text) summary.push(text)
+  }
+  return summary.join(' ')
 }
 export function releaseState(releases) {
   return Array.isArray(releases) && releases.length ? 'release' : 'empty'

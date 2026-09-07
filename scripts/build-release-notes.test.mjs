@@ -115,6 +115,12 @@ describe('buildNotes', () => {
     expect(notes.split('\n').filter((line) => line.startsWith('- [`')).length).toBe(commitLimit)
   })
 
+  test('points at the changelog when the section carries no text', () => {
+    const notes = buildNotes({ version: '1.2.0', tag: 'v1.2.0', repositoryUrl })
+
+    expect(notes).toContain(`See [CHANGELOG.md](${repositoryUrl}/blob/main/CHANGELOG.md) for the changes of 1.2.0.`)
+  })
+
   test('states an empty commit range instead of leaving the section blank', () => {
     const notes = buildNotes({ version: '1.2.0', tag: 'v1.2.0', section: '- A change.', commits: [], repositoryUrl })
 

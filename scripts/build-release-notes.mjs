@@ -47,7 +47,7 @@ export function extractSection(changelog, version) {
 // Splits the upgrade impact out of the section, so it is stated once and under
 // its own heading in the release notes.
 export function splitUpgradeImpact(section) {
-  const lines = section.split('\n')
+  const lines = String(section ?? '').split('\n')
   const start = lines.findIndex((line) => {
     const match = /^#{3,}\s+(.+?)\s*$/.exec(line)
     return match !== null && upgradeHeadings.includes(match[1].toLowerCase())
@@ -82,7 +82,7 @@ function commitList(commits, repositoryUrl) {
 
 // The complete release body: summary first, then the upgrade impact, then the
 // commits of the release in a collapsed section.
-export function buildNotes({ version, tag, section, commits = [], previousTag = null, repositoryUrl }) {
+export function buildNotes({ version, tag, section = '', commits = [], previousTag = null, repositoryUrl }) {
   const { highlights, upgrade } = splitUpgradeImpact(section)
   const compareUrl = previousTag
     ? `${repositoryUrl}/compare/${previousTag}...${tag}`
@@ -145,9 +145,17 @@ function commitsOf(previousTag, runGit = git) {
   return parseCommits(runGit(['log', '--no-merges', '--format=%H%x09%s', range]))
 }
 
+// A flag without a value would silently fall back to a default and release the
+// wrong version, so it fails instead.
 function option(argv, name) {
   const index = argv.indexOf(`--${name}`)
-  return index === -1 ? undefined : argv[index + 1]
+  if (index === -1) return undefined
+  const value = argv[index + 1]
+  if (value === undefined || value.startsWith('--')) {
+    console.error(`::error::--${name} needs a value.`)
+    process.exit(1)
+  }
+  return value
 }
 
 // Only the executed script fails the job; the unit tests import the rules.
