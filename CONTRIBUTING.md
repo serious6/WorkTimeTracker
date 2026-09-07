@@ -18,7 +18,8 @@ A contribution is accepted when it meets all of the following:
   [`.oxlintrc.json`](.oxlintrc.json) and the compiler options in
   [`tsconfig.app.json`](tsconfig.app.json); Rust code is formatted with `rustfmt` and passes
   `clippy` with no warnings. The commands that enforce this - `npm run lint`, `npm run typecheck`,
-  `cargo fmt --check`, `cargo clippy` - are listed in
+  `cargo fmt --manifest-path src-tauri/Cargo.toml --check`,
+  `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets` - are listed in
   [`docs/development.md`](docs/development.md#quality-checks).
 - **Tests** - see [Tests are required](#tests-are-required).
 - **Commit and pull request titles** - see [Conventional Commits](#conventional-commits).
