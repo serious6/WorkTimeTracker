@@ -37,6 +37,19 @@ export function formatReleaseDate(value) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : new Intl.DateTimeFormat(undefined, { dateStyle: 'long' }).format(date)
 }
+// A release body starts with the written summary from `CHANGELOG.md` and ends
+// with a collapsed list of commits; the panel shows the summary as plain text.
+export function releaseSummary(body) {
+  const text = typeof body === 'string' ? body : ''
+  return text
+    .split(/<details|^## Upgrade impact/m)[0]
+    .split(/\r?\n/)
+    .filter((line) => !/^#{1,6}\s/.test(line))
+    .map((line) => line.replace(/^\s*[-*]\s+/, '• ').replace(/`/g, '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+}
 export function releaseState(releases) {
   return Array.isArray(releases) && releases.length ? 'release' : 'empty'
 }

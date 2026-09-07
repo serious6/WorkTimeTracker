@@ -70,7 +70,10 @@ The `Release` workflow runs on manual dispatch. It checks that `package.json`,
 `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` declare the same version, runs the checks
 listed in [`docs/development.md`](docs/development.md#release-checks), bundles the application on
 Windows and macOS, and attaches those installers and the portable archives below to a GitHub
-release tagged `v<version>`.
+release tagged `v<version>`. The release notes are the section of the released version in
+[`CHANGELOG.md`](CHANGELOG.md), written by hand, followed by the upgrade impact and a collapsed list
+of the commits since the previous tag that `scripts/build-release-notes.mjs` appends. A version
+without a changelog section fails the release job.
 
 ### Portable archives
 
@@ -91,6 +94,7 @@ vulnerability is described in [`SECURITY.md`](SECURITY.md).
 - [`docs/installation.md`](docs/installation.md) — download, install, configure, and troubleshoot the application
 - [`docs/development.md`](docs/development.md) — required tools, local setup, scripts, checks, and release checks
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution workflow, commit convention, and the pull request checklist
+- [`CHANGELOG.md`](CHANGELOG.md) — the changes of every release, and the source of the release notes
 - [`AGENTS.md`](AGENTS.md) — concise instructions for coding agents and automation
 - [`docs/ui-principles.md`](docs/ui-principles.md) — binding UI design principles and Laws of UX
 - [`architecture/decisions.md`](architecture/decisions.md) — architecture decisions

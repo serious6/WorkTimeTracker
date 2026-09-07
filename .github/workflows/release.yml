@@ -252,7 +252,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The release notes list the commits since the previous tag, so the full
+      # history and the tags have to be present.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Resolve release tag
         id: meta
         env:
@@ -261,6 +266,7 @@ jobs:
           version=$(node -p "require('./src-tauri/tauri.conf.json').version")
           tag="${INPUT_TAG:-v$version}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Verify release tag matches commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -284,18 +290,32 @@ jobs:
             cp "$file" "release/${platform}-$(basename "$file")"
           done
           ls -l release
+      # The notes are a written summary from CHANGELOG.md, never the raw output
+      # of a version control log; the commits are appended below it. The step
+      # fails when the released version has no changelog section.
+      - name: Build release notes
+        id: notes
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          file="$RUNNER_TEMP/release-notes.md"
+          node scripts/build-release-notes.mjs --version "$VERSION" --tag "$TAG" --output "$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
           PRERELEASE: ${{ inputs.prerelease }}
+          NOTES_FILE: ${{ steps.notes.outputs.file }}
         run: |
-          args=(--title "$TAG" --target "$GITHUB_SHA" --generate-notes)
+          args=(--title "$TAG" --target "$GITHUB_SHA" --notes-file "$NOTES_FILE")
           if [ "$PRERELEASE" = "true" ]; then
             args+=(--prerelease)
           fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --prerelease="$PRERELEASE"
+            # A re-run must not leave the notes of the previous attempt behind.
+            gh release edit "$TAG" --prerelease="$PRERELEASE" --notes-file "$NOTES_FILE"
             gh release upload "$TAG" release/* --clobber
           else
             gh release create "$TAG" release/* "${args[@]}"

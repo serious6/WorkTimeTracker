@@ -192,6 +192,16 @@ The manual `Release` workflow verifies that `package.json`, `src-tauri/Cargo.tom
 architecture check, build, Rust format and tests, license checks, the e2e suite, and then bundles
 Windows and macOS installers.
 
+`scripts/build-release-notes.mjs` then assembles the release body: the section of the released
+version in [`CHANGELOG.md`](../CHANGELOG.md) becomes the `Highlights` summary, its
+`Breaking changes` note (or a standard sentence pointing at [`installation.md`](installation.md) and
+the `migrate_production_database` input) becomes `Upgrade impact`, and the commits between the
+previous `v*` tag and the released commit are appended as a collapsed `Commits in this release`
+section. A release therefore never ships the raw output of a version control log, and a version
+without a changelog section fails the job. The checkout of the `release` job uses `fetch-depth: 0`
+and `fetch-tags: true` so that commit range resolves; `gh release create` and `gh release edit` both
+publish the file with `--notes-file`, so a re-run replaces stale notes.
+
 The `release` job, which creates/updates the GitHub release and uploads the installers and
 portable archives, also runs in the protected `production` environment. A dispatched run therefore
 pauses after `bundle` and waits for a reviewer to approve the `production` environment before
