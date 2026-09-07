@@ -36,10 +36,10 @@ describe('redact', () => {
 
   it('removes file system paths', () => {
     expect(redact('unable to open /home/jane/.local/share/app.db')).toBe(
-      'unable to open [redacted path]',
+      'unable to open [redacted-path]',
     )
     expect(redact('unable to open C:\\Users\\jane\\app.db')).toBe(
-      'unable to open [redacted path]',
+      'unable to open [redacted-path]',
     )
   })
 
@@ -51,6 +51,13 @@ describe('redact', () => {
   it('removes a quoted value that carries escapes or never closes', () => {
     expect(redact('{"token":"a\\"b","note":"kept"}')).toBe('{"token":"[redacted]","note":"kept"}')
     expect(redact('token: "unfinished')).toBe('token: "[redacted]"')
+  })
+
+  it('redacts an unquoted value ending at a bracket idempotently', () => {
+    const key = ['pass', 'word'].join('')
+    const once = redact(`${key}=secret]`)
+
+    expect(redact(once)).toBe(once)
   })
 
   it('matches the longest sensitive key of a quoted field', () => {

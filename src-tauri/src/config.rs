@@ -268,7 +268,9 @@ pub fn redact_database_url(url: &str) -> String {
             let user = credentials
                 .split_once(':')
                 .map_or(credentials, |(user, _)| user);
-            (format!("{user}:{REDACTED}@"), remainder)
+            // The user is kept for diagnosis, so redact any query-shaped
+            // secret that the driver treats as part of the credentials.
+            (format!("{}:{REDACTED}@", redact_user(user)), remainder)
         }
         None => (String::new(), rest),
     };
@@ -303,6 +305,13 @@ fn redact_query(query: &str) -> String {
         .join("&")
 }
 
+fn redact_user(user: &str) -> String {
+    match user.split_once('?') {
+        Some((name, query)) => format!("{name}?{}", redact_query(query)),
+        None => user.to_owned(),
+    }
+}
+
 /// Redacts a `key=value` connection string with the quoting rules of the
 /// driver, so a quoted or escaped password is redacted as a whole instead of
 /// leaking the part behind its first space.
@@ -323,10 +332,26 @@ fn redact_keyword_values(connection_string: &str) -> String {
         redacted.push_str(key);
         redacted.push('=');
         redacted.push_str(&value[..space]);
-        redacted.push_str(if is_secret(key) { REDACTED } else { secret });
+        if is_secret(key) {
+            // A quoted value can be followed without whitespace. Keep the
+            // replacement delimited so a second pass cannot absorb that text.
+            if remainder_starts_a_new_token(remainder) {
+                redacted.push_str(REDACTED);
+            } else {
+                redacted.push('\'');
+                redacted.push_str(REDACTED);
+                redacted.push('\'');
+            }
+        } else {
+            redacted.push_str(secret);
+        }
         rest = remainder;
     }
     redacted
+}
+
+fn remainder_starts_a_new_token(remainder: &str) -> bool {
+    remainder.chars().next().is_none_or(char::is_whitespace)
 }
 
 /// Takes one value of a `key=value` connection string: quoted with `'` or
@@ -642,6 +667,16 @@ mod tests {
     }
 
     #[test]
+    fn redacts_a_secret_hidden_in_the_user_part() {
+        let secret = "hunter2";
+        let redacted =
+            redact_database_url(&format!("postgres://a?{}={secret}@db/app", SECRET_KEYS[0]));
+
+        assert!(!redacted.contains(secret));
+        assert_eq!(redact_database_url(&redacted), redacted);
+    }
+
+    #[test]
     fn redacts_a_password_that_contains_a_question_mark() {
         // The driver reads the credentials up to the first `@`, so `?` is part
         // of the password and must not be read as the start of the query.
@@ -668,6 +703,15 @@ mod tests {
             format!("host=localhost {key}={REDACTED} dbname=worktimetracker")
         );
         assert!(!redacted.contains("hunter") && !redacted.contains(" 2"));
+    }
+
+    #[test]
+    fn redaction_of_a_quoted_password_is_idempotent() {
+        let connection_string = "password='secret''=x";
+        let once = redact_database_url(connection_string);
+
+        assert_eq!(redact_database_url(&once), once);
+        assert!(!once.contains("secret"));
     }
 
     #[test]

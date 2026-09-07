@@ -30,4 +30,9 @@ fuzz_target!(|message: &str| {
         redacted,
         "redact_keeping_layout redacted other tokens than redact for {message:?}"
     );
+    assert_eq!(
+        redact_keeping_layout(&kept),
+        kept,
+        "redact_keeping_layout is not idempotent for {message:?}"
+    );
 });

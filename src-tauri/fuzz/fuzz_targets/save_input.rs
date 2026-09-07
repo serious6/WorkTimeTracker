@@ -75,7 +75,10 @@ fn check_time_entry(input: &Input) {
     }
 
     if let Some(note) = &entry.note {
-        assert!(!note.is_empty(), "kept an empty note instead of dropping it");
+        assert!(
+            !note.is_empty(),
+            "kept an empty note instead of dropping it"
+        );
         assert_eq!(note.trim(), note, "kept an untrimmed note");
         assert!(note.chars().count() <= 500, "kept an oversized note");
     }
@@ -83,8 +86,15 @@ fn check_time_entry(input: &Input) {
     // Validation runs again on the stored value in some paths, so normalizing
     // an already normalized input must neither change nor reject it.
     let normalized = format!("{entry:?}");
-    assert!(entry.validate().is_ok(), "rejected its own normalized input");
-    assert_eq!(format!("{entry:?}"), normalized, "normalization is not stable");
+    assert!(
+        entry.validate().is_ok(),
+        "rejected its own normalized input"
+    );
+    assert_eq!(
+        format!("{entry:?}"),
+        normalized,
+        "normalization is not stable"
+    );
 }
 
 fn check_project(input: &Input) {

@@ -25,7 +25,10 @@ fuzz_target!(|input: Input| {
         && !input.host.contains(['/', '?'])
     {
         let Input {
-            user, password, host, ..
+            user,
+            password,
+            host,
+            ..
         } = input;
         let redacted = redact_database_url(&format!("postgres://{user}:{password}@{host}/app"));
         assert_eq!(

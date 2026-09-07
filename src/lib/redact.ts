@@ -1,5 +1,5 @@
 const REDACTED = '[redacted]'
-const REDACTED_PATH = '[redacted path]'
+const REDACTED_PATH = '[redacted-path]'
 const MAX_MESSAGE_LENGTH = 2_000
 
 /** Words whose value is never written to a log. Mirrors `src-tauri/src/logging.rs`. */
@@ -134,7 +134,9 @@ function redactSensitiveAt(message: string, index: number): [string, number] | n
       : unquotedValueEnd(message, valueStart)
   if (valueEnd === valueStart) return null
 
-  return [`${prefix}${REDACTED}`, valueEnd]
+  const replacement =
+    message[valueEnd] === ']' ? `${prefix}"${REDACTED}"` : `${prefix}${REDACTED}`
+  return [replacement, valueEnd]
 }
 
 function redactSensitiveValues(message: string): string {

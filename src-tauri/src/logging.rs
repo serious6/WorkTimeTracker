@@ -14,7 +14,8 @@ const ROTATED_FILE_NAME: &str = "work-time-tracker.log.1";
 const MAX_BYTES: u64 = 512 * 1024;
 pub(crate) const MAX_MESSAGE_CHARS: usize = 2_000;
 const REDACTED: &str = "[redacted]";
-const REDACTED_PATH: &str = "[redacted path]";
+/// One token, so redacting an already-redacted message cannot split it.
+const REDACTED_PATH: &str = "[redacted-path]";
 
 /// Words whose value is never written to the log.
 const SENSITIVE_KEYS: [&str; 11] = [
@@ -342,7 +343,12 @@ fn redact_sensitive_at(message: &str, index: usize) -> Option<(String, usize)> {
         return None;
     }
 
-    Some((format!("{prefix}{REDACTED}"), value_end))
+    let replacement = if message[value_end..].starts_with(']') {
+        format!("{prefix}\"{REDACTED}\"")
+    } else {
+        format!("{prefix}{REDACTED}")
+    };
+    Some((replacement, value_end))
 }
 
 fn is_boundary(message: &str, index: usize) -> bool {
@@ -636,11 +642,11 @@ mod tests {
     fn removes_file_system_paths() {
         assert_eq!(
             redact("unable to open /home/jane/.local/share/app.db"),
-            "unable to open [redacted path]"
+            "unable to open [redacted-path]"
         );
         assert_eq!(
             redact("unable to open C:\\Users\\jane\\app.db"),
-            "unable to open [redacted path]"
+            "unable to open [redacted-path]"
         );
     }
 
@@ -651,6 +657,13 @@ mod tests {
             "Email or password is incorrect"
         );
         assert_eq!(redact("ratio 1:2 stays"), "ratio 1:2 stays");
+    }
+
+    #[test]
+    fn redaction_of_an_unquoted_value_ending_at_a_bracket_is_idempotent() {
+        let once = redact(&format!("{}=secret]", SENSITIVE_KEYS[0]));
+
+        assert_eq!(redact(&once), once);
     }
 
     #[test]

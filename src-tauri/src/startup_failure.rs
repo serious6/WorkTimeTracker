@@ -262,7 +262,7 @@ mod tests {
         assert!(!body.contains("jane@example.com"));
         assert!(!body.contains("$argon2id"));
         assert!(!body.contains("/home/jane/app.db"));
-        assert!(body.contains("[redacted path]"));
+        assert!(body.contains("[redacted-path]"));
     }
 
     #[test]
