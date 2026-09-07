@@ -26,8 +26,9 @@ permissions:
   contents: read
 
 concurrency:
-  # The prefix keeps a called run out of the group its caller already holds,
-  # which would make the caller wait for a job that waits for the caller.
+  # `github.workflow` is the caller's name for a called run, so the prefix is
+  # what keeps this run out of the group its caller already holds - sharing it
+  # would make the caller wait for a job that waits for the caller.
   group: fuzz-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -35,8 +36,10 @@ env:
   CARGO_TERM_COLOR: always
   # Seconds each target runs. A pull request gets a smoke run, the weekly run
   # and a manual one search longer, and a caller sets its own budget.
-  # `inputs` is empty for every trigger but `workflow_call`, so it falls back.
-  FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '60' || inputs.fuzz_seconds || '600' }}
+  # A caller's budget wins: `github.event_name` is the one of the caller, so it
+  # says nothing about a called run. `inputs` is empty for every trigger but
+  # `workflow_call`, so the other triggers fall through to their own value.
+  FUZZ_SECONDS: ${{ inputs.fuzz_seconds || (github.event_name == 'pull_request' && '60') || '600' }}
 
 jobs:
   fuzz:
