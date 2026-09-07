@@ -46,7 +46,7 @@ configuring them is described in [`docs/installation.md`](docs/installation.md);
 application from source is described in [`docs/development.md`](docs/development.md).
 
 **Provide feedback.** Bug reports and enhancement requests belong in the issue tracker:
-[open an issue](https://github.com/serious6/WorkTimeTracker/issues/new/choose) after searching the
+[open a new issue](https://github.com/serious6/WorkTimeTracker/issues/new/choose) after searching the
 [existing issues](https://github.com/serious6/WorkTimeTracker/issues). A useful report names the
 application version, the operating system, the steps to reproduce, and the expected and the actual
 result. Report a security vulnerability privately as described in [`SECURITY.md`](SECURITY.md)
