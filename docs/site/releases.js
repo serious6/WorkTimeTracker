@@ -1,4 +1,4 @@
-import { RELEASES_PAGE, downloadUrl, formatBytes, formatReleaseDate, inferPlatform, loadReleases, releaseState } from './release-data.js'
+import { RELEASES_PAGE, downloadUrl, formatBytes, formatReleaseDate, inferPlatform, loadReleases, releaseState, releaseSummary } from './release-data.js'
 
 const content = document.querySelector('#release-content')
 const htmlEntities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
@@ -17,7 +17,7 @@ function render(releases, stale) {
     const downloads = Number.isFinite(asset.download_count) ? ` · ${asset.download_count} download${asset.download_count === 1 ? '' : 's'}` : ''
     return url ? `<a class="asset" href="${escapeHtml(url)}"><span class="asset-icon" aria-hidden="true">↓</span><div><strong>${escapeHtml(inferPlatform(asset.name))} · ${escapeHtml(asset.name || 'Installer')}</strong><span class="asset-meta">${formatBytes(asset.size)}${downloads}</span></div><span class="download-arrow" aria-hidden="true">↓</span></a>` : ''
   }).join('')
-  const body = typeof release.body === 'string' ? release.body.trim() : ''
+  const body = releaseSummary(release.body)
   const notes = body ? `<p class="release-notes">${escapeHtml(body.slice(0, 320))}${body.length > 320 ? '…' : ''}</p>` : ''
   content.innerHTML = `<div class="release-head"><div><h3>Latest release: ${escapeHtml(release.tag_name)}</h3>${publishedDate ? `<p class="release-meta">Published ${publishedDate}</p>` : ''}</div>${stale ? '<span class="release-meta">Showing saved results</span>' : ''}</div>${notes}${assets ? `<div class="asset-list">${assets}</div>` : '<p class="release-meta">This release does not include downloadable assets yet.</p>'}<a class="older-link" href="${RELEASES_PAGE}">View all releases on GitHub →</a>`
 }

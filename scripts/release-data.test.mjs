@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { CACHE_KEY, CACHE_TTL, RELEASES_URL, ReleaseRequestError, downloadUrl, formatBytes, formatReleaseDate, inferPlatform, loadReleases, releaseState } from '../docs/site/release-data.js'
+import { CACHE_KEY, CACHE_TTL, RELEASES_URL, ReleaseRequestError, downloadUrl, formatBytes, formatReleaseDate, inferPlatform, loadReleases, releaseState, releaseSummary } from '../docs/site/release-data.js'
 
 describe('release page helpers', () => {
   test('infers every supported installer platform', () => {
@@ -16,6 +16,13 @@ describe('release page helpers', () => {
     expect(formatReleaseDate()).toBeNull()
     expect(releaseState([])).toBe('empty')
     expect(releaseState([{ tag_name: 'v1.0.0' }])).toBe('release')
+  })
+  test('shows the written summary of a release without its commit list', () => {
+    const body = ['## Highlights', '', '- A weekly report.', '', '## Upgrade impact', '', 'None.', '', '<details><summary>Commits in this release</summary>', '', '- [`abc1234`](https://example.test/commit/abc1234) chore: bump', '', '</details>'].join('\n')
+
+    expect(releaseSummary(body)).toBe('• A weekly report.')
+    expect(releaseSummary('## Highlights\n\n- See [the guide](https://example.test/guide).')).toBe('• See the guide.')
+    expect(releaseSummary(undefined)).toBe('')
   })
   test('caches successful results and uses stale results after a failed request', async () => {
     const values = new Map()

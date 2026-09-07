@@ -52,6 +52,15 @@ an **e2e test** covering the happy path and one failure case, listed in
 test files live and how they stay deterministic is described in
 [`AGENTS.md`](AGENTS.md#test-conventions).
 
+## Changelog
+
+Every user-facing change adds a line to the `Unreleased` section of [`CHANGELOG.md`](CHANGELOG.md)
+under `Added`, `Changed`, `Fixed`, `Removed` or `Security`, and a breaking change describes its
+upgrade impact under `Breaking changes`. Write it for users, not for reviewers. Releasing turns that
+section into a version heading, and the `Release` workflow publishes it as the release notes, so a
+version without a section cannot be released; see
+[`docs/development.md`](docs/development.md#release-checks).
+
 ## Quality checks
 
 Every check that has to pass before a pull request is listed once, in
@@ -92,6 +101,7 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 - [ ] One topic per pull request.
 - [ ] Unit tests added or updated; e2e test added for user-facing behaviour.
 - [ ] The quality checks above pass locally.
+- [ ] User-facing changes are listed in the `Unreleased` section of `CHANGELOG.md`.
 - [ ] Documentation the change invalidates is updated.
 - [ ] A schema change updates the migration in `drizzle/`.
 - [ ] The title follows Conventional Commits.
