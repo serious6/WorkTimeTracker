@@ -122,8 +122,19 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # Dynamic analysis of every proposed production release, as the OpenSSF Best
+  # Practices criterion `dynamic_analysis` asks for. It reuses the `Fuzz`
+  # workflow so the steps exist once; 900 seconds per target is affordable
+  # because the targets search in parallel.
+  fuzz:
+    uses: ./.github/workflows/fuzz.yml
+    with:
+      fuzz_seconds: '900'
+    permissions:
+      contents: read
+
   bundle:
-    needs: [version, web, rust, end-to-end]
+    needs: [version, web, rust, end-to-end, fuzz]
     strategy:
       fail-fast: false
       matrix:

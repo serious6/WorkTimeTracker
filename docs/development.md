@@ -138,7 +138,9 @@ shipped build.
 A finding is written to `src-tauri/fuzz/artifacts/<target>/`. Reproduce it with
 `cargo fuzz run <target> artifacts/<target>/<crash file>`, shrink it with `cargo fuzz tmin`, then turn
 it into a unit test next to the code before fixing it. The `Fuzz` workflow runs a short search for
-every backend pull request and a longer one weekly, and uploads the artifacts of a failing run.
+every backend pull request and a longer one weekly, and uploads the artifacts of a failing run. It
+is also reusable: the `Release` workflow calls it with a longer budget, so no release is bundled or
+published unless every target survives its search.
 
 ## Security checks
 
@@ -189,8 +191,10 @@ src-tauri/fuzz/     cargo-fuzz targets for the backend parsers and validators
 
 The manual `Release` workflow verifies that `package.json`, `src-tauri/Cargo.toml`, and
 `src-tauri/tauri.conf.json` declare the same version. It runs lint, typecheck, unit tests, the
-architecture check, build, Rust format and tests, license checks, the e2e suite, and then bundles
-Windows and macOS installers.
+architecture check, build, Rust format and tests, license checks, the e2e suite, and the fuzz targets
+of the `Fuzz` workflow, and then bundles Windows and macOS installers. The fuzz gate is what applies
+dynamic analysis to every proposed production release, as the OpenSSF Best Practices criterion
+`dynamic_analysis` asks for.
 
 The `release` job, which creates/updates the GitHub release and uploads the installers and
 portable archives, also runs in the protected `production` environment. A dispatched run therefore
