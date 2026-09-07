@@ -705,8 +705,8 @@ fn run_migrations_inner(
          )",
         schema = connection::APP_SCHEMA
     ))?;
-    let mut applied_count = 0;
     let mut skipped_count = 0;
+    let mut applied_versions: Vec<String> = Vec::new();
     for (version, sql) in migrations {
         let applied: bool = transaction
             .query_one(
@@ -739,16 +739,23 @@ fn run_migrations_inner(
             migration_progress(reporter, failure_message(version, &error.to_string()));
             return Err(error.into());
         }
-        applied_count += 1;
+        applied_versions.push((*version).to_owned());
         migration_progress(
             reporter,
-            applied_message(version, migration_started.elapsed().as_millis()),
+            executed_message(version, migration_started.elapsed().as_millis()),
         );
     }
     transaction.commit()?;
+    for version in &applied_versions {
+        migration_progress(reporter, applied_message(version));
+    }
     migration_progress(
         reporter,
-        completed_message(applied_count, skipped_count, started.elapsed().as_millis()),
+        completed_message(
+            applied_versions.len(),
+            skipped_count,
+            started.elapsed().as_millis(),
+        ),
     );
     Ok(())
 }
@@ -770,8 +777,16 @@ fn applying_message(version: &str) -> String {
     format!("migration {version}: applying")
 }
 
-fn applied_message(version: &str, millis: u128) -> String {
-    format!("migration {version}: applied in {millis} ms")
+/// The statements ran, but the transaction still has to commit, so the message
+/// must not yet claim the version is applied.
+fn executed_message(version: &str, millis: u128) -> String {
+    format!("migration {version}: executed in {millis} ms (pending commit)")
+}
+
+/// Only a committed transaction makes a version applied, so this confirmation
+/// is emitted after the commit succeeded.
+fn applied_message(version: &str) -> String {
+    format!("migration {version}: applied")
 }
 
 fn failure_message(version: &str, error: &str) -> String {
@@ -2268,11 +2283,13 @@ mod tests {
         assert_eq!(first_run[0], "migration run started: 1 registered");
         assert_eq!(first_run[1], "migration 0098_migration_progress: applying");
         assert!(
-            first_run[2].starts_with("migration 0098_migration_progress: applied in "),
+            first_run[2].starts_with("migration 0098_migration_progress: executed in ")
+                && first_run[2].ends_with(" (pending commit)"),
             "{first_run:?}"
         );
+        assert_eq!(first_run[3], "migration 0098_migration_progress: applied");
         assert!(
-            first_run[3].starts_with("migration run completed: 1 applied, 0 skipped in "),
+            first_run[4].starts_with("migration run completed: 1 applied, 0 skipped in "),
             "{first_run:?}"
         );
 
@@ -2313,6 +2330,52 @@ mod tests {
                 .any(|message| message.starts_with("migration 0099_failed_migration: failed:")),
             "{messages:?}"
         );
+    }
+
+    /// The rolled back transaction leaves the earlier migration unapplied, so
+    /// no message may claim it was applied.
+    #[test]
+    fn confirms_no_migration_when_a_later_one_fails() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let mut client = postgres::Client::connect(database.url(), NoTls).unwrap();
+        let mut messages = Vec::new();
+        let result = run_migrations(
+            &mut client,
+            &[
+                (
+                    "0096_rolled_back_migration",
+                    "CREATE TABLE wtt.migration_rollback_test (id INTEGER)",
+                ),
+                ("0099_failed_migration", "THIS IS NOT VALID SQL"),
+            ],
+            |message| messages.push(message.to_owned()),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            messages
+                .iter()
+                .any(|message| message
+                    .starts_with("migration 0096_rolled_back_migration: executed in ")),
+            "{messages:?}"
+        );
+        assert!(
+            !messages
+                .iter()
+                .any(|message| message == "migration 0096_rolled_back_migration: applied"),
+            "{messages:?}"
+        );
+
+        let recorded: bool = client
+            .query_one(
+                "SELECT to_regclass($1) IS NOT NULL",
+                &[&"wtt.migration_rollback_test"],
+            )
+            .unwrap()
+            .get(0);
+        assert!(!recorded, "the failed run must not leave a table behind");
     }
 
     #[test]

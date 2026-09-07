@@ -542,7 +542,9 @@ later migration upgrades a database that already recorded the baseline and stays
 guarded by an advisory lock and records every applied version in the `wtt.schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration
 directory. The migration step logs its start, each applied or skipped version, failures, and summary
-durations. Dynamic error details are redacted, so those logs never contain connection details.
+durations. A version that ran is reported as pending until the transaction commits, so a rolled back
+run never claims a migration was applied. Dynamic error details are redacted, so those logs never
+contain connection details.
 
 ## Derived data (not persisted)
 

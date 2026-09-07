@@ -30,8 +30,53 @@ const SENSITIVE_KEYS: [&str; 11] = [
     "authorization",
     "cookie",
 ];
-const LIBPQ_CONNECTION_KEYS: [&str; 7] = [
-    "host", "hostaddr", "port", "dbname", "user", "password", "sslmode",
+/// The libpq connection parameters, in the spelling the driver accepts. Two of
+/// them in one message make it a connection string, which is never logged.
+const LIBPQ_CONNECTION_KEYS: [&str; 44] = [
+    "application_name",
+    "channel_binding",
+    "client_encoding",
+    "connect_timeout",
+    "dbname",
+    "fallback_application_name",
+    "gssdelegation",
+    "gssencmode",
+    "gsslib",
+    "host",
+    "hostaddr",
+    "keepalives",
+    "keepalives_count",
+    "keepalives_idle",
+    "keepalives_interval",
+    "krbsrvname",
+    "load_balance_hosts",
+    "options",
+    "passfile",
+    "password",
+    "port",
+    "replication",
+    "require_auth",
+    "requirepeer",
+    "requiressl",
+    "scram_client_key",
+    "scram_server_key",
+    "service",
+    "ssl_max_protocol_version",
+    "ssl_min_protocol_version",
+    "sslcert",
+    "sslcertmode",
+    "sslcompression",
+    "sslcrl",
+    "sslcrldir",
+    "sslkey",
+    "sslmode",
+    "sslnegotiation",
+    "sslpassword",
+    "sslrootcert",
+    "sslsni",
+    "target_session_attrs",
+    "tcp_user_timeout",
+    "user",
 ];
 
 /// Prefixes of the password hash formats that may appear in a message.
@@ -536,6 +581,42 @@ mod tests {
         );
         assert_eq!(redact("database=missing table"), "database=missing table");
         assert_eq!(redact(&format!("failed {url}")), "failed [redacted]");
+    }
+
+    /// Regression test: the detector once knew only a handful of keys, so a
+    /// connection string built from the remaining libpq parameters slipped
+    /// through unredacted.
+    #[test]
+    fn redacts_connection_strings_built_from_less_common_keys() {
+        for connection_string in [
+            ["user", "=", "deploy", " ", "application_name", "=", "wtt"].concat(),
+            [
+                "service",
+                "=",
+                "app",
+                " ",
+                "options",
+                "=",
+                "-csearch_path=wtt",
+            ]
+            .concat(),
+            [
+                "sslrootcert",
+                "=",
+                "ca.crt",
+                " ",
+                "target_session_attrs",
+                "=",
+                "read-write",
+            ]
+            .concat(),
+        ] {
+            assert_eq!(
+                redact(&format!("connection failed: {connection_string}")),
+                "[redacted]",
+                "{connection_string}"
+            );
+        }
     }
 
     #[test]
