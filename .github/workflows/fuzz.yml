@@ -1,9 +1,18 @@
 name: Fuzz
 
 # Fuzzing explores input no example based test was written for, so it runs on a
-# schedule and for changes to the backend or the targets themselves. Each run is
-# a short smoke run; findings are reproduced locally with the crash artifact.
+# schedule, for changes to the backend or the targets themselves, and as a gate
+# of the release pipeline. Findings are reproduced locally with the crash
+# artifact.
 on:
+  # `workflow_call` lets the release pipeline reuse these steps instead of
+  # copying them, with a budget of its own.
+  workflow_call:
+    inputs:
+      fuzz_seconds:
+        required: false
+        type: string
+        default: '600'
   pull_request:
     paths:
       - 'src-tauri/**'
@@ -17,18 +26,27 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # The prefix keeps a called run out of the group its caller already holds,
+  # which would make the caller wait for a job that waits for the caller.
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
   # Seconds each target runs. A pull request gets a smoke run, the weekly run
-  # and a manual one search longer.
-  FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '60' || '600' }}
+  # and a manual one search longer, and a caller sets its own budget.
+  # `inputs` is empty for every trigger but `workflow_call`, so it falls back.
+  FUZZ_SECONDS: ${{ github.event_name == 'pull_request' && '60' || inputs.fuzz_seconds || '600' }}
 
 jobs:
   fuzz:
     runs-on: ubuntu-latest
+    # One job per target: they search in parallel, so a longer budget per
+    # target does not stretch the run that waits for them.
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [redact, database_url, save_input, portable_settings]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # cargo-fuzz builds the targets with the sanitizer and coverage
@@ -47,17 +65,14 @@ jobs:
         run: cargo install cargo-fuzz --locked
       - name: Fuzz
         working-directory: src-tauri/fuzz
-        run: |
-          for target in redact database_url save_input portable_settings; do
-            echo "::group::$target"
-            cargo fuzz run "$target" -- -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=4096
-            echo "::endgroup::"
-          done
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo fuzz run "$TARGET" -- -max_total_time="$FUZZ_SECONDS" -rss_limit_mb=4096
       # The input that reproduces a finding is the only thing needed to turn it
       # into a failing unit test, so it must survive the run.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: fuzz-artifacts
+          name: fuzz-artifacts-${{ matrix.target }}
           path: src-tauri/fuzz/artifacts/
           retention-days: 7
