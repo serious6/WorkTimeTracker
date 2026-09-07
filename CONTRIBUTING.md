@@ -9,6 +9,35 @@ Required tool versions, local setup, npm scripts, and quality commands are maint
 [`docs/development.md`](docs/development.md). Installing a released build instead of running from
 source is described in [`docs/installation.md`](docs/installation.md).
 
+## Requirements for acceptable contributions
+
+A contribution is accepted when it meets all of the following:
+
+- **Coding standard** - TypeScript and React code passes
+  [oxlint](https://oxc.rs/docs/guide/usage/linter.html) with the rules in
+  [`.oxlintrc.json`](.oxlintrc.json) and the compiler options in
+  [`tsconfig.app.json`](tsconfig.app.json); Rust code is formatted with `rustfmt` and passes
+  `clippy` with no warnings. The commands that enforce this - `npm run lint`, `npm run typecheck`,
+  `cargo fmt --check`, `cargo clippy` - are listed in
+  [`docs/development.md`](docs/development.md#quality-checks).
+- **Tests** - see [Tests are required](#tests-are-required).
+- **Commit and pull request titles** - see [Conventional Commits](#conventional-commits).
+- **Pull request** - every item of the [pull request checklist](#pull-request-checklist) is done.
+- **Documentation** - every document the change invalidates is updated, following the
+  [conventions](#conventions).
+- **Dependencies** - only dependencies with an OSI-approved open-source license;
+  `npm run licenses:check` verifies the bundled notices.
+- **Architecture and UI rules** - changes follow
+  [`architecture/decisions.md`](architecture/decisions.md),
+  [`docs/ui-principles.md`](docs/ui-principles.md), and the domain rules in
+  [`contract/domain-rules.json`](contract/domain-rules.json), which must stay in sync with the Rust
+  backend and the browser fallback.
+
+## License of contributions
+
+Contributions are accepted under the MIT License of this repository, see [`LICENSE`](LICENSE): by
+opening a pull request you agree that your contribution is licensed under those terms.
+
 ## Branches
 
 Branch off `main` as `<type>/<short-topic>`, for example `feat/project-budgets` or
@@ -85,12 +114,8 @@ build, and both repeat the paths of the in-app `AppLogo`. After changing the sou
 
 ## Conventions
 
-- Only add dependencies with an OSI-approved open-source license.
 - Keep documentation concise, and keep every fact in one place: link to the document that owns it
   instead of repeating it.
-- Domain rules live in `contract/domain-rules.json` and must stay in sync with the Rust backend and
-  the browser fallback.
 - Schema changes follow
   [`architecture/decisions.md`](architecture/decisions.md#keep-native-persistence-postgres-only-and-migrations-explicit)
   and update `docs/data-model.md` with the migration.
-- UI changes follow the binding rules in [`docs/ui-principles.md`](docs/ui-principles.md).
