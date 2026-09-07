@@ -96,6 +96,7 @@ impl PostgresStore {
         Self::open_with_migration(config, migrate)
     }
 
+    /// Opens Postgres and sends each redacted migration message to `progress`.
     pub(crate) fn open_with_migration_progress(
         config: &DbConfig,
         mut progress: impl FnMut(&str),

@@ -17,7 +17,7 @@ const REDACTED: &str = "[redacted]";
 const REDACTED_PATH: &str = "[redacted path]";
 
 /// Words whose value is never written to the log.
-const SENSITIVE_KEYS: [&str; 15] = [
+const SENSITIVE_KEYS: [&str; 11] = [
     "password",
     "passwort",
     "secret",
@@ -29,10 +29,9 @@ const SENSITIVE_KEYS: [&str; 15] = [
     "api_key",
     "authorization",
     "cookie",
-    "host",
-    "user",
-    "dbname",
-    "database",
+];
+const LIBPQ_CONNECTION_KEYS: [&str; 7] = [
+    "host", "hostaddr", "port", "dbname", "user", "password", "sslmode",
 ];
 
 /// Prefixes of the password hash formats that may appear in a message.
@@ -146,6 +145,9 @@ fn clamp(message: &str) -> String {
 /// Removes credentials, hashes, e-mail addresses and file system paths from a
 /// message. A log line is redacted before it is written, so it is safe wherever it originates.
 pub fn redact(message: &str) -> String {
+    if contains_libpq_connection_string(message) {
+        return REDACTED.to_owned();
+    }
     let message = redact_sensitive_values(message);
     message
         .split_whitespace()
@@ -212,6 +214,20 @@ fn redact_token(token: &str) -> String {
 fn contains_database_url(token: &str) -> bool {
     let token = token.to_ascii_lowercase();
     token.contains("postgresql://") || token.contains("postgres://")
+}
+
+fn contains_libpq_connection_string(message: &str) -> bool {
+    message
+        .split_whitespace()
+        .filter_map(|token| token.split_once('=').map(|(key, _)| key))
+        .filter(|key| {
+            LIBPQ_CONNECTION_KEYS
+                .iter()
+                .any(|connection_key| key.eq_ignore_ascii_case(connection_key))
+        })
+        .take(2)
+        .count()
+        == 2
 }
 
 fn replacement(token: &str) -> &'static str {
