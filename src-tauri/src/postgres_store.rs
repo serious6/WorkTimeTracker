@@ -11,7 +11,7 @@
 //! (`users`, `login_attempts`, auth audit inserts) or describe database
 //! state (`wtt.app_metadata`, `wtt.schema_migrations`).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use postgres::error::SqlState;
@@ -22,7 +22,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 use crate::{
     auth::LOGIN_LOCKOUT_MINUTES,
     config::DbConfig,
-    connection,
+    connection, logging,
     models::{
         Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, OvertimeAudit,
         OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject,
@@ -93,6 +93,23 @@ impl PostgresStore {
     /// local server without TLS; a production deployment reaches its remote
     /// server only over a verified TLS connection (`connection::prepare`).
     pub fn open(config: &DbConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::open_with_migration(config, migrate)
+    }
+
+    /// Opens Postgres and sends each redacted migration message to `progress`.
+    pub(crate) fn open_with_migration_progress(
+        config: &DbConfig,
+        mut progress: impl FnMut(&str),
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::open_with_migration(config, |client| {
+            migrate_with_reporter(client, &mut progress)
+        })
+    }
+
+    fn open_with_migration(
+        config: &DbConfig,
+        migrate_database: impl FnOnce(&mut postgres::Client) -> Result<(), StoreError>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let (postgres_config, tls) = connection::prepare(
             &config.database_url,
             config.mode,
@@ -107,7 +124,7 @@ impl PostgresStore {
         {
             let mut client = store.conn()?;
             if config.run_migrations {
-                migrate(&mut client)?;
+                migrate_database(&mut client)?;
                 // Only the process that applies the migrations records a
                 // version: the row says which release established the schema,
                 // and a client of a shared database must not overwrite it.
@@ -649,6 +666,35 @@ fn actor(client: &mut impl postgres::GenericClient, user_id: i64) -> Result<Stri
 /// on `pg_type`. A second process therefore waits and then sees the already
 /// recorded versions.
 fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
+    migrate_with_reporter(client, |_| {})
+}
+
+fn migrate_with_reporter(
+    client: &mut postgres::Client,
+    reporter: impl FnMut(&str),
+) -> Result<(), StoreError> {
+    run_migrations(client, MIGRATIONS, reporter)
+}
+
+fn run_migrations(
+    client: &mut postgres::Client,
+    migrations: &[(&str, &str)],
+    mut reporter: impl FnMut(&str),
+) -> Result<(), StoreError> {
+    migration_progress(&mut reporter, migration_started_message(migrations.len()));
+    let result = run_migrations_inner(client, migrations, &mut reporter);
+    if let Err(error) = &result {
+        migration_progress(&mut reporter, run_failure_message(&error.to_string()));
+    }
+    result
+}
+
+fn run_migrations_inner(
+    client: &mut postgres::Client,
+    migrations: &[(&str, &str)],
+    reporter: &mut impl FnMut(&str),
+) -> Result<(), StoreError> {
+    let started = Instant::now();
     let mut transaction = client.transaction()?;
     transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
     transaction.batch_execute(&format!(
@@ -659,7 +705,9 @@ fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
          )",
         schema = connection::APP_SCHEMA
     ))?;
-    for (version, sql) in MIGRATIONS {
+    let mut skipped_count = 0;
+    let mut applied_versions: Vec<String> = Vec::new();
+    for (version, sql) in migrations {
         let applied: bool = transaction
             .query_one(
                 &format!(
@@ -671,30 +719,98 @@ fn migrate(client: &mut postgres::Client) -> Result<(), StoreError> {
                 &[version],
             )?
             .get(0);
-        if !applied {
-            transaction.batch_execute(sql)?;
+        if applied {
+            skipped_count += 1;
+            migration_progress(reporter, skipped_message(version));
+            continue;
+        }
+
+        migration_progress(reporter, applying_message(version));
+        let migration_started = Instant::now();
+        if let Err(error) = transaction.batch_execute(sql).and_then(|_| {
             transaction.execute(
                 &format!(
                     "INSERT INTO {schema}.schema_migrations (version, applied_at) VALUES ($1, $2)",
                     schema = connection::APP_SCHEMA
                 ),
                 &[version, &now_iso()],
-            )?;
+            )
+        }) {
+            migration_progress(reporter, failure_message(version, &error.to_string()));
+            return Err(error.into());
         }
+        applied_versions.push((*version).to_owned());
+        migration_progress(
+            reporter,
+            executed_message(version, migration_started.elapsed().as_millis()),
+        );
     }
     transaction.commit()?;
+    for version in &applied_versions {
+        migration_progress(reporter, applied_message(version));
+    }
+    migration_progress(
+        reporter,
+        completed_message(
+            applied_versions.len(),
+            skipped_count,
+            started.elapsed().as_millis(),
+        ),
+    );
     Ok(())
+}
+
+fn migration_progress(reporter: &mut impl FnMut(&str), message: String) {
+    logging::info("migration", &message);
+    reporter(&message);
+}
+
+fn migration_started_message(count: usize) -> String {
+    format!("migration run started: {count} registered")
+}
+
+fn skipped_message(version: &str) -> String {
+    format!("migration {version}: skipped (already applied)")
+}
+
+fn applying_message(version: &str) -> String {
+    format!("migration {version}: applying")
+}
+
+/// The statements ran, but the transaction still has to commit, so the message
+/// must not yet claim the version is applied.
+fn executed_message(version: &str, millis: u128) -> String {
+    format!("migration {version}: executed in {millis} ms (pending commit)")
+}
+
+/// Only a committed transaction makes a version applied, so this confirmation
+/// is emitted after the commit succeeded.
+fn applied_message(version: &str) -> String {
+    format!("migration {version}: applied")
+}
+
+fn failure_message(version: &str, error: &str) -> String {
+    format!("migration {version}: failed: {}", logging::redact(error))
+}
+
+fn run_failure_message(error: &str) -> String {
+    format!("migration run failed: {}", logging::redact(error))
+}
+
+fn completed_message(applied: usize, skipped: usize, millis: u128) -> String {
+    format!("migration run completed: {applied} applied, {skipped} skipped in {millis} ms")
 }
 
 /// The production database is migrated by a deliberate, separately approved
 /// step, so a starting client only checks that the schema it expects is
 /// already there instead of changing a shared database on its own.
 fn verify_migrations(client: &mut postgres::Client) -> Result<(), StoreError> {
+    logging::info("migration", "migration verification started");
     let migrations_table = format!("{}.schema_migrations", connection::APP_SCHEMA);
     let recorded: bool = client
         .query_one("SELECT to_regclass($1) IS NOT NULL", &[&migrations_table])?
         .get(0);
-    let missing: Vec<&str> = if recorded {
+    let (missing, recorded_count): (Vec<&str>, usize) = if recorded {
         let applied: Vec<String> = client
             .query(
                 &format!(
@@ -706,17 +822,35 @@ fn verify_migrations(client: &mut postgres::Client) -> Result<(), StoreError> {
             .iter()
             .map(|row| row.get(0))
             .collect();
-        MIGRATIONS
-            .iter()
-            .map(|(version, _)| *version)
-            .filter(|version| !applied.iter().any(|entry| entry == version))
-            .collect()
+        (
+            MIGRATIONS
+                .iter()
+                .map(|(version, _)| *version)
+                .filter(|version| !applied.iter().any(|entry| entry == version))
+                .collect(),
+            applied.len(),
+        )
     } else {
-        MIGRATIONS.iter().map(|(version, _)| *version).collect()
+        (MIGRATIONS.iter().map(|(version, _)| *version).collect(), 0)
     };
+    logging::info(
+        "migration",
+        &format!(
+            "migration verification found {recorded_count} recorded versions; {} expected",
+            MIGRATIONS.len()
+        ),
+    );
     if missing.is_empty() {
+        logging::info("migration", "migration verification succeeded");
         Ok(())
     } else {
+        logging::error(
+            "migration",
+            &format!(
+                "migration verification missing versions: {}",
+                missing.join(", ")
+            ),
+        );
         Err(StoreError::Backend(format!(
             "the database is missing the migrations {}; apply them with the migration role before starting the application",
             missing.join(", ")
@@ -2128,6 +2262,149 @@ mod tests {
         },
         test_support::{fresh_database, test_store, unique_email},
     };
+
+    #[test]
+    fn reports_applied_then_skipped_migrations() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let migrations = &[(
+            "0098_migration_progress",
+            "CREATE TABLE wtt.migration_progress_test (id INTEGER)",
+        )];
+        let mut client = postgres::Client::connect(database.url(), NoTls).unwrap();
+        let mut first_run = Vec::new();
+
+        run_migrations(&mut client, migrations, |message| {
+            first_run.push(message.to_owned())
+        })
+        .unwrap();
+
+        assert_eq!(first_run[0], "migration run started: 1 registered");
+        assert_eq!(first_run[1], "migration 0098_migration_progress: applying");
+        assert!(
+            first_run[2].starts_with("migration 0098_migration_progress: executed in ")
+                && first_run[2].ends_with(" (pending commit)"),
+            "{first_run:?}"
+        );
+        assert_eq!(first_run[3], "migration 0098_migration_progress: applied");
+        assert!(
+            first_run[4].starts_with("migration run completed: 1 applied, 0 skipped in "),
+            "{first_run:?}"
+        );
+
+        let mut second_run = Vec::new();
+        run_migrations(&mut client, migrations, |message| {
+            second_run.push(message.to_owned())
+        })
+        .unwrap();
+
+        assert_eq!(second_run[0], "migration run started: 1 registered");
+        assert_eq!(
+            second_run[1],
+            "migration 0098_migration_progress: skipped (already applied)"
+        );
+        assert!(
+            second_run[2].starts_with("migration run completed: 0 applied, 1 skipped in "),
+            "{second_run:?}"
+        );
+    }
+
+    #[test]
+    fn reports_the_version_of_a_failed_migration() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let mut client = postgres::Client::connect(database.url(), NoTls).unwrap();
+        let mut messages = Vec::new();
+        let result = run_migrations(
+            &mut client,
+            &[("0099_failed_migration", "THIS IS NOT VALID SQL")],
+            |message| messages.push(message.to_owned()),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.starts_with("migration 0099_failed_migration: failed:")),
+            "{messages:?}"
+        );
+    }
+
+    /// The rolled back transaction leaves the earlier migration unapplied, so
+    /// no message may claim it was applied.
+    #[test]
+    fn confirms_no_migration_when_a_later_one_fails() {
+        let Some(database) = fresh_database() else {
+            return;
+        };
+        let mut client = postgres::Client::connect(database.url(), NoTls).unwrap();
+        let mut messages = Vec::new();
+        let result = run_migrations(
+            &mut client,
+            &[
+                (
+                    "0096_rolled_back_migration",
+                    "CREATE TABLE wtt.migration_rollback_test (id INTEGER)",
+                ),
+                ("0099_failed_migration", "THIS IS NOT VALID SQL"),
+            ],
+            |message| messages.push(message.to_owned()),
+        );
+
+        assert!(result.is_err());
+        assert!(
+            messages
+                .iter()
+                .any(|message| message
+                    .starts_with("migration 0096_rolled_back_migration: executed in ")),
+            "{messages:?}"
+        );
+        assert!(
+            !messages
+                .iter()
+                .any(|message| message == "migration 0096_rolled_back_migration: applied"),
+            "{messages:?}"
+        );
+
+        let recorded: bool = client
+            .query_one(
+                "SELECT to_regclass($1) IS NOT NULL",
+                &[&"wtt.migration_rollback_test"],
+            )
+            .unwrap()
+            .get(0);
+        assert!(!recorded, "the failed run must not leave a table behind");
+    }
+
+    #[test]
+    fn redacts_connection_details_from_migration_failures() {
+        let dsn = [
+            "postgresql",
+            "://",
+            "deploy_user",
+            ":",
+            "super_secret",
+            "@",
+            "db.example.test/app",
+        ]
+        .concat();
+        let message = failure_message(
+            "0099_failed_migration",
+            &format!("connection to {dsn} failed"),
+        );
+
+        assert!(message.contains("0099_failed_migration"));
+        for secret in [
+            "postgresql://",
+            "deploy_user",
+            "super_secret",
+            "db.example.test",
+        ] {
+            assert!(!message.contains(secret), "{message}");
+        }
+    }
 
     /// A remote host is rejected by `connection::plan`, whose own tests cover
     /// the rules; this one keeps the store honest about using it.

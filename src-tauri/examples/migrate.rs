@@ -12,13 +12,16 @@
 //! It prints no connection details, so it is safe to run in a workflow log.
 
 fn main() -> std::process::ExitCode {
-    match work_time_tracker_lib::migrate() {
+    match work_time_tracker_lib::migrate_with_progress(|message| println!("{message}")) {
         Ok(()) => {
             println!("the database is migrated");
             std::process::ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("the database could not be migrated: {error}");
+            eprintln!(
+                "the database could not be migrated: {}",
+                work_time_tracker_lib::redact_error_message(error.as_ref())
+            );
             std::process::ExitCode::FAILURE
         }
     }

@@ -30,6 +30,54 @@ const SENSITIVE_KEYS: [&str; 11] = [
     "authorization",
     "cookie",
 ];
+/// The libpq connection parameters, in the spelling the driver accepts. Two of
+/// them in one message make it a connection string, which is never logged.
+const LIBPQ_CONNECTION_KEYS: [&str; 44] = [
+    "application_name",
+    "channel_binding",
+    "client_encoding",
+    "connect_timeout",
+    "dbname",
+    "fallback_application_name",
+    "gssdelegation",
+    "gssencmode",
+    "gsslib",
+    "host",
+    "hostaddr",
+    "keepalives",
+    "keepalives_count",
+    "keepalives_idle",
+    "keepalives_interval",
+    "krbsrvname",
+    "load_balance_hosts",
+    "options",
+    "passfile",
+    "password",
+    "port",
+    "replication",
+    "require_auth",
+    "requirepeer",
+    "requiressl",
+    "scram_client_key",
+    "scram_server_key",
+    "service",
+    "ssl_max_protocol_version",
+    "ssl_min_protocol_version",
+    "sslcert",
+    "sslcertmode",
+    "sslcompression",
+    "sslcrl",
+    "sslcrldir",
+    "sslkey",
+    "sslmode",
+    "sslnegotiation",
+    "sslpassword",
+    "sslrootcert",
+    "sslsni",
+    "target_session_attrs",
+    "tcp_user_timeout",
+    "user",
+];
 
 /// Prefixes of the password hash formats that may appear in a message.
 const HASH_PREFIXES: [&str; 6] = ["$argon2", "$pbkdf2", "$scrypt", "$2a$", "$2b$", "$2y$"];
@@ -63,6 +111,11 @@ pub fn file_path() -> Option<PathBuf> {
 /// an unwritable log must never break the running application.
 pub fn error(source: &str, message: &str) {
     write_line("ERROR", source, message);
+}
+
+/// Appends one redacted informational line.
+pub fn info(source: &str, message: &str) {
+    write_line("INFO", source, message);
 }
 
 /// Logs the failure of a command and hands the result back unchanged.
@@ -137,6 +190,9 @@ fn clamp(message: &str) -> String {
 /// Removes credentials, hashes, e-mail addresses and file system paths from a
 /// message. A log line is redacted before it is written, so it is safe wherever it originates.
 pub fn redact(message: &str) -> String {
+    if contains_libpq_connection_string(message) {
+        return REDACTED.to_owned();
+    }
     let message = redact_sensitive_values(message);
     message
         .split_whitespace()
@@ -183,6 +239,9 @@ pub fn leaks_secret(message: &str) -> bool {
 /// and while what remains of the token no longer reads as one - a hash cut at
 /// a colon must not survive as the label of its own redacted value.
 fn redact_token(token: &str) -> String {
+    if contains_database_url(token) {
+        return REDACTED.to_owned();
+    }
     if let Some((key, separator, value)) = split_pair(token) {
         if !is_path(token) && !needs_redaction(key) && needs_redaction(value) {
             let redacted = format!("{key}{separator}{}", replacement(value));
@@ -195,6 +254,25 @@ fn redact_token(token: &str) -> String {
         return replacement(token).to_owned();
     }
     token.to_owned()
+}
+
+fn contains_database_url(token: &str) -> bool {
+    let token = token.to_ascii_lowercase();
+    token.contains("postgresql://") || token.contains("postgres://")
+}
+
+fn contains_libpq_connection_string(message: &str) -> bool {
+    message
+        .split_whitespace()
+        .filter_map(|token| token.split_once('=').map(|(key, _)| key))
+        .filter(|key| {
+            LIBPQ_CONNECTION_KEYS
+                .iter()
+                .any(|connection_key| key.eq_ignore_ascii_case(connection_key))
+        })
+        .take(2)
+        .count()
+        == 2
 }
 
 fn replacement(token: &str) -> &'static str {
@@ -464,6 +542,81 @@ mod tests {
             redact(r#"{"password":"top secret"}"#),
             r#"{"password":"[redacted]"}"#
         );
+    }
+
+    #[test]
+    fn redacts_connection_strings_without_hiding_single_diagnostics() {
+        let connection_string = [
+            "host",
+            "=",
+            "db.example.test",
+            " ",
+            "user",
+            "=",
+            "deploy",
+            " ",
+            "password",
+            "=",
+            "top_secret",
+        ]
+        .concat();
+        let url = [
+            "postgres",
+            "://",
+            "deploy",
+            ":",
+            "top_secret",
+            "@",
+            "db.example.test/app",
+        ]
+        .concat();
+
+        assert_eq!(
+            redact(&format!("connection failed: {connection_string}")),
+            "[redacted]"
+        );
+        assert_eq!(
+            redact("user=42 is not authorized"),
+            "user=42 is not authorized"
+        );
+        assert_eq!(redact("database=missing table"), "database=missing table");
+        assert_eq!(redact(&format!("failed {url}")), "failed [redacted]");
+    }
+
+    /// Regression test: the detector once knew only a handful of keys, so a
+    /// connection string built from the remaining libpq parameters slipped
+    /// through unredacted.
+    #[test]
+    fn redacts_connection_strings_built_from_less_common_keys() {
+        for connection_string in [
+            ["user", "=", "deploy", " ", "application_name", "=", "wtt"].concat(),
+            [
+                "service",
+                "=",
+                "app",
+                " ",
+                "options",
+                "=",
+                "-csearch_path=wtt",
+            ]
+            .concat(),
+            [
+                "sslrootcert",
+                "=",
+                "ca.crt",
+                " ",
+                "target_session_attrs",
+                "=",
+                "read-write",
+            ]
+            .concat(),
+        ] {
+            assert_eq!(
+                redact(&format!("connection failed: {connection_string}")),
+                "[redacted]",
+                "{connection_string}"
+            );
+        }
     }
 
     #[test]
