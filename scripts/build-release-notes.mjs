@@ -35,11 +35,12 @@ export function extractSection(changelog, version) {
       break
     }
   }
-  // Link definitions of the reference style live at the end of the file and
-  // belong to no section.
+  // The version link definitions live at the end of the file and belong to no
+  // section; other reference definitions are kept so links of the section
+  // resolve.
   const body = lines
     .slice(start + 1, end)
-    .filter((line) => !/^\[[^\]]+\]:\s/.test(line))
+    .filter((line) => !/^\[(unreleased|v?\d[^\]]*)\]:\s/i.test(line))
     .join('\n')
     .trim()
   return body || null
@@ -70,11 +71,17 @@ export function splitUpgradeImpact(section) {
 const defaultUpgrade = (repositoryUrl) =>
   `Install or upgrade with the installer or the portable archive of this release; [docs/installation.md](${repositoryUrl}/blob/main/docs/installation.md) describes both. The database schema is not migrated by an installation: a shared database is migrated deliberately through the \`migrate_production_database\` input of the \`Release\` workflow.`
 
+// The commit list sits inside a `<details>` block, so a subject may not be able
+// to close it early or inject markup.
+function escapeHtml(text) {
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
 function commitList(commits, repositoryUrl) {
   const shown = commits.slice(0, commitLimit)
   const lines = shown.map(({ sha, subject }) => {
     const short = sha.slice(0, 7)
-    return `- [\`${short}\`](${repositoryUrl}/commit/${sha}) ${subject}`
+    return `- [\`${short}\`](${repositoryUrl}/commit/${sha}) ${escapeHtml(subject)}`
   })
   if (commits.length > shown.length) {
     lines.push(`- …and ${commits.length - shown.length} more commits.`)

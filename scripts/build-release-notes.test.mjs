@@ -39,8 +39,25 @@ describe('extractSection', () => {
     expect(extractSection(changelog, 'v1.1.0')).toBe('- Older release.')
   })
 
-  test('drops the reference link definitions of the file', () => {
+  test('drops the version link definitions of the file', () => {
     expect(extractSection(changelog, 'Unreleased')).toBe('Nothing yet.')
+    expect(extractSection(`${changelog}\n[1.2.0]: ${repositoryUrl}/releases/tag/v1.2.0`, 'v1.1.0')).toBe(
+      '- Older release.',
+    )
+  })
+
+  test('keeps the reference link definitions the section itself needs', () => {
+    const withReference = [
+      '## [1.0.0] - 2026-01-01',
+      '',
+      'See [the guide][install].',
+      '',
+      `[install]: ${repositoryUrl}/blob/main/docs/installation.md`,
+    ].join('\n')
+
+    expect(extractSection(withReference, '1.0.0')).toBe(
+      `See [the guide][install].\n\n[install]: ${repositoryUrl}/blob/main/docs/installation.md`,
+    )
   })
 
   test('returns null for a version the changelog does not describe or leaves empty', () => {
@@ -130,6 +147,19 @@ describe('buildNotes', () => {
     const notes = buildNotes({ version: '1.2.0', tag: 'v1.2.0', section: '- A change.', commits: [], repositoryUrl })
 
     expect(notes).toContain('No commits were recorded for this release.')
+  })
+
+  test('escapes the markup of a commit subject so it cannot close the collapsed section', () => {
+    const notes = buildNotes({
+      version: '1.2.0',
+      tag: 'v1.2.0',
+      section: '- A change.',
+      commits: [{ sha: 'd'.repeat(40), subject: 'fix(ui): drop </details> & <script> from the title' }],
+      repositoryUrl,
+    })
+
+    expect(notes).toContain('fix(ui): drop &lt;/details&gt; &amp; &lt;script&gt; from the title')
+    expect(notes.split('</details>').length).toBe(2)
   })
 })
 
