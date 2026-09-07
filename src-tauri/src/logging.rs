@@ -500,6 +500,45 @@ mod tests {
     }
 
     #[test]
+    fn redacts_connection_strings_without_hiding_single_diagnostics() {
+        let connection_string = [
+            "host",
+            "=",
+            "db.example.test",
+            " ",
+            "user",
+            "=",
+            "deploy",
+            " ",
+            "password",
+            "=",
+            "top_secret",
+        ]
+        .concat();
+        let url = [
+            "postgres",
+            "://",
+            "deploy",
+            ":",
+            "top_secret",
+            "@",
+            "db.example.test/app",
+        ]
+        .concat();
+
+        assert_eq!(
+            redact(&format!("connection failed: {connection_string}")),
+            "[redacted]"
+        );
+        assert_eq!(
+            redact("user=42 is not authorized"),
+            "user=42 is not authorized"
+        );
+        assert_eq!(redact("database=missing table"), "database=missing table");
+        assert_eq!(redact(&format!("failed {url}")), "failed [redacted]");
+    }
+
+    #[test]
     fn keeps_shell_style_variables() {
         assert_eq!(redact("reading $HOME failed"), "reading $HOME failed");
     }

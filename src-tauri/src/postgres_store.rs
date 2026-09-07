@@ -681,8 +681,20 @@ fn run_migrations(
     migrations: &[(&str, &str)],
     mut reporter: impl FnMut(&str),
 ) -> Result<(), StoreError> {
-    let started = Instant::now();
     migration_progress(&mut reporter, migration_started_message(migrations.len()));
+    let result = run_migrations_inner(client, migrations, &mut reporter);
+    if let Err(error) = &result {
+        migration_progress(&mut reporter, run_failure_message(&error.to_string()));
+    }
+    result
+}
+
+fn run_migrations_inner(
+    client: &mut postgres::Client,
+    migrations: &[(&str, &str)],
+    reporter: &mut impl FnMut(&str),
+) -> Result<(), StoreError> {
+    let started = Instant::now();
     let mut transaction = client.transaction()?;
     transaction.execute("SELECT pg_advisory_xact_lock($1)", &[&MIGRATION_LOCK_KEY])?;
     transaction.batch_execute(&format!(
@@ -709,11 +721,11 @@ fn run_migrations(
             .get(0);
         if applied {
             skipped_count += 1;
-            migration_progress(&mut reporter, skipped_message(version));
+            migration_progress(reporter, skipped_message(version));
             continue;
         }
 
-        migration_progress(&mut reporter, applying_message(version));
+        migration_progress(reporter, applying_message(version));
         let migration_started = Instant::now();
         if let Err(error) = transaction.batch_execute(sql).and_then(|_| {
             transaction.execute(
@@ -724,18 +736,18 @@ fn run_migrations(
                 &[version, &now_iso()],
             )
         }) {
-            migration_progress(&mut reporter, failure_message(version, &error.to_string()));
+            migration_progress(reporter, failure_message(version, &error.to_string()));
             return Err(error.into());
         }
         applied_count += 1;
         migration_progress(
-            &mut reporter,
+            reporter,
             applied_message(version, migration_started.elapsed().as_millis()),
         );
     }
     transaction.commit()?;
     migration_progress(
-        &mut reporter,
+        reporter,
         completed_message(applied_count, skipped_count, started.elapsed().as_millis()),
     );
     Ok(())
@@ -764,6 +776,10 @@ fn applied_message(version: &str, millis: u128) -> String {
 
 fn failure_message(version: &str, error: &str) -> String {
     format!("migration {version}: failed: {}", logging::redact(error))
+}
+
+fn run_failure_message(error: &str) -> String {
+    format!("migration run failed: {}", logging::redact(error))
 }
 
 fn completed_message(applied: usize, skipped: usize, millis: u128) -> String {
@@ -805,8 +821,8 @@ fn verify_migrations(client: &mut postgres::Client) -> Result<(), StoreError> {
     logging::info(
         "migration",
         &format!(
-            "migration verification found {} recorded versions",
-            recorded_count
+            "migration verification found {recorded_count} recorded versions; {} expected",
+            MIGRATIONS.len()
         ),
     );
     if missing.is_empty() {
