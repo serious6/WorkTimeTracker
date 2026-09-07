@@ -37,6 +37,28 @@ Running the application from the source code — prerequisites, the bundled Post
 [`docs/development.md`](docs/development.md). The contribution workflow is in
 [`CONTRIBUTING.md`](CONTRIBUTING.md); coding agents follow [`AGENTS.md`](AGENTS.md).
 
+## Get involved
+
+**Obtain the software.** Installers and portable archives for every release are attached to the
+[GitHub releases](https://github.com/serious6/WorkTimeTracker/releases) and listed on the
+[project website](https://serious6.github.io/WorkTimeTracker/). Downloading, installing, and
+configuring them is described in [`docs/installation.md`](docs/installation.md); building the
+application from source is described in [`docs/development.md`](docs/development.md).
+
+**Provide feedback.** Bug reports and enhancement requests belong in the issue tracker:
+[open an issue](https://github.com/serious6/WorkTimeTracker/issues/new/choose) after searching the
+[existing issues](https://github.com/serious6/WorkTimeTracker/issues). A useful report names the
+application version, the operating system, the steps to reproduce, and the expected and the actual
+result. Report a security vulnerability privately as described in [`SECURITY.md`](SECURITY.md)
+instead of opening a public issue.
+
+**Contribute.** Fork the repository, create a branch, add tests for your change, run lint,
+typecheck, and the test suites, then open a pull request whose title follows Conventional Commits.
+The workflow, the commit convention, and the pull request checklist are in
+[`CONTRIBUTING.md`](CONTRIBUTING.md), the local setup and the checks in
+[`docs/development.md`](docs/development.md), and the rules for coding agents in
+[`AGENTS.md`](AGENTS.md).
+
 ## Database
 
 Postgres is required for the native application; application tables live in the dedicated `wtt`
@@ -47,22 +69,6 @@ database. The rules and their reasoning are recorded in
 [`architecture/decisions.md`](architecture/decisions.md#separate-local-development-databases-from-verified-production-databases),
 every setting in [`.env.example`](.env.example), and the secrets the release workflow injects in
 [`docs/development.md`](docs/development.md#production-database-secrets).
-
-## Legal documents
-
-The account menu of the header opens the terms of service, the privacy policy and the third-party
-license notices. Both legal texts live in
-[`src/features/legal/legal-documents.ts`](src/features/legal/legal-documents.ts) and carry their own
-version and date, so a wording change is a content change and the installed build always states the
-revision it shows. Both texts distinguish the two storage modes: a local, self-hosted or browser
-build keeps the data in the storage you configured, while a released production build stores it in a
-hosted Postgres database in the EU, which the authors administer and may review to fix errors and
-evaluate usage.
-
-## Logs
-
-Backend and user interface errors are appended to a redacted log file that rotates at 512 KiB.
-[`docs/installation.md`](docs/installation.md) names its location and what the messages mean.
 
 ## Release
 

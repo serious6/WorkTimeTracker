@@ -55,3 +55,35 @@ test('WEB2: the landing page explains a rate-limited and a failed release reques
   await expect(page.getByRole('heading', { name: 'Couldn’t load releases' })).toBeVisible()
   await expect(page.getByRole('link', { name: /View releases on GitHub/ })).toBeVisible()
 })
+
+// WEB3 in docs/e2e-test-cases.md
+test('WEB3: the landing page explains how to obtain, give feedback and contribute', async ({
+  page,
+}) => {
+  await answerReleaseApi(page, (route) => route.fulfill({ json: [release], headers: cors }))
+  await page.goto(SITE_URL)
+
+  await page.getByRole('link', { name: 'Get involved' }).click()
+  const involved = page.locator('#get-involved')
+  await expect(involved.getByRole('heading', { name: 'Get involved', level: 2 })).toBeVisible()
+  await expect(involved.getByRole('heading', { name: 'Obtain the software' })).toBeVisible()
+  await expect(involved.getByRole('heading', { name: 'Provide feedback' })).toBeVisible()
+  await expect(involved.getByRole('heading', { name: 'Contribute' })).toBeVisible()
+
+  await expect(involved.getByRole('link', { name: 'installation guide' })).toHaveAttribute(
+    'href',
+    'https://github.com/serious6/WorkTimeTracker/blob/main/docs/installation.md',
+  )
+  await expect(involved.getByRole('link', { name: 'open a new issue' })).toHaveAttribute(
+    'href',
+    'https://github.com/serious6/WorkTimeTracker/issues/new/choose',
+  )
+  await expect(involved.getByRole('link', { name: 'SECURITY.md' })).toHaveAttribute(
+    'href',
+    'https://github.com/serious6/WorkTimeTracker/blob/main/SECURITY.md',
+  )
+  await expect(involved.getByRole('link', { name: 'CONTRIBUTING.md' })).toHaveAttribute(
+    'href',
+    'https://github.com/serious6/WorkTimeTracker/blob/main/CONTRIBUTING.md',
+  )
+})
