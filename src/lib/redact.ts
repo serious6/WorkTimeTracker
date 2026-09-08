@@ -127,12 +127,10 @@ function redactSensitiveAt(message: string, index: number): [string, number] | n
   if (quote === '"' || quote === "'") {
     return [`${prefix}${quote}${REDACTED}${quote}`, quotedValueEnd(message, valueStart, quote)]
   }
+  // A marker of an earlier pass replaces the whole value, so redacting an
+  // already-redacted message keeps one marker instead of appending another.
   if (message.startsWith(REDACTED, valueStart)) {
-    const redactedEnd = valueStart + REDACTED.length
-    const next = message[redactedEnd]
-    if (next === undefined || /[\s,}\]]/.test(next)) {
-      return [`${prefix}${REDACTED}`, redactedEnd]
-    }
+    return [`${prefix}${REDACTED}`, unquotedValueEnd(message, valueStart + REDACTED.length)]
   }
 
   const valueEnd =

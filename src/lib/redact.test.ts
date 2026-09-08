@@ -61,6 +61,7 @@ describe('redact', () => {
 
       expect(redact(once)).toBe(once)
     }
+    expect(redact(`${key}=[redacted]tail`)).toBe(`${key}=[redacted]`)
   })
 
   it('matches the longest sensitive key of a quoted field', () => {

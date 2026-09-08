@@ -332,17 +332,13 @@ fn redact_sensitive_at(message: &str, index: usize) -> Option<(String, usize)> {
             quoted_value_end(message, value_start, value),
         ));
     }
+    // A marker of an earlier pass replaces the whole value, so redacting an
+    // already-redacted message keeps one marker instead of appending another.
     if message[value_start..].starts_with(REDACTED) {
-        let redacted_end = value_start + REDACTED.len();
-        if message[redacted_end..]
-            .chars()
-            .next()
-            .is_none_or(|character| {
-                character.is_whitespace() || matches!(character, ',' | '}' | ']')
-            })
-        {
-            return Some((format!("{prefix}{REDACTED}"), redacted_end));
-        }
+        return Some((
+            format!("{prefix}{REDACTED}"),
+            unquoted_value_end(message, value_start + REDACTED.len()),
+        ));
     }
 
     let value_end = if key == "authorization" {
@@ -674,6 +670,10 @@ mod tests {
 
             assert_eq!(redact(&once), once, "{message}");
         }
+        assert_eq!(
+            redact(&format!("{}=[redacted]tail", SENSITIVE_KEYS[0])),
+            format!("{}=[redacted]", SENSITIVE_KEYS[0])
+        );
     }
 
     #[test]
