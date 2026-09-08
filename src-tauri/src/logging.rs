@@ -14,7 +14,8 @@ const ROTATED_FILE_NAME: &str = "work-time-tracker.log.1";
 const MAX_BYTES: u64 = 512 * 1024;
 pub(crate) const MAX_MESSAGE_CHARS: usize = 2_000;
 const REDACTED: &str = "[redacted]";
-const REDACTED_PATH: &str = "[redacted path]";
+/// One token, so redacting an already-redacted message cannot split it.
+const REDACTED_PATH: &str = "[redacted-path]";
 
 /// Words whose value is never written to the log.
 const SENSITIVE_KEYS: [&str; 11] = [
@@ -331,6 +332,14 @@ fn redact_sensitive_at(message: &str, index: usize) -> Option<(String, usize)> {
             quoted_value_end(message, value_start, value),
         ));
     }
+    // A marker of an earlier pass replaces the whole value, so redacting an
+    // already-redacted message keeps one marker instead of appending another.
+    if message[value_start..].starts_with(REDACTED) {
+        return Some((
+            format!("{prefix}{REDACTED}"),
+            unquoted_value_end(message, value_start + REDACTED.len()),
+        ));
+    }
 
     let value_end = if key == "authorization" {
         authorization_value_end(message, value_start)
@@ -636,11 +645,11 @@ mod tests {
     fn removes_file_system_paths() {
         assert_eq!(
             redact("unable to open /home/jane/.local/share/app.db"),
-            "unable to open [redacted path]"
+            "unable to open [redacted-path]"
         );
         assert_eq!(
             redact("unable to open C:\\Users\\jane\\app.db"),
-            "unable to open [redacted path]"
+            "unable to open [redacted-path]"
         );
     }
 
@@ -651,6 +660,20 @@ mod tests {
             "Email or password is incorrect"
         );
         assert_eq!(redact("ratio 1:2 stays"), "ratio 1:2 stays");
+    }
+
+    #[test]
+    fn redaction_of_unquoted_values_is_idempotent() {
+        for suffix in ["", " next", ",", "}", "]"] {
+            let message = format!("{}=secret{suffix}", SENSITIVE_KEYS[0]);
+            let once = redact(&message);
+
+            assert_eq!(redact(&once), once, "{message}");
+        }
+        assert_eq!(
+            redact(&format!("{}=[redacted]tail", SENSITIVE_KEYS[0])),
+            format!("{}=[redacted]", SENSITIVE_KEYS[0])
+        );
     }
 
     #[test]
