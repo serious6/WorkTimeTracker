@@ -89,14 +89,36 @@ fn log_dir_for(directory: &Path) -> PathBuf {
     directory.join("logs")
 }
 
-/// Points the logger at `<directory>/logs`. Logging before this call is a no-op,
-/// so tests and the browser fallback never touch the file system.
-pub fn init(directory: &Path) {
+/// The log file inside `<directory>/logs`, or `None` when that folder cannot
+/// hold one. Opening the file is the probe: a folder may exist and still refuse
+/// a write, which is what the program folder of an installed build does.
+fn prepare(directory: &Path) -> Option<PathBuf> {
     let logs = log_dir_for(directory);
-    if fs::create_dir_all(&logs).is_err() {
-        return;
+    fs::create_dir_all(&logs).ok()?;
+    let file = logs.join(FILE_NAME);
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&file)
+        .ok()?;
+    Some(file)
+}
+
+/// The log beside the application, and the one under `fallback` when that
+/// folder refuses a write.
+fn resolve_log_file(application: Option<&Path>, fallback: &Path) -> Option<PathBuf> {
+    application.and_then(prepare).or_else(|| prepare(fallback))
+}
+
+/// Points the logger at `<application>/logs`, so the log travels with the
+/// program a portable installation was unpacked into and needs no trip into the
+/// user profile. An installed build cannot write next to its executable, so it
+/// falls back to `<fallback>/logs`. Logging before this call is a no-op, so
+/// tests and the browser fallback never touch the file system.
+pub fn init(application: Option<&Path>, fallback: &Path) {
+    if let Some(file) = resolve_log_file(application, fallback) {
+        let _ = LOG_FILE.set(Mutex::new(file));
     }
-    let _ = LOG_FILE.set(Mutex::new(logs.join(FILE_NAME)));
 }
 
 /// The file the logger writes to, `None` while [`init`] has not succeeded. A
@@ -765,5 +787,73 @@ mod tests {
             "x".repeat(MAX_BYTES as usize + 1)
         );
         let _ = fs::remove_dir_all(&directory);
+    }
+
+    /// A folder of this test, removed again when the test ends.
+    struct Folder(PathBuf);
+
+    impl Folder {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir()
+                .join(format!("work-time-tracker-{name}-{}", std::process::id()));
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for Folder {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn keeps_the_log_beside_the_application() {
+        let application = Folder::new("log-beside");
+        let fallback = Folder::new("log-beside-fallback");
+
+        let file = resolve_log_file(Some(&application.0), &fallback.0)
+            .expect("a writable folder must take the log");
+
+        assert_eq!(file, application.0.join("logs").join(FILE_NAME));
+        assert!(file.exists(), "the log file was not created");
+        assert!(
+            !fallback.0.join("logs").exists(),
+            "the fallback was used although the application folder is writable"
+        );
+    }
+
+    #[test]
+    fn falls_back_when_the_application_folder_refuses_the_log() {
+        let application = Folder::new("log-readonly");
+        let fallback = Folder::new("log-readonly-fallback");
+        // A file of that name leaves `create_dir_all` no folder to create, which
+        // is the failure an unwritable program folder produces as well.
+        fs::write(log_dir_for(&application.0), "not a folder").unwrap();
+
+        let file = resolve_log_file(Some(&application.0), &fallback.0)
+            .expect("the fallback must take the log");
+
+        assert_eq!(file, fallback.0.join("logs").join(FILE_NAME));
+    }
+
+    #[test]
+    fn falls_back_without_an_application_folder() {
+        let fallback = Folder::new("log-no-application");
+
+        let file = resolve_log_file(None, &fallback.0).expect("the fallback must take the log");
+
+        assert_eq!(file, fallback.0.join("logs").join(FILE_NAME));
+    }
+
+    #[test]
+    fn reports_no_log_when_neither_folder_holds_one() {
+        let application = Folder::new("log-none");
+        let fallback = Folder::new("log-none-fallback");
+        fs::write(log_dir_for(&application.0), "not a folder").unwrap();
+        fs::write(log_dir_for(&fallback.0), "not a folder").unwrap();
+
+        assert_eq!(resolve_log_file(Some(&application.0), &fallback.0), None);
     }
 }

@@ -60,6 +60,9 @@ flowchart TB
 
   subgraph fs["Application data directory"]
     win["window-state.json"]
+  end
+
+  subgraph appfolder["Application folder, else the application data directory"]
     log["logs/work-time-tracker.log"]
   end
 ```
@@ -80,7 +83,7 @@ flowchart TB
 | `work-time-tracker.sessions`, `work-time-tracker.session` | Browser fallback session with its start and its idle expiry; the token lives in `sessionStorage` | `src/features/storage/local-repository.ts` |
 | `work-time-tracker.timer` | Timer session bookkeeping: project, carried milliseconds, paused | `src/features/timer/timer-store.ts` |
 | `window-state.json` | Main window size, position, maximized flag | `src-tauri/src/window_state.rs` |
-| `logs/work-time-tracker.log` | Redacted, rotated error log, no domain data | `src-tauri/src/logging.rs` |
+| `logs/work-time-tracker.log` | Redacted, rotated error log, no domain data; beside the application, and in the application data directory when that folder refuses a write | `src-tauri/src/logging.rs` |
 
 In the desktop application sessions are not persisted: `Sessions` in `src-tauri/src/auth.rs` keeps
 the signed-in user in memory only, so a restart returns to the login page. The frontend holds the id

@@ -108,9 +108,11 @@ Your times stay in the database and are not removed by uninstalling.
 
 ## 8. When something does not work
 
-The application writes what went wrong to
-`<app data directory>/logs/work-time-tracker.log`, with passwords and similar values removed. It is
-rotated at 512 KiB.
+The application writes what went wrong to `logs/work-time-tracker.log` in the folder of the
+application — beside `WorkTimeTracker.exe`, and on macOS beside `WorkTimeTracker.app` — with
+passwords and similar values removed. An installed version cannot write into its program folder and
+keeps the log in `<app data directory>/logs/work-time-tracker.log` instead. It is rotated at
+512 KiB.
 
 | Message | What to do |
 | --- | --- |

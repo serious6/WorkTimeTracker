@@ -208,9 +208,9 @@ pub fn settings() -> Result<HashMap<String, String>, PortableError> {
     resolve(&directory, process, &AccountStore)
 }
 
-/// The folder the configuration file sits in: the one of the executable, and
-/// on macOS the one the application bundle itself sits in.
-fn application_directory() -> Option<PathBuf> {
+/// The folder the configuration file and the log sit in: the one of the
+/// executable, and on macOS the one the application bundle itself sits in.
+pub fn application_directory() -> Option<PathBuf> {
     let executable = std::env::current_exe().ok()?;
     Some(folder_of(&executable))
 }

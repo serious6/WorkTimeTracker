@@ -121,7 +121,10 @@ pub fn run() {
                     .inspect_err(|error| startup_failure::report(error))?;
                 std::fs::create_dir_all(&data_dir)
                     .inspect_err(|error| startup_failure::report(error))?;
-                logging::init(&data_dir);
+                // The log belongs beside the application, so a portable
+                // installation keeps it in its own folder; an installed build
+                // cannot write there and keeps it in the app data folder.
+                logging::init(portable::application_directory().as_deref(), &data_dir);
                 // A portable installation carries its settings next to the
                 // application; every other build resolves the process
                 // environment alone, which is what `portable::settings`
