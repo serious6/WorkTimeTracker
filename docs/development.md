@@ -235,27 +235,26 @@ The Windows archive is unsigned and the macOS archive is neither signed nor nota
 and Gatekeeper warn about them; [`docs/installation.md`](installation.md) describes how a user gets
 past that. Portable archives are updated by hand: they carry no updater.
 
-## Production database secrets
+## Production migration secrets
 
 The `migrate-production-database` job of the `Release` workflow is the only place that sees the
-production database. It runs in the protected `production` environment, so its secrets are available
-to no other job, none of them is ever printed, and it only runs when the dispatch input
-`migrate_production_database` asks for it — a shared database is migrated deliberately, never by an
-installation that starts. The bundles contain none of these values; a deployment provides them to
-the application at run time. The workflow reads, by name only:
+production migration credentials. It runs in the protected `production-migration` environment,
+separate from the application's credentials, so its secrets are available to no other job and none
+of them is ever printed. It only runs when the dispatch input `migrate_production_database` asks for
+it — a shared database is migrated deliberately, never by an installation that starts. The bundles
+contain none of these values. The workflow reads, by name only:
 
 | Secret | Purpose |
 | --- | --- |
-| `SUPABASE_DATABASE_URL` | complete connection string including `sslmode=verify-full`; wins over the parts below |
-| `SUPABASE_DB_HOST` | IPv4-capable session-mode pooler host (`aws-0-<region>.pooler.supabase.com`), not the IPv6-only direct host |
-| `SUPABASE_DB_PORT` | session-mode pooler port `5432`; transaction mode on port `6543` is not suitable for migrations |
-| `SUPABASE_DB_USER` | session-mode pooler user `postgres.<project-ref>` |
-| `SUPABASE_DB_PASSWORD` | password of that role |
-| `SUPABASE_DB_NAME` | database name |
-| `SUPABASE_DB_ROOT_CERT` | the certificate authority in PEM form; the job writes it to a file and passes its path to the application |
+| `SUPABASE_MIGRATION_DB_HOST` | IPv4-capable session-mode pooler host (`aws-0-<region>.pooler.supabase.com`), not the IPv6-only direct host |
+| `SUPABASE_MIGRATION_DB_PORT` | session-mode pooler port `5432`; transaction mode on port `6543` is not suitable for migrations |
+| `SUPABASE_MIGRATION_DB_USER` | session-mode pooler user `postgres.<project-ref>` |
+| `SUPABASE_MIGRATION_DB_PASSWORD` | password of the migration role |
+| `SUPABASE_MIGRATION_DB_NAME` | database name |
+| `SUPABASE_MIGRATION_DB_ROOT_CERT` | certificate authority in PEM form; the job writes it to a file and passes only its path to the migration |
 
 To rotate the credentials, change the password of the role in the Supabase dashboard (or create the
-replacement role), update `SUPABASE_DB_PASSWORD` — or `SUPABASE_DATABASE_URL`, if that is the form
-in use — in the `production` environment, and run the workflow again. Rotating the certificate
-authority means replacing `SUPABASE_DB_ROOT_CERT` with the downloaded PEM file; nothing in the
-repository has to change for either.
+replacement role), update `SUPABASE_MIGRATION_DB_PASSWORD` in the `production-migration`
+environment, and run the workflow again. Rotating the certificate authority means replacing
+`SUPABASE_MIGRATION_DB_ROOT_CERT` with the downloaded PEM file; nothing in the repository has to
+change for either.

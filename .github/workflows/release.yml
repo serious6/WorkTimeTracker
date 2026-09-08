@@ -213,19 +213,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The only job that reaches the production database. Its secrets live in the
-  # protected `production` environment, so no other job of this workflow or of
-  # any other can read them, and it is opt-in: a shared database is migrated
+  # The only job that reaches the production database. Its dedicated secrets
+  # live in the protected `production-migration` environment, separate from the
+  # application's credentials, and it is opt-in: a shared database is migrated
   # deliberately, never by an installation that starts. It waits for the
   # bundles, so the shared schema is only changed once every installer of the
-  # release exists. The values are never printed, and the bundles contain none
-  # of them - a deployment provides them to the application at run time. `fuzz`
-  # does not hold it back; `release` alone gates a run with a fuzz finding.
+  # release exists. The values are never printed or bundled. `fuzz` does not
+  # hold it back; `release` alone gates a run with a fuzz finding.
   migrate-production-database:
     if: ${{ inputs.migrate_production_database }}
     needs: [version, bundle]
     runs-on: ubuntu-latest
-    environment: production
+    environment: production-migration
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,10 +241,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
       - name: Write the pinned certificate authority
         env:
-          ROOT_CERT: ${{ secrets.SUPABASE_DB_ROOT_CERT }}
+          ROOT_CERT: ${{ secrets.SUPABASE_MIGRATION_DB_ROOT_CERT }}
         run: |
           if [ -z "$ROOT_CERT" ]; then
-            echo "::error::The secret SUPABASE_DB_ROOT_CERT is empty; a remote database is only reachable with the certificate authority to verify it against."
+            echo "::error::The secret SUPABASE_MIGRATION_DB_ROOT_CERT is empty; a remote database is only reachable with the certificate authority to verify it against."
             exit 1
           fi
           umask 077
@@ -254,36 +253,35 @@ jobs:
       # route. Diagnose that mismatch before the migration obscures it.
       - name: Check database reachability
         env:
-          HOST: ${{ secrets.SUPABASE_DB_HOST }}
-          PORT: ${{ secrets.SUPABASE_DB_PORT }}
+          HOST: ${{ secrets.SUPABASE_MIGRATION_DB_HOST }}
+          PORT: ${{ secrets.SUPABASE_MIGRATION_DB_PORT }}
         run: |
           if [ -z "$HOST" ] || [ -z "$PORT" ]; then
-            echo "::error::SUPABASE_DB_HOST and SUPABASE_DB_PORT must be configured for the reachability check."
+            echo "::error::SUPABASE_MIGRATION_DB_HOST and SUPABASE_MIGRATION_DB_PORT must be configured for the reachability check."
             exit 1
           fi
           if ! getent ahostsv4 "$HOST" >/dev/null 2>&1; then
-            echo "::warning::SUPABASE_DB_HOST has no IPv4 address. GitHub-hosted runners cannot reach IPv6-only Supabase direct connections; use the session-mode pooler host instead."
+            echo "::warning::SUPABASE_MIGRATION_DB_HOST has no IPv4 address. GitHub-hosted runners cannot reach IPv6-only Supabase direct connections; use the session-mode pooler host instead."
           fi
           if ! timeout 5 bash -c 'exec 3<>"/dev/tcp/${HOST}/${PORT}"' 2>/dev/null; then
-            echo "::error::The production database is not reachable over TCP using SUPABASE_DB_HOST and SUPABASE_DB_PORT; check the session-mode pooler endpoint, project state, and network restrictions."
+            echo "::error::The production database is not reachable over TCP using SUPABASE_MIGRATION_DB_HOST and SUPABASE_MIGRATION_DB_PORT; check the session-mode pooler endpoint, project state, and network restrictions."
             exit 1
           fi
       - name: Apply the migrations
         env:
           WORK_TIME_TRACKER_ENV: production
           WORK_TIME_TRACKER_DB_MIGRATE: 'true'
-          # A complete connection string wins; otherwise the parts below are
-          # assembled into one, always with sslmode=verify-full. Supabase
-          # migrations use the IPv4-capable session-mode pooler
+          # The dedicated migration parts are assembled with
+          # sslmode=verify-full. Supabase migrations use the IPv4-capable
+          # session-mode pooler
           # (aws-0-<region>.pooler.supabase.com, port 5432, user
           # postgres.<project-ref>); transaction mode on port 6543 is not
           # suitable for migrations.
-          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
-          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
-          SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}
-          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_DB_NAME: ${{ secrets.SUPABASE_DB_NAME }}
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_MIGRATION_DB_HOST }}
+          SUPABASE_DB_PORT: ${{ secrets.SUPABASE_MIGRATION_DB_PORT }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_MIGRATION_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_MIGRATION_DB_PASSWORD }}
+          SUPABASE_DB_NAME: ${{ secrets.SUPABASE_MIGRATION_DB_NAME }}
           SUPABASE_DB_ROOT_CERT: ${{ runner.temp }}/database-ca.pem
         run: cargo run --manifest-path src-tauri/Cargo.toml --example migrate
 
