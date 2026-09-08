@@ -133,7 +133,8 @@ jobs:
   # Dynamic analysis of every proposed production release, as the OpenSSF Best
   # Practices criterion `dynamic_analysis` asks for. It reuses the `Fuzz`
   # workflow so the steps exist once; 900 seconds per target is affordable
-  # because the targets search in parallel.
+  # because the targets search in parallel. It runs beside the bundles and the
+  # migration; `release` is the single gate.
   fuzz:
     uses: ./.github/workflows/fuzz.yml
     with:
@@ -141,8 +142,10 @@ jobs:
     permissions:
       contents: read
 
+  # No `fuzz` in `needs`: the bundles consume nothing from it, so they build
+  # while it searches instead of idling for it.
   bundle:
-    needs: [version, web, rust, end-to-end, fuzz]
+    needs: [version, web, rust, end-to-end]
     strategy:
       fail-fast: false
       matrix:
@@ -216,7 +219,8 @@ jobs:
   # deliberately, never by an installation that starts. It waits for the
   # bundles, so the shared schema is only changed once every installer of the
   # release exists. The values are never printed, and the bundles contain none
-  # of them - a deployment provides them to the application at run time.
+  # of them - a deployment provides them to the application at run time. `fuzz`
+  # does not hold it back; `release` alone gates a run with a fuzz finding.
   migrate-production-database:
     if: ${{ inputs.migrate_production_database }}
     needs: [version, bundle]
@@ -262,10 +266,11 @@ jobs:
         run: cargo run --manifest-path src-tauri/Cargo.toml --example migrate
 
   release:
-    needs: [bundle, migrate-production-database]
-    # `bundle` must have succeeded; the migration is skipped unless it was
-    # asked for, and only a successful or a skipped one may be released after.
-    if: ${{ !cancelled() && needs.bundle.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
+    needs: [bundle, fuzz, migrate-production-database]
+    # `bundle` and `fuzz` must have succeeded; the migration is skipped unless
+    # it was asked for, and only a successful or a skipped one may be released
+    # after.
+    if: ${{ !cancelled() && needs.bundle.result == 'success' && needs.fuzz.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
     runs-on: ubuntu-latest
     # Publishing a release is a production change: it waits for a reviewer of
     # the protected `production` environment before any asset becomes public.
