@@ -139,8 +139,8 @@ A finding is written to `src-tauri/fuzz/artifacts/<target>/`. Reproduce it with
 `cargo fuzz run <target> artifacts/<target>/<crash file>`, shrink it with `cargo fuzz tmin`, then turn
 it into a unit test next to the code before fixing it. The `Fuzz` workflow runs a short search for
 every backend pull request and a longer one weekly, and uploads the artifacts of a failing run. It
-is also reusable: the `Release` workflow calls it with a longer budget, so no release is bundled or
-published unless every target survives its search.
+is also reusable: the `Release` workflow calls it with a longer budget, beside the bundle builds
+rather than before them, and gates the publication on it.
 
 ## Security checks
 
@@ -191,10 +191,10 @@ src-tauri/fuzz/     cargo-fuzz targets for the backend parsers and validators
 
 The manual `Release` workflow verifies that `package.json`, `src-tauri/Cargo.toml`, and
 `src-tauri/tauri.conf.json` declare the same version. It runs lint, typecheck, unit tests, the
-architecture check, build, Rust format and tests, license checks, the e2e suite, and the fuzz targets
-of the `Fuzz` workflow, and then bundles Windows and macOS installers. The fuzz gate is what applies
-dynamic analysis to every proposed production release, as the OpenSSF Best Practices criterion
-`dynamic_analysis` asks for.
+architecture check, build, Rust format and tests, license checks, and the e2e suite, and then
+bundles Windows and macOS installers. The fuzz targets of the `Fuzz` workflow run beside that
+bundling and gate the publication instead of it, applying dynamic analysis to every proposed
+production release, as the OpenSSF Best Practices criterion `dynamic_analysis` asks for.
 
 `scripts/build-release-notes.mjs` then assembles the release body: the section of the released
 version in [`CHANGELOG.md`](../CHANGELOG.md) becomes the `Highlights` summary, its
