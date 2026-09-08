@@ -250,12 +250,34 @@ jobs:
           fi
           umask 077
           printf '%s\n' "$ROOT_CERT" > "$RUNNER_TEMP/database-ca.pem"
+      # Supabase direct hosts use IPv6, which GitHub-hosted runners cannot
+      # route. Diagnose that mismatch before the migration obscures it.
+      - name: Check database reachability
+        env:
+          HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          PORT: ${{ secrets.SUPABASE_DB_PORT }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$PORT" ]; then
+            echo "::error::SUPABASE_DB_HOST and SUPABASE_DB_PORT must be configured for the reachability check."
+            exit 1
+          fi
+          if ! getent ahostsv4 "$HOST" >/dev/null 2>&1; then
+            echo "::warning::SUPABASE_DB_HOST has no IPv4 address. GitHub-hosted runners cannot reach IPv6-only Supabase direct connections; use the session-mode pooler host instead."
+          fi
+          if ! timeout 5 bash -c 'exec 3<>"/dev/tcp/${HOST}/${PORT}"' 2>/dev/null; then
+            echo "::error::The production database is not reachable over TCP using SUPABASE_DB_HOST and SUPABASE_DB_PORT; check the session-mode pooler endpoint, project state, and network restrictions."
+            exit 1
+          fi
       - name: Apply the migrations
         env:
           WORK_TIME_TRACKER_ENV: production
           WORK_TIME_TRACKER_DB_MIGRATE: 'true'
           # A complete connection string wins; otherwise the parts below are
-          # assembled into one, always with sslmode=verify-full.
+          # assembled into one, always with sslmode=verify-full. Supabase
+          # migrations use the IPv4-capable session-mode pooler
+          # (aws-0-<region>.pooler.supabase.com, port 5432, user
+          # postgres.<project-ref>); transaction mode on port 6543 is not
+          # suitable for migrations.
           DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
           SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
           SUPABASE_DB_PORT: ${{ secrets.SUPABASE_DB_PORT }}

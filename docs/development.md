@@ -247,9 +247,9 @@ the application at run time. The workflow reads, by name only:
 | Secret | Purpose |
 | --- | --- |
 | `SUPABASE_DATABASE_URL` | complete connection string including `sslmode=verify-full`; wins over the parts below |
-| `SUPABASE_DB_HOST` | host of the database, for example the connection pooler of the project |
-| `SUPABASE_DB_PORT` | port, `6543` for the pooler and `5432` for a direct connection |
-| `SUPABASE_DB_USER` | the dedicated least-privilege application role, never `postgres`, and neither a superuser nor `BYPASSRLS`, which would ignore the row level security policies |
+| `SUPABASE_DB_HOST` | IPv4-capable session-mode pooler host (`aws-0-<region>.pooler.supabase.com`), not the IPv6-only direct host |
+| `SUPABASE_DB_PORT` | session-mode pooler port `5432`; transaction mode on port `6543` is not suitable for migrations |
+| `SUPABASE_DB_USER` | session-mode pooler user `postgres.<project-ref>` |
 | `SUPABASE_DB_PASSWORD` | password of that role |
 | `SUPABASE_DB_NAME` | database name |
 | `SUPABASE_DB_ROOT_CERT` | the certificate authority in PEM form; the job writes it to a file and passes its path to the application |

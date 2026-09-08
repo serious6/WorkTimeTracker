@@ -56,6 +56,10 @@ const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
 
 type Manager = PostgresConnectionManager<MakeRustlsConnect>;
 
+const APP_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
+/// A cold remote pooler can need longer to accept the migration connection.
+const MIGRATION_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub struct PostgresStore {
     pool: Pool<Manager>,
 }
@@ -93,7 +97,7 @@ impl PostgresStore {
     /// local server without TLS; a production deployment reaches its remote
     /// server only over a verified TLS connection (`connection::prepare`).
     pub fn open(config: &DbConfig) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::open_with_migration(config, migrate)
+        Self::open_with_migration(config, migrate, APP_CONNECTION_TIMEOUT)
     }
 
     /// Opens Postgres and sends each redacted migration message to `progress`.
@@ -101,14 +105,17 @@ impl PostgresStore {
         config: &DbConfig,
         mut progress: impl FnMut(&str),
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::open_with_migration(config, |client| {
-            migrate_with_reporter(client, &mut progress)
-        })
+        Self::open_with_migration(
+            config,
+            |client| migrate_with_reporter(client, &mut progress),
+            MIGRATION_CONNECTION_TIMEOUT,
+        )
     }
 
     fn open_with_migration(
         config: &DbConfig,
         migrate_database: impl FnOnce(&mut postgres::Client) -> Result<(), StoreError>,
+        connection_timeout: Duration,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (postgres_config, tls) = connection::prepare(
             &config.database_url,
@@ -118,7 +125,7 @@ impl PostgresStore {
         let manager = PostgresConnectionManager::new(postgres_config, tls);
         let pool = Pool::builder()
             .max_size(4)
-            .connection_timeout(Duration::from_secs(5))
+            .connection_timeout(connection_timeout)
             .build(manager)?;
         let store = Self { pool };
         {
@@ -2262,6 +2269,13 @@ mod tests {
         },
         test_support::{fresh_database, test_store, unique_email},
     };
+
+    #[test]
+    fn migration_connection_timeout_is_longer_than_app_startup() {
+        assert_eq!(APP_CONNECTION_TIMEOUT, Duration::from_secs(5));
+        assert_eq!(MIGRATION_CONNECTION_TIMEOUT, Duration::from_secs(30));
+        assert!(MIGRATION_CONNECTION_TIMEOUT > APP_CONNECTION_TIMEOUT);
+    }
 
     #[test]
     fn reports_applied_then_skipped_migrations() {
