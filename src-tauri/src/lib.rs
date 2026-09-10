@@ -15,6 +15,7 @@ mod models;
 mod portable;
 mod postgres_store;
 mod startup_failure;
+mod startup_state;
 mod store;
 #[cfg(test)]
 mod test_support;
@@ -25,6 +26,7 @@ pub mod fuzzing;
 
 use auth::Sessions;
 use config::DbConfig;
+use startup_state::StartupState;
 use store::Database;
 use tauri::{Manager, WindowEvent};
 
@@ -125,20 +127,23 @@ pub fn run() {
                 // installation keeps it in its own folder; an installed build
                 // cannot write there and keeps it in the app data folder.
                 logging::init(portable::application_directory().as_deref(), &data_dir);
-                // A portable installation carries its settings next to the
-                // application; every other build resolves the process
-                // environment alone, which is what `portable::settings`
-                // returns without a file.
-                let settings = portable::settings()
-                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
-                    .inspect_err(|error| startup_failure::report(error))?;
-                let db_config = DbConfig::resolve(&settings)
-                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
-                    .inspect_err(|error| startup_failure::report(error))?;
-                let database = Database::open(&db_config)
-                    .inspect_err(|error| logging::error("setup", &format!("database: {error}")))
-                    .inspect_err(|error| startup_failure::report(error))?;
-                app.manage(database);
+                // A failing configuration or database no longer ends the
+                // process: the window opens and shows the failure in the look
+                // and feel of the application, where a retry can pick up a
+                // database that was started afterwards. `Database` stays
+                // unmanaged until it opens, so no command can run against a
+                // half-started backend.
+                let startup = StartupState::default();
+                match startup_state::open_database() {
+                    Ok(database) => {
+                        app.manage(database);
+                    }
+                    Err(error) => {
+                        startup_state::log_failure(error.as_ref());
+                        startup.record_failure(error.as_ref());
+                    }
+                }
+                app.manage(startup);
                 app.manage(Sessions::default());
                 if let Some(window) = app.get_webview_window("main") {
                     window_state::restore(&window.as_ref().window_ref());
@@ -192,6 +197,8 @@ pub fn run() {
                 commands::update_work_settings,
                 commands::delete_account,
                 commands::get_app_version,
+                commands::startup_status,
+                commands::retry_startup,
                 commands::log_client_error
             ])
             .run(tauri::generate_context!())

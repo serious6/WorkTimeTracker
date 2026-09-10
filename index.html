@@ -7,7 +7,17 @@
     <title>WorkTimeTracker</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      The window is never blank: this spinner is replaced by the application as
+      soon as it mounts, and by the boot error panel when it cannot.
+    -->
+    <div id="root">
+      <div class="boot-screen" data-boot-screen role="status" aria-live="polite">
+        <span class="boot-spinner"></span>
+        <p class="boot-text">Starting WorkTimeTracker…</p>
+      </div>
+    </div>
+    <script type="module" src="/src/boot-status.ts"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -4,6 +4,7 @@ import { configDefaults, defineConfig } from 'vitest/config'
 // `.tsx` tests render React and stay in jsdom by glob. Keep `.ts` tests here
 // only when they use DOM/browser events or Testing Library renderHook.
 const jsdomTestFiles = [
+  'src/boot-status.test.ts',
   'src/lib/global-errors.test.ts',
   'src/features/auth/session-queries.test.ts',
   'src/features/storage/tauri-repository.test.ts',

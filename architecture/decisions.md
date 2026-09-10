@@ -188,3 +188,26 @@ alone.
 
 **Consequences:** Recording what happened outweighs the plan: neither archiving nor a budget may
 block starting, switching, or stopping a timer, and no edit silently drops the booked project.
+
+## Report a failed start inside the window
+
+**Status:** accepted
+
+**Context:** A missing database or an unreadable configuration aborted `setup`, showed a native
+dialog, and exited. No window ever opened, so the user saw a modal outside the application and lost
+the running instance. Before React mounts, `#root` was empty, so an early failure looked like a
+blank window.
+
+**Decision:** The setup records a failed start in the managed `StartupState` instead of returning an
+error, so the window always opens. `startup_status` and `retry_startup` are public commands; the
+frontend gates on them and renders a spinner while the start runs, and the redacted failure with a
+Retry action as content of the window. `Database` is managed only after a successful start, so data
+commands keep failing while the start is broken. `index.html` ships the same boot screen statically
+and `src/boot-status.ts` turns a pre-mount error into it, both without inline code. The native
+dialog stays as the fallback for a failure that leaves no window, with stderr as the last resort.
+
+**Consequences:** A start failure is recoverable without restarting: a database that becomes
+available later is picked up by a retry. Any new startup step has to record its failure in
+`StartupState` rather than abort, and its message has to pass through
+`startup_failure::format_startup_failure` so no credential, token, or path other than the log file
+reaches the window.

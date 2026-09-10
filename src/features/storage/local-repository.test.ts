@@ -21,7 +21,7 @@ import {
   ORDER_MESSAGE,
   OVERLAP_MESSAGE,
 } from '@/features/time-entries/time-entry-schema'
-import { createLocalRepository, NOT_SIGNED_IN_MESSAGE } from './local-repository'
+import { createLocalRepository, NOT_SIGNED_IN_MESSAGE, STARTUP_FAILURE_KEY } from './local-repository'
 
 const PASSWORD = 'Str0ng-Passphrase!!x'
 const OTHER_PASSWORD = 'An0ther-Passphrase!!x'
@@ -1353,5 +1353,27 @@ describe('local repository account erasure', () => {
 
     await expect(createLocalRepository().deleteAccount()).rejects.toThrow(NOT_SIGNED_IN_MESSAGE)
     expect(globalThis.localStorage?.getItem('work-time-tracker.users')).not.toBe('[]')
+  })
+})
+
+/**
+ * The browser fallback has no backend to start. A stored failure lets the
+ * development build and the end-to-end tests render a failed start.
+ */
+describe('startup status of the fallback', () => {
+  it('is ready without a stored failure', async () => {
+    expect(await createLocalRepository().startupStatus()).toEqual({ status: 'ready' })
+  })
+
+  it('reports a stored failure and clears it on the retry', async () => {
+    globalThis.localStorage?.setItem(STARTUP_FAILURE_KEY, 'no database')
+
+    expect(await createLocalRepository().startupStatus()).toEqual({
+      status: 'failed',
+      message: 'no database',
+    })
+
+    globalThis.localStorage?.removeItem(STARTUP_FAILURE_KEY)
+    expect(await createLocalRepository().retryStartup()).toEqual({ status: 'ready' })
   })
 })

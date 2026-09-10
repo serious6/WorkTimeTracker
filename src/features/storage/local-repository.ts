@@ -91,6 +91,7 @@ import {
   validateListRange,
 } from './list-range'
 import { AppError } from '@/lib/errors'
+import type { StartupStatus } from '@/features/startup/startup-schema'
 import type { Repository } from './repository'
 
 const USERS_KEY = 'work-time-tracker.users'
@@ -135,6 +136,18 @@ type OvertimeState = z.infer<typeof overtimeStateSchema>
 
 const SESSION_KEY = 'work-time-tracker.session'
 const SESSIONS_KEY = 'work-time-tracker.sessions'
+
+/**
+ * The browser fallback has no backend to start, so it is ready. A stored
+ * message lets development and the end-to-end tests render a failed start
+ * without an unreachable database.
+ */
+export const STARTUP_FAILURE_KEY = 'work-time-tracker.startup-failure'
+
+function readStartupStatus(): StartupStatus {
+  const message = globalThis.localStorage?.getItem(STARTUP_FAILURE_KEY)?.trim()
+  return message ? { status: 'failed', message } : { status: 'ready' }
+}
 
 const sessionsSchema = z.record(
   z.string(),
@@ -604,6 +617,8 @@ export const FALLBACK_NOT_ALLOWED_MESSAGE =
  * behaviour of the Rust commands, including overlap rejection.
  */
 const fallbackRepository: Repository = {
+  startupStatus: async () => readStartupStatus(),
+  retryStartup: async () => readStartupStatus(),
   currentSession: async () => {
     const user = readUsers().find(({ id }) => id === sessionUserId())
     return user ? toAuthUser(user) : null

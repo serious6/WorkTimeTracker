@@ -2,10 +2,14 @@ import { Suspense, lazy, useState } from 'react'
 import { useNavigationStore } from '@/app/navigation'
 import { AppFooter } from '@/components/layout/app-footer'
 import { AppHeader } from '@/components/layout/app-header'
+import { AppLoading } from '@/components/layout/app-loading'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { StartupError } from '@/components/layout/startup-error'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/toast'
 import { useSession } from '@/features/auth/session-queries'
+import { useRetryStartup, useStartupStatus } from '@/features/startup/startup-queries'
+import { errorMessage } from '@/lib/errors'
 
 const LoginPage = lazy(() =>
   import('@/features/auth/login-page').then((module) => ({ default: module.LoginPage })),
@@ -72,9 +76,17 @@ const pages = {
   ),
 }
 
+const STARTUP_FAILED_TITLE = 'WorkTimeTracker could not start'
+const STARTUP_FALLBACK_MESSAGE =
+  'The application could not be started. See the log file for details.'
+const NOT_READY_TITLE = 'WorkTimeTracker is not ready'
+const NOT_READY_MESSAGE = 'The application could not read its data. Its database may be unavailable.'
+
 function App() {
   const view = useNavigationStore((state) => state.view)
-  const { data: user, isPending } = useSession()
+  const startup = useStartupStatus()
+  const retryStartup = useRetryStartup()
+  const { data: user, isPending, error: sessionError, refetch: refetchSession } = useSession()
   const [registering, setRegistering] = useState(false)
   const [registrationLegalView, setRegistrationLegalView] = useState<'privacy' | 'terms' | null>(null)
   const Page = pages[view]
@@ -84,7 +96,42 @@ function App() {
     setRegistering(false)
   }
 
-  if (isPending) return null
+  if (startup.isPending) return <AppLoading />
+
+  // A failed start is shown as the content of the window, so a missing database
+  // is neither a blank window nor a dialog the user has to dismiss first.
+  const startupFailure = startup.error
+    ? errorMessage(startup.error, STARTUP_FALLBACK_MESSAGE)
+    : startup.data?.status === 'failed'
+      ? startup.data.message
+      : null
+
+  if (startupFailure) {
+    return (
+      <StartupError
+        actionLabel={retryStartup.isPending ? 'Retrying…' : 'Retry'}
+        busy={retryStartup.isPending}
+        message={startupFailure}
+        onAction={() => retryStartup.mutate()}
+        title={STARTUP_FAILED_TITLE}
+      />
+    )
+  }
+
+  if (isPending) return <AppLoading />
+
+  // The backend started, but reading the session failed anyway; without this the
+  // user would silently land on the login page and fail there again.
+  if (sessionError) {
+    return (
+      <StartupError
+        actionLabel="Try again"
+        message={errorMessage(sessionError, NOT_READY_MESSAGE)}
+        onAction={() => void refetchSession()}
+        title={NOT_READY_TITLE}
+      />
+    )
+  }
 
   if (!user) {
     if (registrationLegalView) {
@@ -96,7 +143,7 @@ function App() {
               <Button onClick={() => setRegistrationLegalView(null)} variant="outline">
                 Back to registration
               </Button>
-              <Suspense fallback={null}>
+              <Suspense fallback={<AppLoading message="Loading…" />}>
                 <LegalPage />
               </Suspense>
             </div>
@@ -108,7 +155,7 @@ function App() {
 
     return (
       <>
-        <Suspense fallback={null}>
+        <Suspense fallback={<AppLoading message="Loading…" />}>
           {registering ? (
             <UserCreationPage
               onCancel={closeRegistration}
@@ -139,7 +186,7 @@ function App() {
         <div className="flex min-w-0 flex-1 flex-col">
           <AppHeader user={user} />
           <main className="min-w-0 flex-1 p-5 lg:p-6" id="main-content" tabIndex={-1}>
-            <Suspense fallback={null}>
+            <Suspense fallback={<AppLoading message="Loading…" />}>
               <Page />
             </Suspense>
           </main>

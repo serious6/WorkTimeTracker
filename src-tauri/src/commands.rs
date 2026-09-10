@@ -1,4 +1,4 @@
-use tauri::{State, Webview};
+use tauri::{Manager, State, Webview};
 
 use crate::{
     auth::{self, LoginAttempts, SessionId, Sessions},
@@ -10,6 +10,7 @@ use crate::{
         SaveProject, SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit,
         User, WorkSettings, LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
     },
+    startup_state::{self, StartupState, StartupStatus},
     store::{Database, OvertimeWriteError, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
@@ -58,16 +59,19 @@ fn current_user(sessions: &Sessions, session_id: &SessionId, window: &str) -> Ap
 
 /// Commands that run without a signed in user, each one deliberately public:
 /// the three that create or end a session, the session probe that answers
-/// `null` when nobody is signed in, the application version and the log sink of
-/// the user interface. Every other command is written with `authed_command!`,
+/// `null` when nobody is signed in, the application version, the log sink of
+/// the user interface and the two startup commands the window needs before a
+/// database exists. Every other command is written with `authed_command!`,
 /// and the tests below fail when a hand written command is not listed here.
-pub const PUBLIC_COMMANDS: [&str; 6] = [
+pub const PUBLIC_COMMANDS: [&str; 8] = [
     "register",
     "login",
     "logout",
     "current_session",
     "get_app_version",
     "log_client_error",
+    "startup_status",
+    "retry_startup",
 ];
 
 /// A list command without a window still answers a bounded number of rows, so
@@ -529,6 +533,41 @@ pub fn get_app_version() -> AppResult<Option<String>> {
     logging::logged("get_app_version", || {
         Ok(Some(env!("CARGO_PKG_VERSION").to_owned()))
     })
+}
+
+/// The startup outcome the window shows while it boots: `ready` once the
+/// database is open, otherwise the redacted failure of the start. Public
+/// because a failed start has no session and no database to authenticate
+/// against.
+#[tauri::command]
+pub fn startup_status(startup: State<'_, StartupState>) -> AppResult<StartupStatus> {
+    Ok(startup.status())
+}
+
+/// Runs the failed part of the startup again, so a database that was started
+/// after the application can be picked up without a restart. The database is
+/// managed only once: a start that already succeeded answers `ready` without
+/// opening a second connection pool.
+#[tauri::command]
+pub fn retry_startup(
+    app: tauri::AppHandle,
+    startup: State<'_, StartupState>,
+) -> AppResult<StartupStatus> {
+    if startup.status() == StartupStatus::Ready {
+        return Ok(StartupStatus::Ready);
+    }
+
+    match startup_state::open_database() {
+        Ok(database) => {
+            app.manage(database);
+            startup.mark_ready();
+        }
+        Err(error) => {
+            startup_state::log_failure(error.as_ref());
+            startup.record_failure(error.as_ref());
+        }
+    }
+    Ok(startup.status())
 }
 
 /// Writes a failure of the user interface into the same log file. The message is

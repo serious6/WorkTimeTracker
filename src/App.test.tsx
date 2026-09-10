@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { useNavigationStore } from '@/app/navigation'
+import { setRepository } from '@/features/storage'
+import { createLocalRepository } from '@/features/storage/local-repository'
+import type { StartupStatus } from '@/features/startup/startup-schema'
+import { AppError } from '@/lib/errors'
 import { TEST_PASSWORD, resetAppState, signIn } from '@/test/harness'
 import App from './App'
 
@@ -161,5 +165,101 @@ describe('App shell', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
     expect(await screen.findByRole('navigation', { name: 'Main' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * The window shows what the start is doing instead of staying blank, and a
+ * failure of the backend is content of the window, never a dialog.
+ */
+describe('App startup', () => {
+  const repository = { ...createLocalRepository() }
+
+  afterEach(() => {
+    setRepository(null)
+  })
+
+  test('turns a spinner while the startup status is still unknown', async () => {
+    let answer = (_status: StartupStatus) => {}
+    setRepository({
+      ...repository,
+      startupStatus: () => new Promise<StartupStatus>((resolve) => (answer = resolve)),
+    })
+
+    renderApp()
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Starting WorkTimeTracker…')
+    answer({ status: 'ready' })
+    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+  })
+
+  test('shows a failed start in the window and retries it', async () => {
+    const retryStartup = vi.fn().mockResolvedValue({ status: 'ready' } satisfies StartupStatus)
+    setRepository({
+      ...repository,
+      startupStatus: async () => ({ status: 'failed', message: 'postgres: could not connect' }),
+      retryStartup,
+    })
+
+    renderApp()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('WorkTimeTracker could not start')
+    expect(alert).toHaveTextContent('postgres: could not connect')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    expect(retryStartup).toHaveBeenCalledTimes(1)
+  })
+
+  test('keeps the failure when the retry fails again', async () => {
+    setRepository({
+      ...repository,
+      startupStatus: async () => ({ status: 'failed', message: 'no database' }),
+      retryStartup: async () => ({ status: 'failed', message: 'still no database' }),
+    })
+
+    renderApp()
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('still no database')
+    })
+  })
+
+  test('reports a start whose status cannot be read at all', async () => {
+    setRepository({
+      ...repository,
+      startupStatus: async () => {
+        throw new AppError('database', 'connection refused for user postgres')
+      },
+    })
+
+    renderApp()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The application could not be started.')
+    // An infrastructure message never reaches the window.
+    expect(alert).not.toHaveTextContent('connection refused')
+  })
+
+  test('offers another try when the session cannot be read', async () => {
+    const currentSession = vi
+      .fn()
+      .mockRejectedValueOnce(new AppError('database', 'the pool is exhausted'))
+      .mockResolvedValue(null)
+    setRepository({ ...repository, currentSession })
+
+    renderApp()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('WorkTimeTracker is not ready')
+    expect(alert).not.toHaveTextContent('pool is exhausted')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await screen.findByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
 })
