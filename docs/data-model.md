@@ -233,8 +233,9 @@ erDiagram
 ```
 
 `APP_METADATA` has no relationship to the other entities, it is a standalone key/value store.
-`NOTE_TEMPLATES` deliberately has none either: inserting a template copies its text into the note of
-a record, so no record ever references a template.
+`NOTE_TEMPLATES` belongs to a user, but deliberately has no relationship to a time entry or an
+overtime record: inserting a template copies its text into the note of a record, so no record ever
+references a template.
 
 ### wtt.users
 
@@ -391,7 +392,7 @@ The reusable texts behind the note fields.
 | Field | Type | Required | Description | Key/index |
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | yes | Surrogate key | PK, generated identity |
-| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `note_templates_user_id` |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, leading column of `note_templates_name_unique` |
 | `name` | TEXT | yes | Label in the picker, trimmed, 1 to 100 characters | UNIQUE `note_templates_name_unique` on `(user_id, name)` |
 | `text` | TEXT | yes | Inserted note text, trimmed, 1 to 500 characters | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |

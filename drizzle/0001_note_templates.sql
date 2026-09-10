@@ -15,8 +15,6 @@ CREATE TABLE IF NOT EXISTS wtt.note_templates (
   CONSTRAINT note_templates_name_unique UNIQUE (user_id, name)
 );
 
-CREATE INDEX IF NOT EXISTS note_templates_user_id ON wtt.note_templates (user_id, name);
-
 ALTER TABLE wtt.note_templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wtt.note_templates FORCE ROW LEVEL SECURITY;
 
