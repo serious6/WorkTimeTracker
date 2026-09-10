@@ -298,10 +298,12 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Verify release tag matches commit
         env:
-          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          existing_sha=$(gh api "repos/${{ github.repository }}/commits/$TAG" --jq '.sha' 2>/dev/null || true)
+          # `git rev-list` prints nothing when the tag is absent, so a missing
+          # tag can never be mistaken for a foreign commit. Needs the
+          # `fetch-tags: true` checkout above.
+          existing_sha=$(git rev-list -n 1 "refs/tags/$TAG" 2>/dev/null || true)
           if [ -n "$existing_sha" ] && [ "$existing_sha" != "$GITHUB_SHA" ]; then
             echo "::error::Tag $TAG already points to $existing_sha, not the current commit $GITHUB_SHA. Refusing to publish and overwrite an unrelated release."
             exit 1
