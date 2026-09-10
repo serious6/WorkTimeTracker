@@ -9,6 +9,7 @@ import {
   signIn,
   atTime,
 } from '@/test/harness'
+import { createLocalRepository } from '@/features/storage/local-repository'
 import { TimeEntryDialog } from './time-entry-dialog'
 
 const TODAY = toDateKey(new Date())
@@ -51,6 +52,20 @@ describe('TimeEntryDialog – create', () => {
     fireEvent.change(screen.getByRole('textbox', { name: /end time/i }), { target: { value: '1100' } })
     fireEvent.click(screen.getByRole('button', { name: /add entry/i }))
     await waitFor(() => expect(closed).toBe(true))
+  })
+
+  it('stores the typed note with the entry', async () => {
+    const project = await seedProject('Alpha')
+    let closed = false
+    renderWithProviders(<TimeEntryDialog open onClose={() => { closed = true }} />)
+    await waitFor(() => screen.getByRole('option', { name: 'Alpha' }))
+    fireEvent.change(screen.getByRole('combobox', { name: /project/i }), { target: { value: String(project.id) } })
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Pair programming' } })
+    fireEvent.click(screen.getByRole('button', { name: /add entry/i }))
+
+    await waitFor(() => expect(closed).toBe(true))
+    const entries = await createLocalRepository().listTimeEntries()
+    expect(entries.at(-1)?.note).toBe('Pair programming')
   })
 
   it('calls onClose when Cancel is clicked', () => {

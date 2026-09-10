@@ -73,6 +73,16 @@ describe('CustomDurationDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled())
   })
 
+  it('adds the typed note with the duration', async () => {
+    const { onAdd } = render()
+    fireEvent.change(screen.getByPlaceholderText(/2h 45m/i), { target: { value: '2h' } })
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Pair programming' } })
+    fireEvent.click(screen.getByRole('button', { name: /add time/i }))
+
+    await waitFor(() => expect(onAdd).toHaveBeenCalled())
+    expect(onAdd.mock.calls[0]?.[0]?.note).toBe('Pair programming')
+  })
+
   it('calls onClose when Cancel is clicked', () => {
     const { onClose } = render()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))

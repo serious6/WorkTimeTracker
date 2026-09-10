@@ -106,6 +106,16 @@ describe('App shell', () => {
     expect(await screen.findByRole('heading', { name: /calendar/i })).toBeInTheDocument()
   })
 
+  test('navigating to Note Templates shows the note templates page', async () => {
+    await signIn('nav-note-templates@example.com')
+    renderApp()
+    await screen.findByRole('navigation', { name: 'Main' })
+    useNavigationStore.getState().navigate('note-templates')
+    expect(
+      await screen.findByRole('heading', { name: 'Note Templates', level: 1 }),
+    ).toBeInTheDocument()
+  })
+
   test('navigating to Overtime shows the overtime management page', async () => {
     await signIn('nav-overtime@example.com')
     renderApp()

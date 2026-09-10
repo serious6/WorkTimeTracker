@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { renderWithProviders, resetAppState, seedNoteTemplate, signIn } from '@/test/harness'
 import { NoteField } from './note-field'
 
-function Host() {
+function Host({ multiline = false }: { multiline?: boolean }) {
   const [note, setNote] = useState('')
-  return <NoteField onChange={setNote} value={note} />
+  return <NoteField multiline={multiline} onChange={setNote} value={note} />
 }
 
 beforeEach(async () => {
@@ -47,5 +47,35 @@ describe('NoteField', () => {
 
     fireEvent.change(note, { target: { value: 'Daily standup with the team, 15 minutes' } })
     expect(note).toHaveValue('Daily standup with the team, 15 minutes')
+  })
+
+  it('inserts a template into a multiline field', async () => {
+    const template = await seedNoteTemplate({
+      name: 'Daily standup',
+      text: 'Daily standup with the team',
+    })
+    renderWithProviders(<Host multiline />)
+
+    fireEvent.change(await screen.findByLabelText('Insert note template'), {
+      target: { value: `${template.id}` },
+    })
+
+    const note = screen.getByLabelText('Note')
+    expect(note.tagName).toBe('TEXTAREA')
+    expect(note).toHaveValue('Daily standup with the team')
+
+    fireEvent.change(note, { target: { value: 'Daily standup\nwith the team' } })
+    expect(note).toHaveValue('Daily standup\nwith the team')
+  })
+
+  it('keeps the note when the picker names no template', async () => {
+    await seedNoteTemplate({ name: 'Daily standup', text: 'Daily standup with the team' })
+    renderWithProviders(<Host />)
+    const picker = await screen.findByLabelText('Insert note template')
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Pair programming' } })
+
+    fireEvent.change(picker, { target: { value: '' } })
+
+    expect(screen.getByLabelText('Note')).toHaveValue('Pair programming')
   })
 })

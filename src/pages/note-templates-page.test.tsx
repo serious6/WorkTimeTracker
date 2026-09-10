@@ -48,6 +48,17 @@ describe('NoteTemplatesPage', () => {
     expect(await screen.findByText('Daily standup with the team')).toBeInTheDocument()
   })
 
+  it('reports a missing name instead of saving', async () => {
+    renderWithProviders(<NoteTemplatesPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /create template/i }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByLabelText('Note text'), { target: { value: 'Standup' } })
+    fireEvent.click(dialog.getByRole('button', { name: 'Create template' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/name is required/i)
+    expect(screen.queryByText('Standup')).not.toBeInTheDocument()
+  })
+
   it('reports a duplicate name', async () => {
     await seedNoteTemplate({ name: 'Daily standup', text: 'Daily standup with the team' })
     renderWithProviders(<NoteTemplatesPage />)
