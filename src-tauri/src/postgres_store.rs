@@ -1894,8 +1894,8 @@ impl Store for PostgresStore {
         let now = now_iso();
         let mut saved = Vec::with_capacity(inputs.len());
         for (index, input) in inputs.iter().enumerate() {
-            let absence = if index == 0 && current.is_some() {
-                let current = current.as_ref().expect("checked above");
+            let absence = if let Some(current) = (index == 0).then_some(current.as_ref()).flatten()
+            {
                 let row = transaction
                     .query_opt(
                         &format!(

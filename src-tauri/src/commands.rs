@@ -63,6 +63,7 @@ fn current_user(sessions: &Sessions, session_id: &SessionId, window: &str) -> Ap
 /// the user interface and the two startup commands the window needs before a
 /// database exists. Every other command is written with `authed_command!`,
 /// and the tests below fail when a hand written command is not listed here.
+#[allow(dead_code)]
 pub const PUBLIC_COMMANDS: [&str; 8] = [
     "register",
     "login",

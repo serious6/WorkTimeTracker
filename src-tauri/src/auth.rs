@@ -117,6 +117,7 @@ impl SessionId {
         }))
     }
 
+    #[cfg(test)]
     pub fn as_str(&self) -> &str {
         &self.0
     }
