@@ -47,6 +47,7 @@ pub enum PortableError {
     NotStorable(&'static str),
     NotStored(&'static str),
     NotForgotten(&'static str),
+    #[cfg(windows)]
     Unprotectable,
 }
 
@@ -87,6 +88,7 @@ impl std::fmt::Display for PortableError {
                 formatter,
                 "{name} is marked as held by the credential store of this account, but no such credential exists; enter the connection again in {ENV_FILE_NAME}"
             ),
+            #[cfg(windows)]
             Self::Unprotectable => write!(
                 formatter,
                 "the volume {ENV_FILE_NAME} sits on keeps no permissions, so the connection cannot be protected there; unpack the archive onto a volume that does"
