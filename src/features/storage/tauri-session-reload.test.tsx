@@ -38,6 +38,7 @@ let openSession = ''
 
 /** Answers a command only for the session it was started for. */
 function nativeBackend(command: string, { sessionId }: { sessionId: string }): unknown {
+  if (command === 'startup_status' || command === 'retry_startup') return { status: 'ready' }
   if (command === 'login' || command === 'register') {
     openSession = SESSION_ID
     return { user: USER, sessionId: SESSION_ID }

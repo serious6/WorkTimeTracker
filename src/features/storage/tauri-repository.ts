@@ -11,6 +11,7 @@ import {
 } from '@/features/overtime/overtime-schema'
 import { noteTemplateSchema } from '@/features/note-templates/note-template-schema'
 import { projectSchema } from '@/features/projects/project-schema'
+import { startupStatusSchema } from '@/features/startup/startup-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
 import { toAppError } from '@/lib/errors'
@@ -65,6 +66,8 @@ async function call<Schema extends z.ZodType>(
 }
 
 export const tauriRepository: Repository = {
+  startupStatus: () => call('startup_status', {}, startupStatusSchema),
+  retryStartup: () => call('retry_startup', {}, startupStatusSchema),
   currentSession: () => call('current_session', {}, authUserSchema.nullable()),
   register: (credentials) => signIn('register', credentials),
   login: (credentials) => signIn('login', credentials),

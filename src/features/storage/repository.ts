@@ -15,9 +15,17 @@ import type {
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { SaveWorkSettings, WorkSettings } from '@/features/settings/work-settings-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
+import type { StartupStatus } from '@/features/startup/startup-schema'
 import type { ListRange } from './list-range'
 
 export type Repository = {
+  /**
+   * Whether the backend finished its startup, or the redacted reason why it
+   * could not. Answered without a session, because a failed start has none.
+   */
+  startupStatus: () => Promise<StartupStatus>
+  /** Runs the failed part of the startup again and answers the new outcome. */
+  retryStartup: () => Promise<StartupStatus>
   currentSession: () => Promise<AuthUser | null>
   register: (credentials: Credentials) => Promise<AuthUser>
   login: (credentials: Credentials) => Promise<AuthUser>

@@ -63,3 +63,78 @@ body {
   min-width: 320px;
   min-height: 100vh;
 }
+
+/*
+ * The startup screen. It is written in plain CSS because `index.html` renders
+ * it before any component is mounted, and the React components below reuse the
+ * same classes so a boot spinner and an application spinner look alike.
+ */
+.boot-screen {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.boot-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.boot-text {
+  margin: 0;
+  max-width: 44rem;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.boot-spinner {
+  display: block;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  animation: boot-spin 0.9s linear infinite;
+}
+
+.boot-spinner-sm {
+  width: 1rem;
+  height: 1rem;
+  border-width: 2px;
+}
+
+@keyframes boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* A slower turn still shows progress without a fast repeating motion. */
+@media (prefers-reduced-motion: reduce) {
+  .boot-spinner {
+    animation-duration: 3s;
+  }
+}
+
+.boot-button {
+  min-height: 2.5rem;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--primary-strong);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}

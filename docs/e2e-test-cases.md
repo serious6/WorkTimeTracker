@@ -3,10 +3,10 @@
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
 (`calendar`, `week`, `projects`, `absences`, `overtime`, `note-templates`, `audit-trails`, `reports-settings`,
-`licenses`, `legal`, `security-csp`, `website`, `persistence`) covers one use case as a complete click path. The marker
+`licenses`, `legal`, `security-csp`, `website`, `persistence`, `startup`) covers one use case as a complete click path. The marker
 in the first column is repeated as a comment above the matching test (`#<number>`, `E<number>`,
 `C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `NT<number>`, `AT<number>`, `R<number>`,
-`S<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `WEB<number>`, `X<number>`), so a
+`S<number>`, `ST<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `WEB<number>`, `X<number>`), so a
 test and its specification can always be matched in both directions.
 
 Run the suite with `npm run test:e2e`. Every test starts from the shared `test.beforeEach` setup,
@@ -156,6 +156,19 @@ timer on it. E16 and E17 start and end the session with the row controls of "Tod
 |----|----------------------------|-------|------|------|
 | LG1 | `LG1: terms of service and privacy policy are reachable from the account menu` | The user is signed in | The user opens "Terms of Service" and then "Privacy Policy" from the account menu | Both pages show their heading, the revision line and their sections, including the terms heading "5. No warranty" and the privacy headings "2. Where your data is stored" and "5. No tracking, and access by the authors", and the main navigation still works afterwards |
 | LG2 | `LG2: the legal documents stay reachable and are not restored after a reload` | The privacy policy is open | The user reloads and opens the terms of service from another view | The reload returns to the dashboard instead of restoring the policy, and the account menu opens the terms from any view |
+
+## Startup
+
+The window reports its own start: a spinner while the backend is still starting and the failure of
+the start as content of the window, never as a dialog. The browser fallback has no backend, so the
+spec stores the failure it should render under `work-time-tracker.startup-failure`. These tests
+start without a registered user and therefore do not use the shared registration setup.
+
+| #  | Test (`e2e/startup.spec.ts`) | Given | When | Then |
+|----|------------------------------|-------|------|------|
+| ST1 | `ST1: shows the startup spinner before the application appears` | The application is loaded | The document is opened and the boot markup is read before the application mounts | The window shows "Starting WorkTimeTracker…" and is replaced by the login page |
+| ST2 | `ST2: shows a failed start in the window and recovers on a retry` | The start reports a failed database connection | The user reads the failure and retries after the database is available again | The failure is shown inside the window with no dialog, and the retry reaches the login page |
+| ST3 | `ST3: keeps reporting the failure when the retry fails again` | The start reports a failed database connection | The user retries while the database is still unavailable | The window keeps showing the failure of the retry |
 
 ## Content Security Policy
 

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { AppProviders } from './app/providers.tsx'
+import { bootFinished } from './boot-status.ts'
 import { ErrorBoundary } from './components/error-boundary.tsx'
 import { listenForUnhandledErrors } from './lib/global-errors.ts'
 
@@ -17,3 +18,6 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+
+// The application owns the window from here on and reports its failures itself.
+bootFinished()

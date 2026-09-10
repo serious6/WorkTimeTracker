@@ -457,6 +457,33 @@ describe('tauriRepository – work settings', () => {
     invokedWith('get_app_version', {})
     expect(version).toBe('1.0.0')
   })
+
+  test('startupStatus invokes startup_status', async () => {
+    mockInvoke.mockResolvedValue({ status: 'ready' })
+    const status = await tauriRepository.startupStatus()
+    invokedWith('startup_status', {})
+    expect(status).toEqual({ status: 'ready' })
+  })
+
+  test('startupStatus reports the failure the backend recorded', async () => {
+    mockInvoke.mockResolvedValue({ status: 'failed', message: 'postgres: could not connect' })
+    expect(await tauriRepository.startupStatus()).toEqual({
+      status: 'failed',
+      message: 'postgres: could not connect',
+    })
+  })
+
+  test('retryStartup invokes retry_startup', async () => {
+    mockInvoke.mockResolvedValue({ status: 'ready' })
+    const status = await tauriRepository.retryStartup()
+    invokedWith('retry_startup', {})
+    expect(status).toEqual({ status: 'ready' })
+  })
+
+  test('rejects a startup status the backend never answers', async () => {
+    mockInvoke.mockResolvedValue({ status: 'starting' })
+    await expect(tauriRepository.startupStatus()).rejects.toThrow()
+  })
 })
 
 describe('tauriRepository – error handling', () => {
