@@ -549,8 +549,8 @@ Validation, overlap detection, and the security limits are defined once in
   date.
 - At most one budget per project, and `budget_minutes` greater than zero.
 - A note template name is unique per user after trimming; name and text are 1 to 100 and 1 to 500
-  characters. A template is only a source of text: it is copied into a note and never referenced by
-  a record.
+  Unicode scalar values, so an astral character such as an emoji counts once. A template is only a
+  source of text: it is copied into a note and never referenced by a record.
 - At most one absence per user and calendar day; replacing one deletes or updates the existing row
   instead of adding a second.
 - An absence neutralises the target of a configured working day only: a full-day absence sets it to

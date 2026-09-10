@@ -62,10 +62,15 @@ export function NoteTemplateDialog({
       title={template ? 'Edit note template' : 'Create note template'}
     >
       <form className="space-y-4" onSubmit={submit}>
+        {/*
+          The fields carry no `maxLength`: the attribute counts UTF-16 code
+          units, while both validators count Unicode scalar values, so it would
+          cut a name or text that the backend still accepts. The schema reports
+          a value that is too long instead.
+        */}
         <Field label="Name">
           <Input
             defaultValue={template?.name ?? ''}
-            maxLength={100}
             name="name"
             placeholder="Daily standup"
           />
@@ -76,7 +81,6 @@ export function NoteTemplateDialog({
         >
           <Textarea
             defaultValue={template?.text ?? ''}
-            maxLength={500}
             name="text"
             placeholder="Daily standup with the team"
           />

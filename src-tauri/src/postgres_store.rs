@@ -1705,13 +1705,29 @@ impl Store for PostgresStore {
         Ok(())
     }
 
-    fn list_note_templates(&self, user_id: i64) -> Result<Vec<NoteTemplate>, StoreError> {
+    /// The window bounds the creation time, because a template carries no date
+    /// of its own; the limit keeps the picker query bounded (`ListRange`).
+    fn list_note_templates(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<NoteTemplate>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let mut filter = String::new();
+        if let Some(from) = &range.from {
+            filter.push_str(&format!(" AND created_at >= ${}", params.push(from)));
+        }
+        if let Some(to) = &range.to {
+            filter.push_str(&format!(" AND created_at < ${}", params.push(to)));
+        }
         let mut client = self.conn_for(user_id)?;
         let rows = client.query(
             &format!(
-                "SELECT {NOTE_TEMPLATE_COLUMNS} FROM note_templates WHERE user_id = $1 ORDER BY name"
+                "SELECT {NOTE_TEMPLATE_COLUMNS} FROM note_templates
+                 WHERE user_id = $1{filter} ORDER BY name LIMIT $2"
             ),
-            &[&user_id],
+            params.as_slice(),
         )?;
         Ok(rows.iter().map(note_template_from_row).collect())
     }

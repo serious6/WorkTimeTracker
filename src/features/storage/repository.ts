@@ -45,7 +45,7 @@ export type Repository = {
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>
   deleteProjectBudget: (id: number) => Promise<void>
-  listNoteTemplates: () => Promise<NoteTemplate[]>
+  listNoteTemplates: (range?: ListRange) => Promise<NoteTemplate[]>
   createNoteTemplate: (input: SaveNoteTemplate) => Promise<NoteTemplate>
   /** Rewrites the template only; notes already stored on records are kept. */
   updateNoteTemplate: (id: number, input: SaveNoteTemplate) => Promise<NoteTemplate>

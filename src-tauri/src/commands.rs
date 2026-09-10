@@ -371,8 +371,11 @@ authed_command!(
 );
 
 authed_command!(
-    fn list_note_templates() -> Vec<NoteTemplate>,
-    |db, user| Ok(db.0.list_note_templates(user)?)
+    fn list_note_templates(range: Option<ListRange>) -> Vec<NoteTemplate>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_note_templates(user, &range)?)
+    }
 );
 
 authed_command!(

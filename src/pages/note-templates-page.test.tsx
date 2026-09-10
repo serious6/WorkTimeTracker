@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders, resetAppState, seedNoteTemplate, signIn } from '@/test/harness'
 import { createLocalRepository } from '@/features/storage/local-repository'
 import { NoteTemplatesPage } from './note-templates-page'
@@ -14,6 +14,17 @@ describe('NoteTemplatesPage', () => {
     renderWithProviders(<NoteTemplatesPage />)
 
     expect(await screen.findByText(/no note templates yet/i)).toBeInTheDocument()
+  })
+
+  it('shows a load error instead of the empty state', async () => {
+    vi.spyOn(createLocalRepository(), 'listNoteTemplates').mockRejectedValueOnce(
+      new Error('unavailable'),
+    )
+
+    renderWithProviders(<NoteTemplatesPage />)
+
+    expect(await screen.findByText(/note templates could not be loaded/i)).toBeInTheDocument()
+    expect(screen.queryByText(/no note templates yet/i)).not.toBeInTheDocument()
   })
 
   it('lists the templates with their text', async () => {

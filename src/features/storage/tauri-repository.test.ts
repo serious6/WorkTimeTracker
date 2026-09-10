@@ -274,7 +274,16 @@ describe('tauriRepository – note templates', () => {
   test('listNoteTemplates invokes list_note_templates', async () => {
     mockInvoke.mockResolvedValue([NOTE_TEMPLATE])
     await tauriRepository.listNoteTemplates()
-    invokedWith('list_note_templates', {})
+    invokedWith('list_note_templates', { range: undefined })
+  })
+
+  test('listNoteTemplates passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { limit: 10 }
+
+    await tauriRepository.listNoteTemplates(range)
+
+    invokedWith('list_note_templates', { range })
   })
 
   test('createNoteTemplate invokes create_note_template', async () => {

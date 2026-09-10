@@ -12,7 +12,7 @@ import {
 import type { NoteTemplate } from '@/features/note-templates/note-template-schema'
 
 export function NoteTemplatesPage() {
-  const { data: templates = [] } = useNoteTemplates()
+  const { data: templates = [], isError, isPending } = useNoteTemplates()
   const deleteTemplate = useDeleteNoteTemplate()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<NoteTemplate>()
@@ -44,7 +44,13 @@ export function NoteTemplatesPage() {
           <CardTitle>All note templates</CardTitle>
         </CardHeader>
         <CardContent>
-          {templates.length === 0 ? (
+          {isError ? (
+            <p className="py-6 text-sm text-destructive">
+              The note templates could not be loaded.
+            </p>
+          ) : isPending ? (
+            <p className="py-6 text-sm text-muted-foreground">Loading the note templates…</p>
+          ) : templates.length === 0 ? (
             <p className="py-6 text-sm text-muted-foreground">
               No note templates yet. Create one to reuse a recurring note.
             </p>

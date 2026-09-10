@@ -779,6 +779,21 @@ describe('local repository note templates', () => {
     ])
   })
 
+  it('bounds the list with the requested window', async () => {
+    await createLocalRepository().createNoteTemplate(TEMPLATE)
+    await createLocalRepository().createNoteTemplate({
+      name: 'Customer support call',
+      text: 'Customer support call',
+    })
+
+    expect(
+      (await createLocalRepository().listNoteTemplates({ limit: 1 })).map(({ name }) => name),
+    ).toEqual(['Customer support call'])
+    expect(
+      await createLocalRepository().listNoteTemplates({ to: '2000-01-01T00:00:00.000Z' }),
+    ).toEqual([])
+  })
+
   it('trims the name and the text of a template', async () => {
     const template = await createLocalRepository().createNoteTemplate({
       name: '  Daily standup  ',

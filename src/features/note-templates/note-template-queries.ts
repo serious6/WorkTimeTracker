@@ -1,8 +1,12 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
+import type { ListRange } from '@/features/storage/list-range'
 import type { SaveNoteTemplate } from './note-template-schema'
 
-export const noteTemplateKeys = { all: ['note-templates'] as const }
+export const noteTemplateKeys = {
+  all: ['note-templates'] as const,
+  list: (range?: ListRange) => ['note-templates', range ?? null] as const,
+}
 
 /**
  * Only the templates are refreshed: a template write never touches a record,
@@ -12,10 +16,14 @@ function invalidate(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: noteTemplateKeys.all })
 }
 
-export function useNoteTemplates() {
+/**
+ * The templates of the signed-in user. Without a window the repository answers
+ * the bounded default of a list query, so the query never grows unbounded.
+ */
+export function useNoteTemplates(range?: ListRange) {
   return useQuery({
-    queryKey: noteTemplateKeys.all,
-    queryFn: () => getRepository().listNoteTemplates(),
+    queryKey: noteTemplateKeys.list(range),
+    queryFn: () => getRepository().listNoteTemplates(range),
   })
 }
 

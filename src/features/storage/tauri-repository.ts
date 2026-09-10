@@ -108,7 +108,7 @@ export const tauriRepository: Repository = {
   deleteProjectBudget: async (id) => {
     await run('delete_project_budget', { id })
   },
-  listNoteTemplates: () => call('list_note_templates', {}, noteTemplateSchema.array()),
+  listNoteTemplates: (range) => call('list_note_templates', { range }, noteTemplateSchema.array()),
   createNoteTemplate: (input) => call('create_note_template', { input }, noteTemplateSchema),
   updateNoteTemplate: (id, input) =>
     call('update_note_template', { id, input }, noteTemplateSchema),

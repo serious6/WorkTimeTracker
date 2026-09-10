@@ -1011,8 +1011,21 @@ const fallbackRepository: Repository = {
       )
     })
   },
-  listNoteTemplates: async () =>
-    readNoteTemplates().sort((left, right) => left.name.localeCompare(right.name)),
+  /**
+   * The window bounds the creation time, because a template carries no date of
+   * its own; the limit keeps the list bounded like every other list command.
+   */
+  listNoteTemplates: async (range) => {
+    const window = validateListRange(range)
+    return limitDescending(
+      filterPointRange(
+        readNoteTemplates().sort((left, right) => left.name.localeCompare(right.name)),
+        window,
+        (template) => template.createdAt,
+      ),
+      listLimit(window),
+    )
+  },
   createNoteTemplate: async (input) => {
     const parsed = validate(saveNoteTemplateSchema, input)
     const templates = readNoteTemplates()
