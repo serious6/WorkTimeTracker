@@ -3,9 +3,10 @@
 use crate::{
     config::DbConfig,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, ListRange, OvertimeAudit, OvertimeEntry, Project,
-        ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User, WorkSettings,
+        Absence, AbsenceAudit, AuditLogEntry, ListRange, NoteTemplate, OvertimeAudit,
+        OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveNoteTemplate, SaveOvertimeEntry,
+        SaveProject, SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit,
+        User, WorkSettings,
     },
     postgres_store::PostgresStore,
 };
@@ -186,6 +187,20 @@ pub trait Store: LoginAttemptStore {
         input: &SaveProjectBudget,
     ) -> Result<ProjectBudget, StoreError>;
     fn delete_project_budget(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
+
+    fn list_note_templates(&self, user_id: i64) -> Result<Vec<NoteTemplate>, StoreError>;
+    fn insert_note_template(
+        &self,
+        user_id: i64,
+        input: &SaveNoteTemplate,
+    ) -> Result<NoteTemplate, StoreError>;
+    fn update_note_template(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveNoteTemplate,
+    ) -> Result<NoteTemplate, StoreError>;
+    fn delete_note_template(&self, id: i64, user_id: i64) -> Result<(), StoreError>;
 
     fn list_absences(&self, user_id: i64, range: &ListRange) -> Result<Vec<Absence>, StoreError>;
     fn insert_absence(&self, user_id: i64, input: &SaveAbsence) -> Result<Absence, StoreError>;

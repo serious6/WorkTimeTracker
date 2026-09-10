@@ -3,10 +3,10 @@ import { MoreVertical, Pause, Play, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog } from '@/components/ui/dialog'
-import { Field, Input } from '@/components/ui/input'
 import { Menu } from '@/components/ui/menu'
 import { toast } from '@/components/ui/toast-store'
 import { entryMinutes, isRunning } from '@/features/dashboard/metrics'
+import { NoteField } from '@/features/note-templates/components/note-field'
 import type { Project } from '@/features/projects/project-schema'
 import { formatStopwatch, formatTimeOfDay } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
@@ -44,6 +44,7 @@ export function TimeEntryList({
   const [editing, setEditing] = useState<TimeEntry>()
   const [duplicating, setDuplicating] = useState<TimeEntry>()
   const [noting, setNoting] = useState<TimeEntry>()
+  const [note, setNote] = useState('')
   const [noteError, setNoteError] = useState<string>()
   const [deleting, setDeleting] = useState<TimeEntry>()
 
@@ -130,7 +131,13 @@ export function TimeEntryList({
                   ...(running
                     ? []
                     : [{ label: 'Duplicate', onSelect: () => setDuplicating(entry) }]),
-                  { label: entry.note ? 'Edit note' : 'Add note', onSelect: () => setNoting(entry) },
+                  {
+                    label: entry.note ? 'Edit note' : 'Add note',
+                    onSelect: () => {
+                      setNote(entry.note ?? '')
+                      setNoting(entry)
+                    },
+                  },
                   { label: 'Delete', destructive: true, onSelect: () => setDeleting(entry) },
                 ]}
                 label={`Actions for ${name}`}
@@ -153,9 +160,8 @@ export function TimeEntryList({
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault()
-            const note = new FormData(event.currentTarget).get('note')
             if (!noting) return
-            void saveNote(noting, typeof note === 'string' ? note : '')
+            void saveNote(noting, note)
               .then(() => {
                 setNoteError(undefined)
                 setNoting(undefined)
@@ -165,9 +171,12 @@ export function TimeEntryList({
               )
           }}
         >
-          <Field error={noteError} label="Note">
-            <Input defaultValue={noting?.note ?? ''} name="note" placeholder="What did you work on?" />
-          </Field>
+          <NoteField
+            error={noteError}
+            onChange={setNote}
+            placeholder="What did you work on?"
+            value={note}
+          />
           <div className="flex justify-end gap-2">
             <Button
               onClick={() => {

@@ -2,10 +2,10 @@
 
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
-(`calendar`, `week`, `projects`, `absences`, `overtime`, `audit-trails`, `reports-settings`,
+(`calendar`, `week`, `projects`, `absences`, `overtime`, `note-templates`, `audit-trails`, `reports-settings`,
 `licenses`, `legal`, `security-csp`, `website`, `persistence`) covers one use case as a complete click path. The marker
 in the first column is repeated as a comment above the matching test (`#<number>`, `E<number>`,
-`C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `AT<number>`, `R<number>`,
+`C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `NT<number>`, `AT<number>`, `R<number>`,
 `S<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `WEB<number>`, `X<number>`), so a
 test and its specification can always be matched in both directions.
 
@@ -109,6 +109,13 @@ timer on it. E16 and E17 start and end the session with the row controls of "Tod
 |----|-------------------------------|-------|------|------|
 | O1 | `O1: overtime origin filter, audit trail and cross-page balance stay consistent` | Automatic overtime is neutral and an explicit overtime record is added | The user filters by origin, edits the record, checks dashboard/reports balance, then deletes it | Origin filter narrows records, audit trail shows create/update/delete, and cumulative balance matches across pages |
 
+## Note Templates
+
+| #   | Test (`e2e/note-templates.spec.ts`) | Given | When | Then |
+|-----|-------------------------------------|-------|------|------|
+| NT1 | `NT1: note templates page supports CRUD with validation and confirm flow` | The Note Templates page is empty | The user creates a template, tries the same name again, edits it, cancels one deletion and then confirms it | The empty state is replaced by the template, the duplicate name is rejected, the edit is listed, cancel keeps the template and confirm removes it |
+| NT2 | `NT2: an inserted template stays editable and the saved note survives its template` | A note template and a time entry exist | The user inserts the template into the note of the entry, edits the inserted text, saves it, then edits and deletes the template | The picker fills the note field, the edited text is stored on the entry, and editing or deleting the template leaves that note unchanged |
+
 ## Audit Trails
 
 | #   | Test (`e2e/audit-trails.spec.ts`) | Given | When | Then |
@@ -188,7 +195,7 @@ spec answers the GitHub Releases API itself, so the cases stay independent of pu
 
 - Helpers such as `createProject`, `addEntry`, `dialog`, `register`, `login`, `openAccountMenu`,
   `trackingCard`, `dateKey`, `gotoPage`, `expectHeading`, `markAbsence`, `createBudget`,
-  `addOvertime` and `downloadText` live in [`e2e/helpers.ts`](../e2e/helpers.ts) and are reused by
+  `addOvertime`, `createNoteTemplate` and `downloadText` live in [`e2e/helpers.ts`](../e2e/helpers.ts) and are reused by
   every spec instead of duplicating steps; new helpers follow the same naming and structure.
 - Locators are role based and accessible (`getByRole`, `getByLabel`, `getByText`).
 - Tests wait for observable state (`expect(...)`) instead of fixed timeouts. Elapsed time is

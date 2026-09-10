@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input, Select } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast-store'
+import { NoteField } from '@/features/note-templates/components/note-field'
 import { useProjects } from '@/features/projects/project-queries'
 import { selectableProjects } from '@/features/projects/project-schema'
 import { combineDateAndTime, formatDuration, toDateKey, toTimeKey } from '@/lib/date'
@@ -191,14 +192,12 @@ export function TimeEntryDialog({
             <Input name="duration" readOnly value={formatDuration(Math.max(0, durationMinutes))} />
           </Field>
         </div>
-        <Field error={fieldError('note')} label="Note">
-          <Input
-            name="note"
-            onChange={(event) => update('note', event.target.value)}
-            placeholder="Optional"
-            value={values.note}
-          />
-        </Field>
+        <NoteField
+          error={fieldError('note')}
+          onChange={(note) => update('note', note)}
+          placeholder="Optional"
+          value={values.note}
+        />
         {error?.field === null && (
           <p className="text-sm text-destructive" role="alert">
             {error.message}

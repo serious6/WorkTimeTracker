@@ -19,6 +19,7 @@ describe('AppSidebar', () => {
     'Working Time',
     'Projects',
     'Budgets',
+    'Note Templates',
     'Absences',
     'Overtime',
     'Audit Trails',
@@ -50,7 +51,7 @@ describe('AppSidebar', () => {
 
   test('groups the navigation destinations in a list', () => {
     renderWithProviders(<AppSidebar />)
-    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(13)
+    expect(screen.getByRole('list').querySelectorAll(':scope > li:not([role])')).toHaveLength(14)
   })
 
   test('marks the active view with aria-current=page', () => {

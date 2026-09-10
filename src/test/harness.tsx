@@ -7,6 +7,10 @@ import type { Absence, SaveAbsence } from '@/features/absences/absence-schema'
 import type { AuthUser } from '@/features/auth/auth-schema'
 import type { SaveProjectBudget } from '@/features/budgets/budget-schema'
 import { useDashboardStore } from '@/features/dashboard/dashboard-store'
+import type {
+  NoteTemplate,
+  SaveNoteTemplate,
+} from '@/features/note-templates/note-template-schema'
 import type { OvertimeEntry, SaveOvertimeEntry } from '@/features/overtime/overtime-schema'
 import type { Project } from '@/features/projects/project-schema'
 import { createLocalRepository } from '@/features/storage/local-repository'
@@ -116,6 +120,10 @@ export async function seedAbsence(input: SaveAbsence): Promise<Absence> {
 
 export async function seedBudget(input: SaveProjectBudget) {
   return createLocalRepository().createProjectBudget(input)
+}
+
+export async function seedNoteTemplate(input: SaveNoteTemplate): Promise<NoteTemplate> {
+  return createLocalRepository().createNoteTemplate(input)
 }
 
 export async function seedOvertimeEntry(

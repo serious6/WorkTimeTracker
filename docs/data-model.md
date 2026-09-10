@@ -38,6 +38,7 @@ flowchart TB
     projects_t["wtt.projects"]
     entries_t["wtt.time_entries"]
     budgets_t["wtt.project_budgets"]
+    note_templates_t["wtt.note_templates"]
     audits_t["wtt.time_entry_audits"]
     absences_t["wtt.absences"]
     absence_audits_t["wtt.absence_audits"]
@@ -49,7 +50,7 @@ flowchart TB
 
   subgraph browser["Browser storage (fallback)"]
     ls_users["localStorage: work-time-tracker.users"]
-    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings,<br/>.absence-state, .overtime-state"]
+    ls_scoped["localStorage: work-time-tracker.USERID.projects,<br/>.time-entry-state, .project-budgets, .work-settings,<br/>.absence-state, .overtime-state, .note-templates"]
     ls_sessions["localStorage: work-time-tracker.sessions"]
     ss_session["sessionStorage: work-time-tracker.session"]
   end
@@ -71,6 +72,7 @@ flowchart TB
 | --- | --- | --- |
 | `wtt.users`, `wtt.projects`, `wtt.time_entries`, `wtt.project_budgets`, `wtt.work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.note_templates` | Reusable note texts per user, copied into a note when inserted | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.absences` | One row per absent calendar day, scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.absence_audits` | Append-only trail of every change to an absence | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
@@ -100,6 +102,7 @@ erDiagram
   USERS o|--o{ PROJECTS : owns
   USERS o|--o{ TIME_ENTRIES : owns
   USERS o|--o{ PROJECT_BUDGETS : owns
+  USERS o|--o{ NOTE_TEMPLATES : owns
   USERS o|--o| WORK_SETTINGS : configures
   USERS o|--o{ TIME_ENTRY_AUDITS : owns
   USERS o|--o{ ABSENCES : owns
@@ -200,6 +203,14 @@ erDiagram
     text created_at
     text updated_at
   }
+  NOTE_TEMPLATES {
+    bigint id PK
+    bigint user_id FK
+    text name "UK with user_id"
+    text text
+    text created_at
+    text updated_at
+  }
   WORK_SETTINGS {
     bigint id PK
     bigint user_id FK "unique, nullable"
@@ -222,6 +233,8 @@ erDiagram
 ```
 
 `APP_METADATA` has no relationship to the other entities, it is a standalone key/value store.
+`NOTE_TEMPLATES` deliberately has none either: inserting a template copies its text into the note of
+a record, so no record ever references a template.
 
 ### wtt.users
 
@@ -369,6 +382,25 @@ limits.
 | `due_date` | TEXT | yes | Calendar date `YYYY-MM-DD` | — |
 | `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
 
+### wtt.note_templates
+
+`drizzle/0000_init.sql`, `src/features/note-templates/note-template-schema.ts`
+
+The reusable texts behind the note fields.
+
+| Field | Type | Required | Description | Key/index |
+| --- | --- | --- | --- | --- |
+| `id` | BIGINT | yes | Surrogate key | PK, generated identity |
+| `user_id` | BIGINT | yes | Owner | FK to `wtt.users.id` ON DELETE CASCADE, index `note_templates_user_id` |
+| `name` | TEXT | yes | Label in the picker, trimmed, 1 to 100 characters | UNIQUE `note_templates_name_unique` on `(user_id, name)` |
+| `text` | TEXT | yes | Inserted note text, trimmed, 1 to 500 characters | — |
+| `created_at`, `updated_at` | TEXT | yes | ISO 8601 UTC | — |
+
+Inserting a template copies its text into the note field, where it stays editable, and the note is
+stored as plain text on the record. Editing or deleting a template therefore never changes a note
+that was already saved. The templates carry no audit trail: they hold no working time and change no
+record.
+
 ### wtt.work_settings
 
 `drizzle/0000_init.sql`, `src/features/settings/work-settings-schema.ts`
@@ -515,6 +547,9 @@ Validation, overlap detection, and the security limits are defined once in
 - Timestamps must be canonical UTC ISO 8601 with milliseconds, `due_date` must be a real calendar
   date.
 - At most one budget per project, and `budget_minutes` greater than zero.
+- A note template name is unique per user after trimming; name and text are 1 to 100 and 1 to 500
+  characters. A template is only a source of text: it is copied into a note and never referenced by
+  a record.
 - At most one absence per user and calendar day; replacing one deletes or updates the existing row
   instead of adding a second.
 - An absence neutralises the target of a configured working day only: a full-day absence sets it to

@@ -8,6 +8,10 @@ import type {
   OvertimeEntry,
   SaveOvertimeEntry,
 } from '@/features/overtime/overtime-schema'
+import type {
+  NoteTemplate,
+  SaveNoteTemplate,
+} from '@/features/note-templates/note-template-schema'
 import type { Project, SaveProject } from '@/features/projects/project-schema'
 import type { SaveWorkSettings, WorkSettings } from '@/features/settings/work-settings-schema'
 import type { SaveTimeEntry, TimeEntry } from '@/features/time-entries/time-entry-schema'
@@ -41,6 +45,12 @@ export type Repository = {
   createProjectBudget: (input: SaveProjectBudget) => Promise<ProjectBudget>
   updateProjectBudget: (id: number, input: SaveProjectBudget) => Promise<ProjectBudget>
   deleteProjectBudget: (id: number) => Promise<void>
+  listNoteTemplates: () => Promise<NoteTemplate[]>
+  createNoteTemplate: (input: SaveNoteTemplate) => Promise<NoteTemplate>
+  /** Rewrites the template only; notes already stored on records are kept. */
+  updateNoteTemplate: (id: number, input: SaveNoteTemplate) => Promise<NoteTemplate>
+  /** Removes the template only; notes already stored on records are kept. */
+  deleteNoteTemplate: (id: number) => Promise<void>
   listAbsences: (range?: ListRange) => Promise<Absence[]>
   createAbsence: (input: SaveAbsence) => Promise<Absence>
   updateAbsence: (id: number, input: SaveAbsence) => Promise<Absence>

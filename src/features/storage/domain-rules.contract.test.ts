@@ -13,6 +13,7 @@ import {
   SESSION_TIMEOUT_MINUTES,
 } from '@/features/auth/security-policy'
 import { saveProjectBudgetSchema } from '@/features/budgets/budget-schema'
+import { saveNoteTemplateSchema } from '@/features/note-templates/note-template-schema'
 import { saveOvertimeEntrySchema } from '@/features/overtime/overtime-schema'
 import { saveProjectSchema } from '@/features/projects/project-schema'
 import { adjustedDailyTarget } from '@/features/settings/work-schedule'
@@ -38,6 +39,7 @@ type Case = {
   normalizedDate?: string
   normalizedOrigin?: string
   normalizedNote?: string
+  normalizedText?: string
 }
 
 /** A daily target before and after an absence neutralises it. */
@@ -59,7 +61,7 @@ type OverlapCase = {
 
 type UniquenessCase = {
   name: string
-  kind: 'email' | 'projectBudget' | 'absenceDay'
+  kind: 'email' | 'projectBudget' | 'noteTemplateName' | 'absenceDay'
   input: unknown
 }
 
@@ -83,6 +85,7 @@ const rules = domainRules as unknown as {
   projects: Case[]
   timeEntries: Case[]
   projectBudgets: Case[]
+  noteTemplates: Case[]
   workSettings: Case[]
   absences: Case[]
   absenceTargets: AbsenceTargetCase[]
@@ -160,6 +163,15 @@ describe('domain rule contract', () => {
     expect(saveProjectBudgetSchema.safeParse(testCase.input).success).toBe(testCase.accepted)
   })
 
+  it.each(rules.noteTemplates)('note template: $name', (testCase) => {
+    const parsed = saveNoteTemplateSchema.safeParse(testCase.input)
+
+    expect(parsed.success).toBe(testCase.accepted)
+    if (!parsed.success) return
+    if (testCase.normalizedName) expect(parsed.data.name).toBe(testCase.normalizedName)
+    if (testCase.normalizedText) expect(parsed.data.text).toBe(testCase.normalizedText)
+  })
+
   it.each(rules.workSettings)('work settings: $name', (testCase) => {
     const parsed = workSettingsSchema.safeParse(testCase.input)
 
@@ -204,6 +216,20 @@ describe('domain rule contract', () => {
       await createLocalRepository().register(credentials)
 
       await expect(createLocalRepository().register(credentials)).rejects.toMatchObject({ kind: 'conflict' })
+      return
+    }
+
+    if (testCase.kind === 'noteTemplateName') {
+      await createLocalRepository().register({
+        email: 'note-template@example.com',
+        password: 'Str0ng-Passphrase!!x',
+      })
+      const template = saveNoteTemplateSchema.parse(testCase.input)
+      await createLocalRepository().createNoteTemplate(template)
+
+      await expect(createLocalRepository().createNoteTemplate(template)).rejects.toMatchObject({
+        kind: 'conflict',
+      })
       return
     }
 

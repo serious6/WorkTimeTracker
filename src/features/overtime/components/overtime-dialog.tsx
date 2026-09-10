@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
-import { Input, Select, Textarea } from '@/components/ui/input'
+import { Input, Select } from '@/components/ui/input'
 import { toast } from '@/components/ui/toast-store'
+import { NoteField } from '@/features/note-templates/components/note-field'
 import { errorMessage } from '@/lib/errors'
 import { formatSignedDuration } from '@/lib/date'
 import { useCreateOvertimeEntry, useUpdateOvertimeEntry } from '../overtime-queries'
@@ -41,6 +42,7 @@ export function OvertimeDialog({
   const updateEntry = useUpdateOvertimeEntry()
   const [error, setError] = useState<string>()
   const [value, setValue] = useState('')
+  const [note, setNote] = useState('')
   const [kind, setKind] = useState<OvertimeKind>('balance')
   const [openedFor, setOpenedFor] = useState<number | null>(null)
 
@@ -49,6 +51,7 @@ export function OvertimeDialog({
     setOpenedFor(openedKey)
     setError(undefined)
     setValue(entry ? formatSignedDuration(entry.minutes) : '')
+    setNote(entry?.note ?? '')
     setKind(entry?.kind ?? 'balance')
   }
   if (!open && openedFor !== null) setOpenedFor(null)
@@ -62,7 +65,7 @@ export function OvertimeDialog({
       effectiveDate: form.get('effectiveDate'),
       kind: form.get('kind'),
       value: form.get('value'),
-      note: form.get('note') ?? '',
+      note,
     })
     if (!result.success) {
       setError(result.error.issues[0]?.message)
@@ -126,15 +129,14 @@ export function OvertimeDialog({
             : `Counts as ${formatSignedDuration(preview)}.`}{' '}
           {KIND_HINTS[kind]}
         </p>
-        <label className="block space-y-1 text-sm font-medium">
-          Note (optional)
-          <Textarea
-            defaultValue={entry?.note ?? ''}
-            maxLength={500}
-            name="note"
-            placeholder="Why the balance was corrected"
-          />
-        </label>
+        <NoteField
+          label="Note (optional)"
+          maxLength={500}
+          multiline
+          onChange={setNote}
+          placeholder="Why the balance was corrected"
+          value={note}
+        />
         {entry?.origin === 'automatic' && (
           <p className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
             Saving marks this record as manual, so the automatic calculation keeps it.

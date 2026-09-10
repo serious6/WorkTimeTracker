@@ -14,10 +14,10 @@ use crate::{
     },
     models::{
         adjusted_daily_target, Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, Credentials,
-        ListRange, OvertimeAudit, OvertimeEntry, Project, ProjectBudget, SaveAbsence,
-        SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry,
-        TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT, DEFAULT_LIST_LIMIT,
-        GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
+        ListRange, NoteTemplate, OvertimeAudit, OvertimeEntry, Project, ProjectBudget, SaveAbsence,
+        SaveNoteTemplate, SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry,
+        SecurityAudit, TimeEntry, TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT,
+        DEFAULT_LIST_LIMIT, GERMAN_COMPLIANCE_LIMITS, MAX_LIST_LIMIT,
     },
     store::{OvertimeWriteError, Store, StoreError},
     test_support::{test_store, unique_email, unique_tag},
@@ -79,6 +79,8 @@ struct Case {
     normalized_origin: Option<String>,
     #[serde(default)]
     normalized_note: Option<String>,
+    #[serde(default)]
+    normalized_text: Option<String>,
 }
 
 /// A daily target before and after an absence neutralises it.
@@ -314,6 +316,16 @@ fn serializes_the_models_of_the_entity_contract() {
         }),
     );
     assert_entity(
+        "noteTemplate",
+        json(&NoteTemplate {
+            id: 1,
+            name: "Daily standup".into(),
+            text: "Daily standup with the team".into(),
+            created_at: moment.clone(),
+            updated_at: moment.clone(),
+        }),
+    );
+    assert_entity(
         "absence",
         json(&Absence {
             id: 1,
@@ -432,6 +444,21 @@ fn validates_project_budgets_like_the_contract() {
 }
 
 #[test]
+fn validates_note_templates_like_the_contract() {
+    for case in cases("noteTemplates") {
+        let Some(template) = check::<SaveNoteTemplate>(&case, SaveNoteTemplate::validate) else {
+            continue;
+        };
+        if let Some(name) = case.normalized_name.as_ref() {
+            assert_eq!(&template.name, name, "{}", case.name);
+        }
+        if let Some(text) = case.normalized_text.as_ref() {
+            assert_eq!(&template.text, text, "{}", case.name);
+        }
+    }
+}
+
+#[test]
 fn validates_work_settings_like_the_contract() {
     for case in cases("workSettings") {
         let settings = check::<WorkSettings>(&case, WorkSettings::validate);
@@ -538,6 +565,19 @@ fn enforces_uniqueness_like_the_contract() {
                 store.insert_project_budget(user.id, &budget).unwrap();
 
                 let error = store.insert_project_budget(user.id, &budget).unwrap_err();
+
+                assert!(
+                    matches!(error, StoreError::UniqueViolation),
+                    "{}",
+                    case.name
+                );
+            }
+            "noteTemplateName" => {
+                let template: SaveNoteTemplate = serde_json::from_value(case.input).unwrap();
+                let user = store.register_user(&unique_email(), "hash").unwrap();
+                store.insert_note_template(user.id, &template).unwrap();
+
+                let error = store.insert_note_template(user.id, &template).unwrap_err();
 
                 assert!(
                     matches!(error, StoreError::UniqueViolation),

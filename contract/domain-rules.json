@@ -478,6 +478,90 @@
       "accepted": false
     }
   ],
+  "noteTemplates": [
+    {
+      "name": "accepts a template",
+      "input": {
+        "name": "Daily standup",
+        "text": "Daily standup with the team"
+      },
+      "accepted": true
+    },
+    {
+      "name": "trims the name and the text",
+      "input": {
+        "name": "  Daily standup  ",
+        "text": "  Daily standup with the team  "
+      },
+      "accepted": true,
+      "normalizedName": "Daily standup",
+      "normalizedText": "Daily standup with the team"
+    },
+    {
+      "name": "rejects an empty name",
+      "input": {
+        "name": "",
+        "text": "Daily standup with the team"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a blank name",
+      "input": {
+        "name": "   ",
+        "text": "Daily standup with the team"
+      },
+      "accepted": false
+    },
+    {
+      "name": "accepts a name of one hundred characters",
+      "input": {
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "text": "Daily standup with the team"
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects a longer name",
+      "input": {
+        "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+        "text": "Daily standup with the team"
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects an empty text",
+      "input": {
+        "name": "Daily standup",
+        "text": ""
+      },
+      "accepted": false
+    },
+    {
+      "name": "rejects a blank text",
+      "input": {
+        "name": "Daily standup",
+        "text": "   "
+      },
+      "accepted": false
+    },
+    {
+      "name": "accepts a text of five hundred characters",
+      "input": {
+        "name": "Daily standup",
+        "text": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt"
+      },
+      "accepted": true
+    },
+    {
+      "name": "rejects a text longer than a note",
+      "input": {
+        "name": "Daily standup",
+        "text": "ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt"
+      },
+      "accepted": false
+    }
+  ],
   "workSettings": [
     {
       "name": "accepts the default settings",
@@ -896,6 +980,14 @@
         "projectId": 1,
         "budgetMinutes": 2400,
         "dueDate": "2026-09-01"
+      }
+    },
+    {
+      "name": "rejects a duplicate note template name",
+      "kind": "noteTemplateName",
+      "input": {
+        "name": "Daily standup",
+        "text": "Daily standup with the team"
       }
     },
     {

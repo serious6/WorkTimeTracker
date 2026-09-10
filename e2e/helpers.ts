@@ -83,6 +83,18 @@ export async function createBudget(
   await dialog(page).getByRole('button', { name: 'Create budget' }).click()
 }
 
+export async function createNoteTemplate(
+  page: Page,
+  { name, text }: { name: string; text: string },
+) {
+  await gotoPage(page, 'Note Templates')
+  await page.getByRole('button', { name: 'Create template' }).click()
+  await dialog(page).getByLabel('Name').fill(name)
+  await dialog(page).getByLabel('Note text').fill(text)
+  await dialog(page).getByRole('button', { name: 'Create template' }).click()
+  await expect(dialog(page)).toBeHidden()
+}
+
 export async function addOvertime(
   page: Page,
   {

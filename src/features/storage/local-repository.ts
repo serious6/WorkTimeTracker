@@ -49,6 +49,12 @@ import {
   type OvertimeEntry,
 } from '@/features/overtime/overtime-schema'
 import {
+  DUPLICATE_NOTE_TEMPLATE_MESSAGE,
+  noteTemplateSchema,
+  saveNoteTemplateSchema,
+  type NoteTemplate,
+} from '@/features/note-templates/note-template-schema'
+import {
   projectSchema,
   saveProjectSchema,
   type Project,
@@ -92,6 +98,7 @@ const SCOPED_KEYS = [
   'projects',
   'time-entries',
   'project-budgets',
+  'note-templates',
   'work-settings',
   'time-entry-audits',
   'time-entry-state',
@@ -519,6 +526,10 @@ function appendOvertimeAudit(
 
 function readBudgets(): ProjectBudget[] {
   return read(scopedKey('project-budgets'), [], (value) => projectBudgetSchema.array().parse(value))
+}
+
+function readNoteTemplates(): NoteTemplate[] {
+  return read(scopedKey('note-templates'), [], (value) => noteTemplateSchema.array().parse(value))
 }
 
 function nextId(records: { id: number }[]): number {
@@ -999,6 +1010,51 @@ const fallbackRepository: Repository = {
         null,
       )
     })
+  },
+  listNoteTemplates: async () =>
+    readNoteTemplates().sort((left, right) => left.name.localeCompare(right.name)),
+  createNoteTemplate: async (input) => {
+    const parsed = validate(saveNoteTemplateSchema, input)
+    const templates = readNoteTemplates()
+    if (templates.some((template) => template.name === parsed.name)) {
+      throw new AppError('conflict', DUPLICATE_NOTE_TEMPLATE_MESSAGE)
+    }
+    const now = new Date().toISOString()
+    const template = noteTemplateSchema.parse({
+      ...parsed,
+      id: nextId(templates),
+      createdAt: now,
+      updatedAt: now,
+    })
+    write(scopedKey('note-templates'), [...templates, template])
+    return template
+  },
+  /** Rewrites the template only; notes already stored on records are kept. */
+  updateNoteTemplate: async (id, input) => {
+    const parsed = validate(saveNoteTemplateSchema, input)
+    const templates = readNoteTemplates()
+    const current = templates.find((template) => template.id === id)
+    if (!current) throw new AppError('notFound', 'Note template not found')
+    if (templates.some((template) => template.name === parsed.name && template.id !== id)) {
+      throw new AppError('conflict', DUPLICATE_NOTE_TEMPLATE_MESSAGE)
+    }
+    const updated = { ...current, ...parsed, updatedAt: new Date().toISOString() }
+    write(
+      scopedKey('note-templates'),
+      templates.map((template) => (template.id === id ? updated : template)),
+    )
+    return updated
+  },
+  /** Removes the template only; notes already stored on records are kept. */
+  deleteNoteTemplate: async (id) => {
+    const templates = readNoteTemplates()
+    if (!templates.some((template) => template.id === id)) {
+      throw new AppError('notFound', 'Note template not found')
+    }
+    write(
+      scopedKey('note-templates'),
+      templates.filter((template) => template.id !== id),
+    )
   },
   listAbsences: async (range) => {
     const window = validateListRange(range)

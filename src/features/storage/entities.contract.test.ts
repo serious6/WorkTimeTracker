@@ -6,6 +6,7 @@ import { auditLogEntrySchema, timeEntryAuditSchema } from '@/features/audit/audi
 import { securityAuditSchema } from '@/features/audit/security-audit-schema'
 import { authUserSchema } from '@/features/auth/auth-schema'
 import { projectBudgetSchema } from '@/features/budgets/budget-schema'
+import { noteTemplateSchema } from '@/features/note-templates/note-template-schema'
 import { overtimeAuditSchema, overtimeEntrySchema } from '@/features/overtime/overtime-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import {
@@ -40,6 +41,7 @@ const schemas: Record<string, z.ZodObject> = {
   timeEntryAudit: timeEntryAuditSchema,
   auditLogEntry: auditLogEntrySchema,
   projectBudget: projectBudgetSchema,
+  noteTemplate: noteTemplateSchema,
   absence: absenceSchema,
   absenceAudit: absenceAuditSchema,
   overtimeEntry: overtimeEntrySchema,

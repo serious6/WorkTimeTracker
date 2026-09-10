@@ -10,6 +10,7 @@ import {
   SESSION_MAX_LIFETIME_MINUTES,
 } from '@/features/auth/security-policy'
 import { DUPLICATE_BUDGET_MESSAGE } from '@/features/budgets/budget-schema'
+import { DUPLICATE_NOTE_TEMPLATE_MESSAGE } from '@/features/note-templates/note-template-schema'
 import {
   DEFAULT_WORK_SETTINGS,
   NO_WORKING_DAY_MESSAGE,
@@ -755,6 +756,106 @@ describe('local repository budgets and settings', () => {
 
   it('reports no application version in the browser', async () => {
     expect(await createLocalRepository().getAppVersion()).toBeNull()
+  })
+})
+
+describe('local repository note templates', () => {
+  const TEMPLATE = { name: 'Daily standup', text: 'Daily standup with the team' }
+
+  beforeEach(async () => {
+    await register('first@example.com')
+  })
+
+  it('lists the templates by name', async () => {
+    await createLocalRepository().createNoteTemplate(TEMPLATE)
+    await createLocalRepository().createNoteTemplate({
+      name: 'Customer support call',
+      text: 'Customer support call',
+    })
+
+    expect((await createLocalRepository().listNoteTemplates()).map(({ name }) => name)).toEqual([
+      'Customer support call',
+      'Daily standup',
+    ])
+  })
+
+  it('trims the name and the text of a template', async () => {
+    const template = await createLocalRepository().createNoteTemplate({
+      name: '  Daily standup  ',
+      text: '  Daily standup with the team  ',
+    })
+
+    expect(template).toMatchObject(TEMPLATE)
+  })
+
+  it('rejects a template without a name or without a text', async () => {
+    await expect(
+      createLocalRepository().createNoteTemplate({ name: '  ', text: 'Standup' }),
+    ).rejects.toThrow('Template name is required')
+    await expect(
+      createLocalRepository().createNoteTemplate({ name: 'Standup', text: '  ' }),
+    ).rejects.toThrow('Template text is required')
+  })
+
+  it('rejects a duplicate name', async () => {
+    await createLocalRepository().createNoteTemplate(TEMPLATE)
+
+    await expect(createLocalRepository().createNoteTemplate(TEMPLATE)).rejects.toThrow(
+      DUPLICATE_NOTE_TEMPLATE_MESSAGE,
+    )
+  })
+
+  it('updates a template and keeps the name unique', async () => {
+    const template = await createLocalRepository().createNoteTemplate(TEMPLATE)
+    const other = await createLocalRepository().createNoteTemplate({
+      name: 'Customer support call',
+      text: 'Customer support call',
+    })
+
+    const updated = await createLocalRepository().updateNoteTemplate(template.id, {
+      name: 'Team standup',
+      text: 'Team standup, 15 minutes',
+    })
+
+    expect(updated).toMatchObject({ name: 'Team standup', text: 'Team standup, 15 minutes' })
+    await expect(
+      createLocalRepository().updateNoteTemplate(other.id, {
+        name: 'Team standup',
+        text: 'Customer support call',
+      }),
+    ).rejects.toThrow(DUPLICATE_NOTE_TEMPLATE_MESSAGE)
+  })
+
+  it('reports an unknown template', async () => {
+    await expect(createLocalRepository().updateNoteTemplate(404, TEMPLATE)).rejects.toMatchObject({
+      kind: 'notFound',
+    })
+    await expect(createLocalRepository().deleteNoteTemplate(404)).rejects.toMatchObject({
+      kind: 'notFound',
+    })
+  })
+
+  it('keeps the note of a record when its template is edited or deleted', async () => {
+    const template = await createLocalRepository().createNoteTemplate(TEMPLATE)
+    const project = await createProject('Website Redesign')
+    const entry = await createLocalRepository().createTimeEntry({
+      projectId: project.id,
+      startTime: '2026-09-01T08:00:00.000Z',
+      endTime: '2026-09-01T09:00:00.000Z',
+      note: template.text,
+    })
+
+    await createLocalRepository().updateNoteTemplate(template.id, {
+      name: 'Daily standup',
+      text: 'Standup with the whole team',
+    })
+    await createLocalRepository().deleteNoteTemplate(template.id)
+
+    const entries = await createLocalRepository().listTimeEntries()
+    expect(entries.find((stored) => stored.id === entry.id)?.note).toBe(
+      'Daily standup with the team',
+    )
+    expect(await createLocalRepository().listNoteTemplates()).toEqual([])
   })
 })
 

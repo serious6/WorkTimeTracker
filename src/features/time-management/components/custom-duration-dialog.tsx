@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
+import { NoteField } from '@/features/note-templates/components/note-field'
 import { formatDuration, toDateKey } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { parseDurationMinutes } from '../quick-add'
@@ -86,14 +87,11 @@ export function CustomDurationDialog({
             value={values.date}
           />
         </Field>
-        <Field label="Note">
-          <Input
-            name="note"
-            onChange={(event) => update('note', event.target.value)}
-            placeholder="Optional"
-            value={values.note}
-          />
-        </Field>
+        <NoteField
+          onChange={(note) => update('note', note)}
+          placeholder="Optional"
+          value={values.note}
+        />
         {error?.field === null && (
           <p className="text-sm text-destructive" role="alert">
             {error.message}

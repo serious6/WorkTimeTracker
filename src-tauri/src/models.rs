@@ -404,6 +404,41 @@ pub struct ProjectBudget {
     pub updated_at: String,
 }
 
+/// Reusable note text. A template is a source of text only: the note stored on
+/// a record is a plain copy, so editing or deleting a template never changes a
+/// note that was saved before.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveNoteTemplate {
+    pub name: String,
+    pub text: String,
+}
+
+impl SaveNoteTemplate {
+    pub fn validate(&mut self) -> Result<(), &'static str> {
+        normalize(&mut self.name);
+        normalize(&mut self.text);
+        if self.name.is_empty() || self.name.chars().count() > MAX_NAME {
+            return Err("invalid name");
+        }
+        // The text is inserted into a note, so it obeys the note limit.
+        if self.text.is_empty() || self.text.chars().count() > MAX_NOTE {
+            return Err("invalid text");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteTemplate {
+    pub id: i64,
+    pub name: String,
+    pub text: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 /// Reasons that excuse a day from the working-time target.
 pub const ABSENCE_TYPES: [&str; 4] = ["vacation", "sick", "unpaid", "halfDay"];
 
@@ -872,6 +907,33 @@ mod tests {
             Err("budget must be greater than zero")
         );
         assert_eq!(budget(1, 60, "2026-13-31"), Err("invalid due date"));
+    }
+
+    #[test]
+    fn validates_and_normalizes_note_template_input() {
+        let mut input = SaveNoteTemplate {
+            name: "  Daily standup  ".into(),
+            text: "  Daily standup with the team  ".into(),
+        };
+        input.validate().unwrap();
+        assert_eq!(input.name, "Daily standup");
+        assert_eq!(input.text, "Daily standup with the team");
+    }
+
+    #[test]
+    fn rejects_invalid_note_templates() {
+        let template = |name: &str, text: &str| {
+            SaveNoteTemplate {
+                name: name.into(),
+                text: text.into(),
+            }
+            .validate()
+        };
+
+        assert_eq!(template("   ", "Standup"), Err("invalid name"));
+        assert_eq!(template(&"n".repeat(101), "Standup"), Err("invalid name"));
+        assert_eq!(template("Standup", "   "), Err("invalid text"));
+        assert_eq!(template("Standup", &"t".repeat(501)), Err("invalid text"));
     }
 
     #[test]
