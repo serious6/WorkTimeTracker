@@ -81,6 +81,26 @@ export const projectBudgets = wtt.table(
   (table) => [check('project_budgets_budget_minutes_check', sql`${table.budgetMinutes} > 0`)],
 )
 
+/**
+ * Reusable note texts. A template is only a source of text: the note stored on
+ * a record is a plain copy, so editing or removing a template never changes a
+ * note that was saved before.
+ */
+export const noteTemplates = wtt.table(
+  'note_templates',
+  {
+    id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: bigint('user_id', { mode: 'number' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text().notNull(),
+    text: text().notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [unique('note_templates_name_unique').on(table.userId, table.name)],
+)
+
 export const workSettings = wtt.table('work_settings', {
   id: bigint({ mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   userId: bigint('user_id', { mode: 'number' })

@@ -5,16 +5,17 @@ use crate::{
     error::{AppError, AppResult},
     logging,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, OvertimeAudit, OvertimeEntry,
-        Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
-        SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User, WorkSettings,
-        LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
+        Absence, AbsenceAudit, AuditLogEntry, Credentials, ListRange, NoteTemplate, OvertimeAudit,
+        OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveNoteTemplate, SaveOvertimeEntry,
+        SaveProject, SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit,
+        User, WorkSettings, LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
     },
     store::{Database, OvertimeWriteError, StoreError, SwitchEntryError, TimeEntryWriteError},
 };
 
 const OVERLAP: &str = "This time overlaps with another time entry";
 const DUPLICATE_BUDGET: &str = "This project already has a budget";
+const DUPLICATE_NOTE_TEMPLATE: &str = "A note template with this name already exists";
 const DUPLICATE_ABSENCE: &str = "This day already has an absence";
 const DUPLICATE_OVERTIME: &str = "This date already has an overtime record";
 const SINGLE_OPENING: &str = "Only one opening balance can be set";
@@ -367,6 +368,39 @@ authed_command!(
 authed_command!(
     fn delete_project_budget(id: i64) -> (),
     |db, user| Ok(db.0.delete_project_budget(id, user)?)
+);
+
+authed_command!(
+    fn list_note_templates(range: Option<ListRange>) -> Vec<NoteTemplate>,
+    |db, user| {
+        let range = list_range(range)?;
+        Ok(db.0.list_note_templates(user, &range)?)
+    }
+);
+
+authed_command!(
+    fn create_note_template(mut input: SaveNoteTemplate) -> NoteTemplate,
+    |db, user| {
+        input.validate()?;
+        db.0.insert_note_template(user, &input)
+            .map_err(unique_error(DUPLICATE_NOTE_TEMPLATE))
+    }
+);
+
+authed_command!(
+    /// Rewrites the template; notes already stored on records keep their text.
+    fn update_note_template(id: i64, mut input: SaveNoteTemplate) -> NoteTemplate,
+    |db, user| {
+        input.validate()?;
+        db.0.update_note_template(id, user, &input)
+            .map_err(unique_error(DUPLICATE_NOTE_TEMPLATE))
+    }
+);
+
+authed_command!(
+    /// Removes the template; notes already stored on records are kept.
+    fn delete_note_template(id: i64) -> (),
+    |db, user| Ok(db.0.delete_note_template(id, user)?)
 );
 
 authed_command!(

@@ -7,6 +7,7 @@ import {
   Hourglass,
   LayoutDashboard,
   ListChecks,
+  NotebookPen,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -50,6 +51,7 @@ const groups: {
     items: [
       { view: 'projects', label: 'Projects', icon: FolderKanban },
       { view: 'budgets', label: 'Budgets', icon: Wallet },
+      { view: 'note-templates', label: 'Note Templates', icon: NotebookPen },
       { view: 'absences', label: 'Absences', icon: CalendarOff },
       { view: 'overtime', label: 'Overtime', icon: Hourglass },
     ],

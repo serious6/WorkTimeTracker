@@ -239,6 +239,37 @@
         }
       ]
     },
+    "noteTemplate": {
+      "rust": "NoteTemplate",
+      "zod": "noteTemplateSchema",
+      "fields": [
+        {
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "createdAt",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "nullable": false
+        }
+      ]
+    },
     "absence": {
       "rust": "Absence",
       "zod": "absenceSchema",

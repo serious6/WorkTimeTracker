@@ -50,8 +50,10 @@ commands are in [`AGENTS.md`](../../../AGENTS.md); this skill only adds what a r
 - Commands in `src-tauri/src/commands.rs` use `authed_command!`, return `Result` with the typed
   `AppError` from `src-tauri/src/error.rs`, and never `unwrap`/`expect` on a request path.
 - Every query is scoped by the session user id.
-- A schema change updates `drizzle/0000_init.sql`, `MIGRATIONS` in `src-tauri/src/postgres_store.rs`,
-  `src/db/schema.ts`, and `docs/data-model.md` together.
+- A schema change adds a new idempotent migration file in `drizzle/` instead of editing the released
+  `0000_init.sql` baseline, and updates `MIGRATIONS` in `src-tauri/src/postgres_store.rs`,
+  `src/db/schema.ts`, and `docs/data-model.md` together. A new table enables and forces row level
+  security and gets its owner policy.
 
 ### 3. Readability - KISS, DRY, YAGNI
 

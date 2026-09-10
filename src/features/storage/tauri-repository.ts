@@ -9,6 +9,7 @@ import {
   overtimeAuditSchema,
   overtimeEntrySchema,
 } from '@/features/overtime/overtime-schema'
+import { noteTemplateSchema } from '@/features/note-templates/note-template-schema'
 import { projectSchema } from '@/features/projects/project-schema'
 import { workSettingsSchema } from '@/features/settings/work-settings-schema'
 import { timeEntrySchema } from '@/features/time-entries/time-entry-schema'
@@ -106,6 +107,13 @@ export const tauriRepository: Repository = {
     call('update_project_budget', { id, input }, projectBudgetSchema),
   deleteProjectBudget: async (id) => {
     await run('delete_project_budget', { id })
+  },
+  listNoteTemplates: (range) => call('list_note_templates', { range }, noteTemplateSchema.array()),
+  createNoteTemplate: (input) => call('create_note_template', { input }, noteTemplateSchema),
+  updateNoteTemplate: (id, input) =>
+    call('update_note_template', { id, input }, noteTemplateSchema),
+  deleteNoteTemplate: async (id) => {
+    await run('delete_note_template', { id })
   },
   listAbsences: (range) => call('list_absences', { range }, absenceSchema.array()),
   createAbsence: (input) => call('create_absence', { input }, absenceSchema),

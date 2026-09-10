@@ -10,6 +10,7 @@ export type View =
   | 'budgets'
   | 'reports'
   | 'working-time'
+  | 'note-templates'
   | 'absences'
   | 'overtime'
   | 'calendar'

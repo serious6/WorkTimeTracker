@@ -24,13 +24,13 @@ use crate::{
     config::DbConfig,
     connection, logging,
     models::{
-        Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, OvertimeAudit,
-        OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveOvertimeEntry, SaveProject,
-        SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry, TimeEntryAudit, User,
-        WorkSettings, AUDIT_LOG_LIMIT, AUTH_AUDIT_ENTITY, AUTH_AUDIT_RETENTION_DAYS,
-        BUDGET_AUDIT_ENTITY, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK, GERMAN_COMPLIANCE_LIMITS,
-        LOCKED_OUT_ACTION, OVERTIME_ORIGIN_MANUAL, PROJECT_AUDIT_ENTITY, USER_AUDIT_ENTITY,
-        WORK_SETTINGS_AUDIT_ENTITY,
+        Absence, AbsenceAudit, AuditLogEntry, ComplianceLimits, ListRange, NoteTemplate,
+        OvertimeAudit, OvertimeEntry, Project, ProjectBudget, SaveAbsence, SaveNoteTemplate,
+        SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry, SecurityAudit, TimeEntry,
+        TimeEntryAudit, User, WorkSettings, AUDIT_LOG_LIMIT, AUTH_AUDIT_ENTITY,
+        AUTH_AUDIT_RETENTION_DAYS, BUDGET_AUDIT_ENTITY, DEFAULT_WORKING_DAYS, ENTRY_TYPE_BREAK,
+        GERMAN_COMPLIANCE_LIMITS, LOCKED_OUT_ACTION, OVERTIME_ORIGIN_MANUAL, PROJECT_AUDIT_ENTITY,
+        USER_AUDIT_ENTITY, WORK_SETTINGS_AUDIT_ENTITY,
     },
     store::{
         LoginAttempt, LoginAttemptStore, OvertimeWriteError, Store, StoreError, SwitchEntryError,
@@ -43,13 +43,19 @@ const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Ordered migrations, applied exactly once each and tracked in
-/// `wtt.schema_migrations`. `0000_init` is the complete current baseline schema for
-/// a fresh database; every later migration upgrades a database that already
-/// recorded the baseline and must therefore stay idempotent.
+/// `wtt.schema_migrations`. `0000_init` is the released baseline schema for a
+/// fresh database and stays frozen; every later migration upgrades a database
+/// that already recorded the baseline and must therefore stay idempotent.
 /// `migrate` runs them inside one transaction, so a migration must not use a
 /// statement that Postgres refuses in a transaction block, such as
 /// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
-const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("0000_init", include_str!("../../drizzle/0000_init.sql")),
+    (
+        "0001_note_templates",
+        include_str!("../../drizzle/0001_note_templates.sql"),
+    ),
+];
 
 /// Arbitrary but stable key for the advisory lock that serializes `migrate`.
 const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
@@ -230,6 +236,16 @@ fn budget_from_row(row: &postgres::Row) -> ProjectBudget {
     }
 }
 
+fn note_template_from_row(row: &postgres::Row) -> NoteTemplate {
+    NoteTemplate {
+        id: row.get(0),
+        name: row.get(1),
+        text: row.get(2),
+        created_at: row.get(3),
+        updated_at: row.get(4),
+    }
+}
+
 fn audit_from_row(row: &postgres::Row) -> TimeEntryAudit {
     TimeEntryAudit {
         id: row.get(0),
@@ -283,6 +299,7 @@ const PROJECT_COLUMNS: &str =
 const ENTRY_COLUMNS: &str =
     "id, project_id, start_time, end_time, entry_type, note, created_at, updated_at";
 const BUDGET_COLUMNS: &str = "id, project_id, budget_minutes, due_date, created_at, updated_at";
+const NOTE_TEMPLATE_COLUMNS: &str = "id, name, text, created_at, updated_at";
 const AUDIT_COLUMNS: &str = "id, time_entry_id, action, actor, old_value, new_value, recorded_at";
 const ABSENCE_COLUMNS: &str = "id, absence_type, absence_date, created_at, updated_at";
 const ABSENCE_AUDIT_COLUMNS: &str =
@@ -1688,6 +1705,84 @@ impl Store for PostgresStore {
         Ok(())
     }
 
+    /// The window bounds the creation time, because a template carries no date
+    /// of its own; the limit keeps the picker query bounded (`ListRange`).
+    fn list_note_templates(
+        &self,
+        user_id: i64,
+        range: &ListRange,
+    ) -> Result<Vec<NoteTemplate>, StoreError> {
+        let limit = range.limit();
+        let mut params = Params::new(&user_id, &limit);
+        let mut filter = String::new();
+        if let Some(from) = &range.from {
+            filter.push_str(&format!(" AND created_at >= ${}", params.push(from)));
+        }
+        if let Some(to) = &range.to {
+            filter.push_str(&format!(" AND created_at < ${}", params.push(to)));
+        }
+        let mut client = self.conn_for(user_id)?;
+        let rows = client.query(
+            &format!(
+                "SELECT {NOTE_TEMPLATE_COLUMNS} FROM note_templates
+                 WHERE user_id = $1{filter} ORDER BY name LIMIT $2"
+            ),
+            params.as_slice(),
+        )?;
+        Ok(rows.iter().map(note_template_from_row).collect())
+    }
+
+    fn insert_note_template(
+        &self,
+        user_id: i64,
+        input: &SaveNoteTemplate,
+    ) -> Result<NoteTemplate, StoreError> {
+        let mut client = self.conn_for(user_id)?;
+        let now = now_iso();
+        let row = client.query_one(
+            &format!(
+                "INSERT INTO note_templates (user_id, name, text, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $4) RETURNING {NOTE_TEMPLATE_COLUMNS}"
+            ),
+            &[&user_id, &input.name, &input.text, &now],
+        )?;
+        Ok(note_template_from_row(&row))
+    }
+
+    /// Editing a template rewrites the template only: the notes already stored
+    /// on records are plain copies and are deliberately left untouched.
+    fn update_note_template(
+        &self,
+        id: i64,
+        user_id: i64,
+        input: &SaveNoteTemplate,
+    ) -> Result<NoteTemplate, StoreError> {
+        let mut client = self.conn_for(user_id)?;
+        let row = client
+            .query_opt(
+                &format!(
+                    "UPDATE note_templates SET name = $3, text = $4, updated_at = $5
+                     WHERE id = $1 AND user_id = $2 RETURNING {NOTE_TEMPLATE_COLUMNS}"
+                ),
+                &[&id, &user_id, &input.name, &input.text, &now_iso()],
+            )?
+            .ok_or(StoreError::NotFound)?;
+        Ok(note_template_from_row(&row))
+    }
+
+    /// Deleting a template removes the template only; no record references it.
+    fn delete_note_template(&self, id: i64, user_id: i64) -> Result<(), StoreError> {
+        let mut client = self.conn_for(user_id)?;
+        let deleted = client.execute(
+            "DELETE FROM note_templates WHERE id = $1 AND user_id = $2",
+            &[&id, &user_id],
+        )?;
+        if deleted == 0 {
+            return Err(StoreError::NotFound);
+        }
+        Ok(())
+    }
+
     fn list_absences(&self, user_id: i64, range: &ListRange) -> Result<Vec<Absence>, StoreError> {
         let limit = range.limit();
         let mut params = Params::new(&user_id, &limit);
@@ -2225,9 +2320,9 @@ impl Store for PostgresStore {
     }
 
     /// Deletes the row in `users`; every table that references `users.id` does
-    /// so `ON DELETE CASCADE`, so the projects, budgets, entries, absences,
-    /// overtime records, settings and all audit trails of the account go with
-    /// it. The lockout counter of the account is keyed by email instead of by
+    /// so `ON DELETE CASCADE`, so the projects, budgets, entries, note
+    /// templates, absences, overtime records, settings and all audit trails of
+    /// the account go with it. The lockout counter of the account is keyed by email instead of by
     /// `user_id` and is removed explicitly, so the address does not survive
     /// the erasure either. Auth records with `user_id IS NULL` belong to no
     /// account and are deliberately left untouched. One transaction: a failure
@@ -2257,8 +2352,8 @@ mod tests {
         config::DeploymentMode,
         connection::{search_path_options, APP_SCHEMA},
         models::{
-            SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry,
-            LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
+            SaveAbsence, SaveNoteTemplate, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
+            SaveTimeEntry, LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
         },
         test_support::{fresh_database, test_store, unique_email},
     };
@@ -2696,7 +2791,11 @@ mod tests {
             .into_iter()
             .map(|row| row.get(0))
             .collect();
-        assert_eq!(versions, ["0000_init"]);
+        let expected: Vec<String> = MIGRATIONS
+            .iter()
+            .map(|(version, _)| (*version).to_owned())
+            .collect();
+        assert_eq!(versions, expected);
     }
 
     #[test]
@@ -3533,6 +3632,7 @@ mod tests {
         "absences",
         "app_metadata",
         "login_attempts",
+        "note_templates",
         "overtime_audits",
         "overtime_entries",
         "project_budgets",
@@ -3549,9 +3649,10 @@ mod tests {
     /// registered here fails `every_user_owned_table_is_registered`, so the
     /// erasure below is asserted table by table instead of for a handful of
     /// hand-picked ones.
-    const USER_OWNED_TABLES: [&str; 10] = [
+    const USER_OWNED_TABLES: [&str; 11] = [
         "absence_audits",
         "absences",
+        "note_templates",
         "overtime_audits",
         "overtime_entries",
         "project_budgets",
@@ -3633,6 +3734,15 @@ mod tests {
                     end_time: Some("2026-01-05T09:00:00.000Z".into()),
                     entry_type: None,
                     note: None,
+                },
+            )
+            .unwrap();
+        store
+            .insert_note_template(
+                user.id,
+                &SaveNoteTemplate {
+                    name: "Erasure template".into(),
+                    text: "Daily standup with the team".into(),
                 },
             )
             .unwrap();

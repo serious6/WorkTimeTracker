@@ -15,6 +15,7 @@ const PROJECT = { id: 1, name: 'Test', description: null, color: '#22c55e', acti
 const TIME_ENTRY = { id: 1, projectId: 1, startTime: '2024-01-01T09:00:00Z', endTime: '2024-01-01T10:00:00Z', note: null, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
 const AUDIT_RECORD = { id: 1, entity: 'timeEntry', entityId: 1, action: 'update', oldValue: '{"projectId":1,"startTime":"2024-01-01T09:00:00Z","endTime":null,"note":null}', newValue: '{"projectId":1,"startTime":"2024-01-01T09:00:00Z","endTime":"2024-01-01T10:00:00Z","note":null}', createdAt: '2024-01-01T10:00:00Z' }
 const BUDGET = { id: 1, projectId: 1, budgetMinutes: 6000, dueDate: '2024-12-31', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' }
+const NOTE_TEMPLATE = { id: 1, name: 'Daily standup', text: 'Daily standup with the team', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' }
 const ABSENCE = { id: 1, type: 'vacation', date: '2026-09-01', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z' }
 const ABSENCE_AUDIT = { id: 1, absenceId: 1, action: 'created', actor: 'user@example.com', oldValue: null, newValue: '{}', recordedAt: '2026-08-01T00:00:00Z' }
 const OVERTIME = { id: 1, effectiveDate: '2026-09-01', minutes: 150, kind: 'opening', origin: 'manual', note: null, createdAt: '2026-09-01T00:00:00Z', updatedAt: '2026-09-01T00:00:00Z' }
@@ -266,6 +267,43 @@ describe('tauriRepository – budgets', () => {
     mockInvoke.mockResolvedValue(undefined)
     await tauriRepository.deleteProjectBudget(1)
     invokedWith('delete_project_budget', { id: 1 })
+  })
+})
+
+describe('tauriRepository – note templates', () => {
+  test('listNoteTemplates invokes list_note_templates', async () => {
+    mockInvoke.mockResolvedValue([NOTE_TEMPLATE])
+    await tauriRepository.listNoteTemplates()
+    invokedWith('list_note_templates', { range: undefined })
+  })
+
+  test('listNoteTemplates passes the asked window to the backend', async () => {
+    mockInvoke.mockResolvedValue([])
+    const range = { limit: 10 }
+
+    await tauriRepository.listNoteTemplates(range)
+
+    invokedWith('list_note_templates', { range })
+  })
+
+  test('createNoteTemplate invokes create_note_template', async () => {
+    mockInvoke.mockResolvedValue(NOTE_TEMPLATE)
+    const input = { name: 'Daily standup', text: 'Daily standup with the team' }
+    await tauriRepository.createNoteTemplate(input)
+    invokedWith('create_note_template', { input })
+  })
+
+  test('updateNoteTemplate invokes update_note_template', async () => {
+    mockInvoke.mockResolvedValue(NOTE_TEMPLATE)
+    const input = { name: 'Daily standup', text: 'Standup with the team' }
+    await tauriRepository.updateNoteTemplate(1, input)
+    invokedWith('update_note_template', { id: 1, input })
+  })
+
+  test('deleteNoteTemplate invokes delete_note_template', async () => {
+    mockInvoke.mockResolvedValue(null)
+    await tauriRepository.deleteNoteTemplate(1)
+    invokedWith('delete_note_template', { id: 1 })
   })
 })
 
