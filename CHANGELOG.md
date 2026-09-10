@@ -14,6 +14,16 @@ as the release notes, so a version without a section here cannot be released. Se
 Nothing yet. Add the change under `Added`, `Changed`, `Fixed`, `Removed` or `Security`, and note the
 upgrade impact under `Breaking changes`.
 
+## [0.2.0] - 2026-09-10
+
+### Changed
+
+- Bumped the application version to 0.2.0.
+
+### Breaking changes
+
+None.
+
 ## [0.1.0] - 2026-09-07
 
 First public release: a local-first desktop work-time tracker that keeps every entry in a Postgres
@@ -42,5 +52,6 @@ database you control.
 None: this is the first release. Installing it is described in
 [`docs/installation.md`](https://github.com/serious6/WorkTimeTracker/blob/main/docs/installation.md).
 
-[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/serious6/WorkTimeTracker/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/serious6/WorkTimeTracker/releases/tag/v0.1.0
