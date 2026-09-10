@@ -103,7 +103,7 @@ BREAKING CHANGE: consumers must render <Toaster /> inside the provider.
 - [ ] The quality checks above pass locally.
 - [ ] User-facing changes are listed in the `Unreleased` section of `CHANGELOG.md`.
 - [ ] Documentation the change invalidates is updated.
-- [ ] A schema change updates the migration in `drizzle/`.
+- [ ] A schema change adds a new migration file in `drizzle/`.
 - [ ] The title follows Conventional Commits.
 
 ## Code review

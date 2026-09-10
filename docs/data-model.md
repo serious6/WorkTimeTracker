@@ -72,7 +72,7 @@ flowchart TB
 | --- | --- | --- |
 | `wtt.users`, `wtt.projects`, `wtt.time_entries`, `wtt.project_budgets`, `wtt.work_settings` | The domain entities, all scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.time_entry_audits` | Append-only trail of every change to a time entry | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
-| `wtt.note_templates` | Reusable note texts per user, copied into a note when inserted | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
+| `wtt.note_templates` | Reusable note texts per user, copied into a note when inserted | `drizzle/0001_note_templates.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.absences` | One row per absent calendar day, scoped by user | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.absence_audits` | Append-only trail of every change to an absence | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
 | `wtt.overtime_entries` | Explicit overtime records per user: opening balance, correction, adjustment | `drizzle/0000_init.sql`, `src-tauri/src/postgres_store.rs` |
@@ -384,7 +384,7 @@ limits.
 
 ### wtt.note_templates
 
-`drizzle/0000_init.sql`, `src/features/note-templates/note-template-schema.ts`
+`drizzle/0001_note_templates.sql`, `src/features/note-templates/note-template-schema.ts`
 
 The reusable texts behind the note fields.
 
@@ -574,8 +574,10 @@ is `opening`, `balance` or `adjustment`; `origin` is `automatic` or `manual`; `c
 
 ## Migration
 
-A fresh native database starts from the complete baseline migration `drizzle/0000_init.sql`; every
-later migration upgrades a database that already recorded the baseline and stays idempotent.
+A fresh native database starts from the baseline migration `drizzle/0000_init.sql`, which is
+released and therefore frozen; every later migration upgrades a database that already recorded the
+baseline and stays idempotent. A migration that adds a table also enables and forces row level
+security on it and creates its owner policy.
 `PostgresStore::connect` applies the not yet recorded migrations in a single transaction that is
 guarded by an advisory lock and records every applied version in the `wtt.schema_migrations` table, so
 a concurrent start does not collide. `drizzle.config.ts` points Drizzle at the same migration

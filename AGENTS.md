@@ -73,10 +73,10 @@ See [`docs/development.md`](docs/development.md#repository-layout).
 - Documentation and comments stay concise and function-oriented: explain why, invariants, error
   cases, or domain rules, not what the code already says.
 - Do not weaken or delete existing tests to make a change pass.
-- Schema changes update `drizzle/0000_init.sql`; before the first release, keep them folded into
-  that baseline. After a release, also add an idempotent upgrade migration for existing databases.
-  Update `MIGRATIONS`, `src/db/schema.ts`, `docs/data-model.md`, and affected queries/models
-  together.
+- `drizzle/0000_init.sql` is released and frozen: a schema change adds a new idempotent migration
+  file in `drizzle/` instead of editing the baseline. A new table enables and forces row level
+  security and gets its owner policy. Update `MIGRATIONS`, `src/db/schema.ts`, `docs/data-model.md`,
+  and affected queries/models together.
 - Commit messages and pull request titles follow Conventional Commits with a lower-case, imperative
   summary; the allowed types, the scopes, and the breaking-change form are listed in
   [`CONTRIBUTING.md`](CONTRIBUTING.md#conventional-commits).

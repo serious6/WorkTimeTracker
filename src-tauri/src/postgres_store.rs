@@ -43,13 +43,19 @@ const APP_VERSION_KEY: &str = "app_version";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Ordered migrations, applied exactly once each and tracked in
-/// `wtt.schema_migrations`. `0000_init` is the complete current baseline schema for
-/// a fresh database; every later migration upgrades a database that already
-/// recorded the baseline and must therefore stay idempotent.
+/// `wtt.schema_migrations`. `0000_init` is the released baseline schema for a
+/// fresh database and stays frozen; every later migration upgrades a database
+/// that already recorded the baseline and must therefore stay idempotent.
 /// `migrate` runs them inside one transaction, so a migration must not use a
 /// statement that Postgres refuses in a transaction block, such as
 /// `CREATE INDEX CONCURRENTLY` or `CREATE DATABASE`.
-const MIGRATIONS: &[(&str, &str)] = &[("0000_init", include_str!("../../drizzle/0000_init.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("0000_init", include_str!("../../drizzle/0000_init.sql")),
+    (
+        "0001_note_templates",
+        include_str!("../../drizzle/0001_note_templates.sql"),
+    ),
+];
 
 /// Arbitrary but stable key for the advisory lock that serializes `migrate`.
 const MIGRATION_LOCK_KEY: i64 = 0x776f_726b_7469_6d65;
@@ -2769,7 +2775,11 @@ mod tests {
             .into_iter()
             .map(|row| row.get(0))
             .collect();
-        assert_eq!(versions, ["0000_init"]);
+        let expected: Vec<String> = MIGRATIONS
+            .iter()
+            .map(|(version, _)| (*version).to_owned())
+            .collect();
+        assert_eq!(versions, expected);
     }
 
     #[test]

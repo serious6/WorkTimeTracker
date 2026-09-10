@@ -124,22 +124,6 @@ CREATE TABLE IF NOT EXISTS wtt.absence_audits (
 
 CREATE INDEX IF NOT EXISTS absence_audits_user_id ON wtt.absence_audits (user_id, id);
 
--- Reusable note templates: predefined texts that can be inserted into any note
--- field. A template is a source of text only: the note stored on a time entry
--- or an overtime record is a plain copy, so editing or deleting a template
--- never changes a note that was already saved.
-CREATE TABLE IF NOT EXISTS wtt.note_templates (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES wtt.users (id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  text TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  CONSTRAINT note_templates_name_unique UNIQUE (user_id, name)
-);
-
-CREATE INDEX IF NOT EXISTS note_templates_user_id ON wtt.note_templates (user_id, name);
-
 -- Failed logins per email, persisted so that restarting the application does
 -- not clear a lockout. Expired rows are deleted on the next login attempt, so
 -- the table cannot grow without bound.
@@ -271,8 +255,6 @@ ALTER TABLE wtt.overtime_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wtt.overtime_entries FORCE ROW LEVEL SECURITY;
 ALTER TABLE wtt.overtime_audits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wtt.overtime_audits FORCE ROW LEVEL SECURITY;
-ALTER TABLE wtt.note_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE wtt.note_templates FORCE ROW LEVEL SECURITY;
 ALTER TABLE wtt.security_audits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wtt.security_audits FORCE ROW LEVEL SECURITY;
 
@@ -301,9 +283,6 @@ CREATE POLICY overtime_entries_owner ON wtt.overtime_entries
   USING (user_id = wtt.current_user_id())
   WITH CHECK (user_id = wtt.current_user_id());
 CREATE POLICY overtime_audits_owner ON wtt.overtime_audits
-  USING (user_id = wtt.current_user_id())
-  WITH CHECK (user_id = wtt.current_user_id());
-CREATE POLICY note_templates_owner ON wtt.note_templates
   USING (user_id = wtt.current_user_id())
   WITH CHECK (user_id = wtt.current_user_id());
 CREATE POLICY security_audits_owner ON wtt.security_audits

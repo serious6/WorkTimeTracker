@@ -4,7 +4,7 @@
 #
 # `POSTGRES_USER` is the bootstrap role of the cluster and therefore a
 # superuser, and a superuser bypasses row level security. The policies in
-# `drizzle/0000_init.sql` are only worth anything to a role that cannot, so
+# the migrations in `drizzle/` are only worth anything to a role that cannot, so
 # the application gets its own role that may log in, create its schema and
 # create the throwaway databases of the test suite, and nothing else.
 set -eu
