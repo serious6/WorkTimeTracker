@@ -57,24 +57,6 @@ fn current_user(sessions: &Sessions, session_id: &SessionId, window: &str) -> Ap
         .ok_or_else(AppError::not_signed_in)
 }
 
-/// Commands that run without a signed in user, each one deliberately public:
-/// the three that create or end a session, the session probe that answers
-/// `null` when nobody is signed in, the application version, the log sink of
-/// the user interface and the two startup commands the window needs before a
-/// database exists. Every other command is written with `authed_command!`,
-/// and the tests below fail when a hand written command is not listed here.
-#[allow(dead_code)]
-pub const PUBLIC_COMMANDS: [&str; 8] = [
-    "register",
-    "login",
-    "logout",
-    "current_session",
-    "get_app_version",
-    "log_client_error",
-    "startup_status",
-    "retry_startup",
-];
-
 /// A list command without a window still answers a bounded number of rows, so
 /// its cost never grows with the age of the account.
 fn list_range(range: Option<ListRange>) -> AppResult<ListRange> {
@@ -592,6 +574,23 @@ pub fn log_client_error(source: String, message: String) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Commands that run without a signed in user, each one deliberately public:
+    /// the three that create or end a session, the session probe that answers
+    /// `null` when nobody is signed in, the application version, the log sink of
+    /// the user interface and the two startup commands the window needs before a
+    /// database exists. Every other command is written with `authed_command!`,
+    /// and the tests below fail when a hand written command is not listed here.
+    const PUBLIC_COMMANDS: [&str; 8] = [
+        "register",
+        "login",
+        "logout",
+        "current_session",
+        "get_app_version",
+        "log_client_error",
+        "startup_status",
+        "retry_startup",
+    ];
     use crate::test_support::policy_compliant_password;
 
     /// The command source without the test module, so that the scanning tests

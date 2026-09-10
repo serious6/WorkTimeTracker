@@ -450,8 +450,9 @@ pub const HALF_DAY_ABSENCE: &str = "halfDay";
 /// day halves it rounded to whole minutes. A day outside the schedule has no
 /// target, so marking it as an absence changes nothing.
 ///
-/// `adjustedDailyTarget` in `src/features/settings/work-schedule.ts` implements
-/// the same rule; both sides are driven by `contract/domain-rules.json`.
+/// Contract-test oracle for the matching `adjustedDailyTarget` rule in
+/// `src/features/settings/work-schedule.ts`; both are driven by
+/// `contract/domain-rules.json`.
 #[cfg(test)]
 pub fn adjusted_daily_target(daily_target: f64, working_day: bool, absence: Option<&str>) -> f64 {
     if !working_day {
