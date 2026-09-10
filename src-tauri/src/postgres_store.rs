@@ -2298,9 +2298,9 @@ impl Store for PostgresStore {
     }
 
     /// Deletes the row in `users`; every table that references `users.id` does
-    /// so `ON DELETE CASCADE`, so the projects, budgets, entries, absences,
-    /// overtime records, settings and all audit trails of the account go with
-    /// it. The lockout counter of the account is keyed by email instead of by
+    /// so `ON DELETE CASCADE`, so the projects, budgets, entries, note
+    /// templates, absences, overtime records, settings and all audit trails of
+    /// the account go with it. The lockout counter of the account is keyed by email instead of by
     /// `user_id` and is removed explicitly, so the address does not survive
     /// the erasure either. Auth records with `user_id IS NULL` belong to no
     /// account and are deliberately left untouched. One transaction: a failure
@@ -2330,8 +2330,8 @@ mod tests {
         config::DeploymentMode,
         connection::{search_path_options, APP_SCHEMA},
         models::{
-            SaveAbsence, SaveOvertimeEntry, SaveProject, SaveProjectBudget, SaveTimeEntry,
-            LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
+            SaveAbsence, SaveNoteTemplate, SaveOvertimeEntry, SaveProject, SaveProjectBudget,
+            SaveTimeEntry, LOCKED_OUT_ACTION, LOGIN_FAILED_ACTION,
         },
         test_support::{fresh_database, test_store, unique_email},
     };
@@ -3708,6 +3708,15 @@ mod tests {
                     end_time: Some("2026-01-05T09:00:00.000Z".into()),
                     entry_type: None,
                     note: None,
+                },
+            )
+            .unwrap();
+        store
+            .insert_note_template(
+                user.id,
+                &SaveNoteTemplate {
+                    name: "Erasure template".into(),
+                    text: "Daily standup with the team".into(),
                 },
             )
             .unwrap();
