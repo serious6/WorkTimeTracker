@@ -60,6 +60,37 @@ const APP_CONNECTION_TIMEOUT: Duration = Duration::from_secs(5);
 /// A cold remote pooler can need longer to accept the migration connection.
 const MIGRATION_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Test seam for `PostgresStore::build_pool`: while a spy is installed on the
+/// current thread it records the timeout the entry point selected and stops the
+/// call before it reaches a database.
+#[cfg(test)]
+mod timeout_spy {
+    use std::cell::Cell;
+    use std::time::Duration;
+
+    thread_local! {
+        static ACTIVE: Cell<bool> = const { Cell::new(false) };
+        static RECORDED: Cell<Option<Duration>> = const { Cell::new(None) };
+    }
+
+    pub(super) fn record(connection_timeout: Duration) -> bool {
+        if !ACTIVE.get() {
+            return false;
+        }
+        RECORDED.set(Some(connection_timeout));
+        true
+    }
+
+    /// Runs `open_store` and returns the timeout its pool would have used.
+    pub(super) fn capture(open_store: impl FnOnce()) -> Option<Duration> {
+        RECORDED.set(None);
+        ACTIVE.set(true);
+        open_store();
+        ACTIVE.set(false);
+        RECORDED.take()
+    }
+}
+
 pub struct PostgresStore {
     pool: Pool<Manager>,
 }
@@ -117,17 +148,9 @@ impl PostgresStore {
         migrate_database: impl FnOnce(&mut postgres::Client) -> Result<(), StoreError>,
         connection_timeout: Duration,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (postgres_config, tls) = connection::prepare(
-            &config.database_url,
-            config.mode,
-            config.root_cert.as_deref(),
-        )?;
-        let manager = PostgresConnectionManager::new(postgres_config, tls);
-        let pool = Pool::builder()
-            .max_size(4)
-            .connection_timeout(connection_timeout)
-            .build(manager)?;
-        let store = Self { pool };
+        let store = Self {
+            pool: Self::build_pool(config, connection_timeout)?,
+        };
         {
             let mut client = store.conn()?;
             if config.run_migrations {
@@ -141,6 +164,29 @@ impl PostgresStore {
             }
         }
         Ok(store)
+    }
+
+    /// Builds the pool an entry point asked for. `connection_timeout` is the
+    /// only difference between application startup, which must fail fast, and a
+    /// migration run, which waits for a cold remote pooler.
+    fn build_pool(
+        config: &DbConfig,
+        connection_timeout: Duration,
+    ) -> Result<Pool<Manager>, Box<dyn std::error::Error>> {
+        #[cfg(test)]
+        if timeout_spy::record(connection_timeout) {
+            return Err("connection timeout recorded".into());
+        }
+        let (postgres_config, tls) = connection::prepare(
+            &config.database_url,
+            config.mode,
+            config.root_cert.as_deref(),
+        )?;
+        let manager = PostgresConnectionManager::new(postgres_config, tls);
+        Ok(Pool::builder()
+            .max_size(4)
+            .connection_timeout(connection_timeout)
+            .build(manager)?)
     }
 
     /// Opens a local development database, the only kind the tests use.
@@ -2271,9 +2317,23 @@ mod tests {
     };
 
     #[test]
-    fn migration_connection_timeout_is_longer_than_app_startup() {
-        assert_eq!(APP_CONNECTION_TIMEOUT, Duration::from_secs(5));
-        assert_eq!(MIGRATION_CONNECTION_TIMEOUT, Duration::from_secs(30));
+    fn each_entry_point_selects_its_connection_timeout() {
+        let config = DbConfig {
+            mode: crate::config::DeploymentMode::Development,
+            database_url: "postgres://app@localhost/work_time_tracker".to_owned(),
+            root_cert: None,
+            run_migrations: true,
+        };
+
+        let application = timeout_spy::capture(|| {
+            let _ = PostgresStore::open(&config);
+        });
+        let migration = timeout_spy::capture(|| {
+            let _ = PostgresStore::open_with_migration_progress(&config, |_| {});
+        });
+
+        assert_eq!(application, Some(APP_CONNECTION_TIMEOUT));
+        assert_eq!(migration, Some(MIGRATION_CONNECTION_TIMEOUT));
         assert!(MIGRATION_CONNECTION_TIMEOUT > APP_CONNECTION_TIMEOUT);
     }
 

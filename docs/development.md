@@ -239,22 +239,32 @@ past that. Portable archives are updated by hand: they carry no updater.
 
 The `migrate-production-database` job of the `Release` workflow is the only place that sees the
 production migration credentials. It runs in the protected `production-migration` environment,
-separate from the application's credentials, so its secrets are available to no other job and none
-of them is ever printed. It only runs when the dispatch input `migrate_production_database` asks for
-it — a shared database is migrated deliberately, never by an installation that starts. The bundles
-contain none of these values. The workflow reads, by name only:
+which holds only the values this step needs, so no other job of this or any other workflow can read
+them and none of them is ever printed. It only runs when the dispatch input
+`migrate_production_database` asks for it — a shared database is migrated deliberately, never by an
+installation that starts. The bundles contain none of these values. The workflow reads, by name
+only:
 
 | Secret | Purpose |
 | --- | --- |
 | `SUPABASE_MIGRATION_DB_HOST` | IPv4-capable session-mode pooler host (`aws-0-<region>.pooler.supabase.com`), not the IPv6-only direct host |
 | `SUPABASE_MIGRATION_DB_PORT` | session-mode pooler port `5432`; transaction mode on port `6543` is not suitable for migrations |
-| `SUPABASE_MIGRATION_DB_USER` | session-mode pooler user `postgres.<project-ref>` |
+| `SUPABASE_MIGRATION_DB_USER` | the application role in pooler form, `<application-role>.<project-ref>`, never `postgres.<project-ref>` |
 | `SUPABASE_MIGRATION_DB_PASSWORD` | password of the migration role |
 | `SUPABASE_MIGRATION_DB_NAME` | database name |
 | `SUPABASE_MIGRATION_DB_ROOT_CERT` | certificate authority in PEM form; the job writes it to a file and passes only its path to the migration |
 
+The migration connects as the least-privilege application role, never as `postgres`.
+`drizzle/0000_init.sql` grants nothing and transfers no ownership, so whoever applies a migration
+owns the `wtt` schema and everything a later migration adds to it; a migration run as the
+PostgreSQL role would leave the application without privileges on its own tables. That ownership
+costs no protection, because every policy is `FORCE`d
+([`data-model.md`](data-model.md#row-level-security)) and the role is neither a superuser nor
+`BYPASSRLS`. Beyond owning its objects the role only needs `CREATE` on the database, to create the
+schema on a fresh project.
+
 To rotate the credentials, change the password of the role in the Supabase dashboard (or create the
-replacement role), update `SUPABASE_MIGRATION_DB_PASSWORD` in the `production-migration`
-environment, and run the workflow again. Rotating the certificate authority means replacing
-`SUPABASE_MIGRATION_DB_ROOT_CERT` with the downloaded PEM file; nothing in the repository has to
-change for either.
+replacement role and hand it the ownership of the `wtt` schema and its objects), update
+`SUPABASE_MIGRATION_DB_PASSWORD` in the `production-migration` environment, and run the workflow
+again. Rotating the certificate authority means replacing `SUPABASE_MIGRATION_DB_ROOT_CERT` with
+the downloaded PEM file; nothing in the repository has to change for either.

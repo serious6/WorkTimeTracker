@@ -77,9 +77,10 @@ inside it, so it survives an update).
 2. Fill in the values you were given. Either the single `DATABASE_URL`, or the separate
    `SUPABASE_DB_HOST`, `SUPABASE_DB_PORT`, `SUPABASE_DB_USER`, `SUPABASE_DB_PASSWORD` and
    `SUPABASE_DB_NAME`. For Supabase, use the session-mode pooler host
-   (`aws-0-<region>.pooler.supabase.com`), port `5432` and user `postgres.<project-ref>`, not the
-   IPv6-only direct host. Transaction mode on port `6543` is not suitable for migrations. Keep
-   `WORK_TIME_TRACKER_ENV=production` for a remote database.
+   (`aws-0-<region>.pooler.supabase.com`) and port `5432`, not the IPv6-only direct host. The user
+   is the least-privilege application role in pooler form, `<application-role>.<project-ref>` —
+   never `postgres.<project-ref>`, which is a superuser and would ignore the protection that keeps
+   accounts apart. Keep `WORK_TIME_TRACKER_ENV=production` for a remote database.
 3. Point `SUPABASE_DB_ROOT_CERT` at the certificate file of the database. A relative path is read
    from the same folder, so the certificate can travel with the program. A remote database is only
    ever contacted over a verified encrypted connection; there is no switch to turn that off.

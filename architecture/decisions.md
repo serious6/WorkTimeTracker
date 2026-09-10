@@ -146,10 +146,12 @@ needs a remote database, but only with verified transport and a deliberate migra
 defaults to `development`, which accepts `localhost`, a loopback address, or the compose host `db`
 only. `production` refuses local hosts and accepts a remote one only with `sslmode=verify-full`
 against the certificate authority pinned in `sslrootcert` or `SUPABASE_DB_ROOT_CERT`; nothing
-relaxes that verification. Connection details are configuration: the release workflow injects them
-from the protected `production` environment, and a portable installation reads them from
-`WorkTimeTracker.env`, whose secrets move into the credential store of the user account on the first
-start.
+relaxes that verification. Connection details are configuration: the release workflow injects the
+migration credentials from the protected `production-migration` environment, which is separate from
+the `production` release environment and from the credentials an installation uses, and a portable
+installation reads its own from `WorkTimeTracker.env`, whose secrets move into the credential store
+of the user account on the first start. Both name the same least-privilege application role, so the
+objects a migration creates belong to the role the installations connect as.
 
 **Consequences:** Test helpers refuse to create or drop a database outside development and a local
 host. Connection strings pass `redact_database_url` before they are logged. Credentials never live
