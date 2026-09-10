@@ -227,6 +227,11 @@ pub fn redact(message: &str) -> String {
 /// The same redaction as [`redact`], but the original whitespace is kept, so a
 /// multi-line text stays readable where it is shown instead of logged.
 pub fn redact_keeping_layout(message: &str) -> String {
+    // A connection string is only recognizable as a whole, so it is dropped
+    // before the message is split into tokens, exactly as in [`redact`].
+    if contains_libpq_connection_string(message) {
+        return REDACTED.to_owned();
+    }
     let message = redact_sensitive_values(message);
     let mut redacted = String::new();
     let mut token = String::new();
@@ -711,6 +716,16 @@ mod tests {
         let message = "opening /home/jane/app.db for $argon2id$v=19$hash of jane@example.com";
 
         assert_eq!(redact_keeping_layout(message), redact(message));
+    }
+
+    /// Regression test: only [`redact`] dropped a connection string as a whole,
+    /// so the layout-keeping variant left the parameters of one behind.
+    #[test]
+    fn keeping_the_layout_redacts_connection_strings() {
+        let message = ["port", "=", "5432", "\n", "host", "=", "db.example.test"].concat();
+
+        assert_eq!(redact_keeping_layout(&message), "[redacted]");
+        assert_eq!(redact_keeping_layout(&message), redact(&message));
     }
 
     #[test]
