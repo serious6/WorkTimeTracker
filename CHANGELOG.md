@@ -11,8 +11,10 @@ as the release notes, so a version without a section here cannot be released. Se
 
 ## [Unreleased]
 
-Nothing yet. Add the change under `Added`, `Changed`, `Fixed`, `Removed` or `Security`, and note the
-upgrade impact under `Breaking changes`.
+### Fixed
+
+- Production migrations now diagnose unreachable IPv6-only database endpoints and allow longer for
+  a session-mode pooler to accept its first connection.
 
 ## [0.2.0] - 2026-09-10
 
