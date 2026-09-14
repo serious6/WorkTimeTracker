@@ -1,7 +1,7 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { createProject, gotoPage, startSignedInSession, trackingCard } from './helpers'
 
-async function startTimer(page: Parameters<typeof createProject>[0], project: string) {
+async function startTimer(page: Page, project: string) {
   await trackingCard(page).getByRole('button', { name: 'Select a project' }).click()
   await page.getByRole('option', { name: project }).click()
   await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()

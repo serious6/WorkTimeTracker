@@ -66,8 +66,7 @@ export function CurrentlyTrackingCard({
     if (!noteSuggestionsOpen) return
     function onPointerDown(event: MouseEvent) {
       if (!noteRef.current?.contains(event.target as Node)) {
-        setNoteFocused(false)
-        setSuggestionsDismissed(false)
+        setSuggestionsDismissed(true)
       }
     }
     document.addEventListener('mousedown', onPointerDown)

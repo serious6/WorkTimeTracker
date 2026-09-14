@@ -11,7 +11,7 @@ type NoteSuggestion = {
 }
 
 function usageTime(entry: TimeEntry): number {
-  /** Updated rows are the freshest source, with start time as fallback in tests/imports. */
+  // Updated rows are the freshest source, with start time as fallback in tests/imports.
   const updated = Date.parse(entry.updatedAt)
   if (Number.isFinite(updated)) return updated
   const start = Date.parse(entry.startTime)
