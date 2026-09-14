@@ -49,6 +49,57 @@ function absences(...days: [string, AbsenceType][]) {
 }
 
 describe('week metrics', () => {
+  it('summarises each day and the week by project with deterministic ordering', () => {
+    const entries = [
+      entry(1, 1, at(24, 9), at(24, 11)),
+      entry(2, 2, at(24, 12), at(24, 13)),
+      entry(3, 2, at(25, 9), at(25, 10)),
+      entry(4, null, at(25, 11), at(25, 11, 30)),
+    ]
+    const metrics = weekMetrics({
+      entries,
+      projects: [project(1, 'Zulu'), project(2, 'Alpha')],
+      settings,
+      selectedDate: at(27, 12),
+      now: at(27, 12).getTime(),
+    })
+
+    expect(metrics.days[0]?.projects.map(({ name, minutes }) => ({ name, minutes }))).toEqual([
+      { name: 'Zulu', minutes: 120 },
+      { name: 'Alpha', minutes: 60 },
+    ])
+    expect(metrics.days[1]?.projects.map(({ name, minutes }) => ({ name, minutes }))).toEqual([
+      { name: 'Alpha', minutes: 60 },
+      { name: 'Deleted project', minutes: 30 },
+    ])
+    expect(metrics.days[2]?.projects).toEqual([])
+    expect(metrics.projects.map(({ name, minutes }) => ({ name, minutes }))).toEqual([
+      { name: 'Alpha', minutes: 120 },
+      { name: 'Zulu', minutes: 120 },
+      { name: 'Deleted project', minutes: 30 },
+    ])
+    expect(metrics.days[0]?.projects.reduce((sum, item) => sum + item.minutes, 0)).toBe(
+      metrics.days[0]?.trackedMinutes,
+    )
+    expect(metrics.projects.reduce((sum, item) => sum + item.minutes, 0)).toBe(metrics.trackedMinutes)
+  })
+
+  it('summarises the actual length of a daylight-saving boundary day', () => {
+    const day = new Date(2026, 2, 29)
+    const nextDay = new Date(2026, 2, 30)
+    const metrics = rangeMetrics({
+      entries: [entry(1, 1, day, nextDay)],
+      projects: [project(1, 'Project')],
+      settings,
+      range: { start: day, end: nextDay },
+      now: nextDay.getTime(),
+    })
+
+    const actualDayMinutes = (nextDay.getTime() - day.getTime()) / 60_000
+    expect(metrics.trackedMinutes).toBe(actualDayMinutes)
+    expect(metrics.days[0]?.projects[0]?.minutes).toBe(actualDayMinutes)
+  })
+
   it('computes tracked, target and balance for a selected week', () => {
     const entries = [entry(1, 1, at(24, 9), at(24, 11)), entry(2, 1, at(25, 9), at(25, 12))]
     const metrics = weekMetrics({

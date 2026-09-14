@@ -87,6 +87,7 @@ timer on it. E16 and E17 start and end the session with the row controls of "Tod
 |----|---------------------------|-------|------|------|
 | W1 | `W1: week navigation updates subtitle and week number` | Week view is open | The user goes to previous week and back to this week | The subtitle (date range + KW number) changes with navigation and restores on return |
 | W2 | `W2: quick add updates day delta, week progress and month overview metrics` | A project exists in the current week | The user quick-adds 15 min, 1 hour and a custom duration on one day | Day delta, week totals/progress and month-to-date metrics all update consistently |
+| W3 | `W3: daily and weekly project summaries show both duration formats` | Two projects have entries on the same day in the current week | The user opens the Week tab | The day and week summaries list both projects and show every project total and overall total as decimal hours and hours/minutes |
 
 ## Projects
 

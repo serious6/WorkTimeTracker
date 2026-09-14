@@ -3,6 +3,7 @@ import {
   addDays,
   combineDateAndTime,
   formatDay,
+  formatDecimalHours,
   formatDuration,
   formatShortDay,
   formatSignedDuration,
@@ -108,6 +109,13 @@ describe('display formatting', () => {
 })
 
 describe('duration formatting', () => {
+  it('formats decimal hours rounded to two places', () => {
+    expect(formatDecimalHours(0)).toBe('0.00 h')
+    expect(formatDecimalHours(487)).toBe('8.12 h')
+    expect(formatDecimalHours(59.6)).toBe('0.99 h')
+    expect(formatDecimalHours(-30)).toBe('0.00 h')
+  })
+
   it('splits minutes into hours and padded minutes', () => {
     expect(formatDuration(0)).toBe('0h 00m')
     expect(formatDuration(465)).toBe('7h 45m')

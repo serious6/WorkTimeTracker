@@ -120,7 +120,7 @@ export function projectTotals(
         percentage: total > 0 ? Math.round((minutes / total) * 100) : 0,
       }
     })
-    .sort((left, right) => right.minutes - left.minutes)
+    .sort((left, right) => right.minutes - left.minutes || left.name.localeCompare(right.name))
 }
 
 /** Projects with tracked time, most recently tracked first. */

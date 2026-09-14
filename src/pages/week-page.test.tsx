@@ -44,6 +44,26 @@ describe('WeekPage', () => {
     await waitFor(() => expect(screen.getAllByText('1h 00m').length).toBeGreaterThanOrEqual(2))
   })
 
+  it('shows accessible daily and weekly project summaries in both duration formats', async () => {
+    const alpha = await seedProject('Alpha')
+    const beta = await seedProject('Beta')
+    const ref = new Date(2026, 7, 27)
+    await seedTimeEntry({ projectId: alpha.id, startTime: atTime(ref, 9), endTime: atTime(ref, 10) })
+    await seedTimeEntry({ projectId: beta.id, startTime: atTime(ref, 11), endTime: atTime(ref, 11, 30) })
+
+    renderWithProviders(<WeekPage />)
+
+    const dayProjects = await screen.findByRole('list', { name: 'Projects on August 27, 2026' })
+    expect(within(dayProjects).getByText('Alpha')).toBeInTheDocument()
+    expect(within(dayProjects).getByText('1.00 h · 1h 00m')).toBeInTheDocument()
+    expect(within(dayProjects).getByText('0.50 h · 0h 30m')).toBeInTheDocument()
+    expect(within(dayProjects.parentElement as HTMLElement).getByText('1.50 h · 1h 30m')).toBeInTheDocument()
+
+    const weekProjects = screen.getByRole('list', { name: 'Projects this week' })
+    expect(within(weekProjects).getByText('Beta')).toBeInTheDocument()
+    expect(within(weekProjects.parentElement as HTMLElement).getByText('1.50 h · 1h 30m')).toBeInTheDocument()
+  })
+
   it('marks untracked working days and non-working days in the breakdown', async () => {
     const project = await seedProject('Alpha')
     const ref = new Date(2026, 7, 27)

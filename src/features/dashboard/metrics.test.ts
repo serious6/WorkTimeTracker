@@ -101,6 +101,15 @@ describe('metrics', () => {
     ])
   })
 
+  it('orders equal project totals by project name', () => {
+    const entries = [entry(1, 1, at(27, 9), at(27, 10)), entry(2, 2, at(27, 10), at(27, 11))]
+
+    expect(projectTotals(entries, projects).map((item) => item.name)).toEqual([
+      'Mobile App',
+      'Website Redesign',
+    ])
+  })
+
   it('excludes breaks from tracked-time aggregates', () => {
     const entries = [
       entry(1, 1, at(27, 9), at(27, 10)),
