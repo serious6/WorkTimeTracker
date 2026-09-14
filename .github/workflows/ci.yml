@@ -84,9 +84,11 @@ jobs:
       - uses: ./.github/actions/setup-node
       - run: npm run test:coverage
       # Forks and Dependabot runs do not get repository secrets, so the upload
-      # is skipped there instead of failing the job on an empty token.
+      # is skipped there instead of failing the job on an empty token. A failed
+      # test run writes no report, so the upload is skipped there as well and
+      # the job reports the test failure alone.
       - name: Upload coverage reports to Codecov
-        if: ${{ !cancelled() && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
+        if: ${{ success() && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

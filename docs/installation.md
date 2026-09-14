@@ -135,13 +135,15 @@ autocomplete tokens `username`, `current-password` and `new-password`, and the w
 item is named after the application instead of an unknown window. The application itself neither
 stores nor reads anything from a password manager and sends nothing to it.
 
-Support depends on the system webview, because a password manager has to reach into that webview:
+Support depends on the system webview, because a password manager has to reach into that webview.
+The table below lists what the markup is designed for; none of the rows has been confirmed on a
+real installation yet, so treat every entry as **unverified** until the manual check is recorded:
 
-| Platform | Webview | What works |
+| Platform | Webview | Expected behaviour (unverified) |
 | --- | --- | --- |
-| Windows | WebView2 | The 1Password desktop app fills and saves through its Windows integration. Browser extensions do not load in WebView2. |
-| macOS | WKWebView | The 1Password desktop app fills and saves through its universal autofill; grant it Accessibility permission once in *System Settings* → *Privacy & Security*. |
-| Linux | WebKitGTK | No desktop integration is available today. Copy and paste the credential from your password manager. |
+| Windows | WebView2 | The 1Password desktop app should fill and save through its Windows integration. Browser extensions do not load in WebView2. |
+| macOS | WKWebView | The 1Password desktop app should fill and save through its universal autofill, which needs Accessibility permission in *System Settings* → *Privacy & Security*. |
+| Linux | WebKitGTK | No desktop integration is expected. Copy and paste the credential from your password manager. |
 
 Signing in never depends on a password manager: typing the credentials and submitting with the
 keyboard (<kbd>Enter</kbd> in either field) always works.

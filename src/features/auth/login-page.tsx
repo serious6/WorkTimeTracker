@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
-import { useDocumentTitle } from '@/lib/use-document-title'
 import { credentialsSchema, INVALID_CREDENTIALS_MESSAGE } from './auth-schema'
 import { useLogin } from './session-queries'
+import { useDocumentTitle } from './use-document-title'
 
 /** Entry point of the application while nobody is signed in. */
 export function LoginPage({ onRegister }: { onRegister: () => void }) {

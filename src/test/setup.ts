@@ -1,7 +1,14 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import fc from 'fast-check'
 import { afterEach } from 'vitest'
+
+/**
+ * Data heavy pages settle only after several query round-trips, which takes
+ * longer than the 1000 ms default of `findBy*` on a loaded CI runner. The
+ * higher budget is only spent when an assertion would otherwise fail.
+ */
+configure({ asyncUtilTimeout: 5000 })
 
 /**
  * The property based tests (`*.property.test.ts`) explore generated input, so

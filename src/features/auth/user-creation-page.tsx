@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox, Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
-import { useDocumentTitle } from '@/lib/use-document-title'
 import { accountCreationSchema } from './auth-schema'
 import { PasswordPolicyChecklist } from './components/password-policy-checklist'
 import { useRegister } from './session-queries'
+import { useDocumentTitle } from './use-document-title'
 
 interface UserCreationPageProps {
   onCancel: () => void
