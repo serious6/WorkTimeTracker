@@ -78,7 +78,7 @@ export function formatDuration(minutes: number): string {
   return `${Math.floor(total / 60)}h ${`${total % 60}`.padStart(2, '0')}m`
 }
 
-/** Decimal hours such as `7.75 h`. */
+/** Non-negative decimal hours such as `7.75 h`, clamped like `formatDuration`. */
 export function formatDecimalHours(minutes: number): string {
   return `${(Math.max(0, minutes) / 60).toFixed(2)} h`
 }

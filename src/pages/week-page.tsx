@@ -286,19 +286,15 @@ export function WeekPage() {
         <CardHeader>
           <CardTitle>Projects this week</CardTitle>
         </CardHeader>
-        <CardContent>
-          {week.projects.length === 0 ? (
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">No tracked projects this week.</p>
-              <ProjectSummary label="Projects this week" projects={[]} totalMinutes={week.trackedMinutes} />
-            </div>
-          ) : (
-            <ProjectSummary
-              label="Projects this week"
-              projects={week.projects}
-              totalMinutes={week.trackedMinutes}
-            />
+        <CardContent className="space-y-2">
+          {week.projects.length === 0 && (
+            <p className="text-sm text-muted-foreground">No tracked projects this week.</p>
           )}
+          <ProjectSummary
+            label="Projects this week"
+            projects={week.projects}
+            totalMinutes={week.trackedMinutes}
+          />
         </CardContent>
       </Card>
 

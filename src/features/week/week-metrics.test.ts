@@ -55,6 +55,7 @@ describe('week metrics', () => {
       entry(2, 2, at(24, 12), at(24, 13)),
       entry(3, 2, at(25, 9), at(25, 10)),
       entry(4, null, at(25, 11), at(25, 11, 30)),
+      { ...entry(5, null, at(24, 13), at(24, 13, 30)), entryType: 'break' as const },
     ]
     const metrics = weekMetrics({
       entries,

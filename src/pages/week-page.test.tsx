@@ -57,11 +57,13 @@ describe('WeekPage', () => {
     expect(within(dayProjects).getByText('Alpha')).toBeInTheDocument()
     expect(within(dayProjects).getByText('1.00 h · 1h 00m')).toBeInTheDocument()
     expect(within(dayProjects).getByText('0.50 h · 0h 30m')).toBeInTheDocument()
-    expect(within(dayProjects.parentElement as HTMLElement).getByText('1.50 h · 1h 30m')).toBeInTheDocument()
+    expect(
+      within(screen.getByLabelText('Projects on August 27, 2026 total')).getByText('1.50 h · 1h 30m'),
+    ).toBeInTheDocument()
 
     const weekProjects = screen.getByRole('list', { name: 'Projects this week' })
     expect(within(weekProjects).getByText('Beta')).toBeInTheDocument()
-    expect(within(weekProjects.parentElement as HTMLElement).getByText('1.50 h · 1h 30m')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Projects this week total')).getByText('1.50 h · 1h 30m')).toBeInTheDocument()
   })
 
   it('marks untracked working days and non-working days in the breakdown', async () => {
