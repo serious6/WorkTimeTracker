@@ -3,6 +3,12 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      release_type:
+        description: 'Version bump applied to main after a successful release'
+        required: true
+        default: patch
+        type: choice
+        options: [patch, minor, major, none]
       tag:
         description: 'Release tag (defaults to v<version from tauri.conf.json>)'
         required: false
@@ -267,6 +273,8 @@ jobs:
 
   release:
     needs: [bundle, fuzz, migrate-production-database]
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
     # `bundle` and `fuzz` must have succeeded; the migration is skipped unless
     # it was asked for, and only a successful or a skipped one may be released
     # after.
@@ -351,3 +359,76 @@ jobs:
           else
             gh release create "$TAG" release/* "${args[@]}"
           fi
+
+  # Plain `needs` keeps main untouched when the production release failed, was
+  # cancelled, or still waits for approval; only a published release may open the
+  # post-release bump PR.
+  bump-version:
+    needs: [release]
+    if: ${{ inputs.release_type != 'none' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # A push made with `GITHUB_TOKEN` starts no workflow, so the bump pull
+      # request would never get its required checks. The installation token of
+      # the release app pushes and opens the pull request as a normal actor.
+      - name: Mint the release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+      - name: Raise the version on main
+        id: bump
+        env:
+          RELEASED_VERSION: ${{ needs.release.outputs.version }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: node scripts/bump-version.mjs --type "$RELEASE_TYPE" --from "$RELEASED_VERSION"
+      - name: Open the bump pull request
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          NEXT: ${{ steps.bump.outputs.version }}
+          RELEASED_VERSION: ${{ needs.release.outputs.version }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          branch="chore/bump-to-$NEXT"
+          if [ -z "$NEXT" ]; then
+            echo "::error::The bump script did not report the next version."
+            exit 1
+          fi
+          app_user_id=$(gh api "/users/$APP_SLUG%5Bbot%5D" --jq .id)
+          git config user.name "$APP_SLUG[bot]"
+          git config user.email "$app_user_id+$APP_SLUG[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            git fetch origin "$branch:refs/remotes/origin/$branch"
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then
+              exit "$status"
+            fi
+          fi
+          git checkout -B "$branch"
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "Main already carries version $NEXT; no bump PR is needed."
+            exit 0
+          fi
+          git commit -m "chore(ci): bump version to $NEXT"
+          git push --force-with-lease origin "$branch"
+          existing_pr=$(gh pr list --base main --head "$branch" --state open --json url --jq '.[0].url')
+          if [ -n "$existing_pr" ]; then
+            echo "Updated existing bump pull request: $existing_pr"
+            exit 0
+          fi
+          gh pr create --base main --head "$branch" \
+            --title "chore(ci): bump version to $NEXT" \
+            --body "Automated post-release $RELEASE_TYPE bump after v$RELEASED_VERSION."

@@ -81,6 +81,11 @@ release tagged `v<version>`. The release notes are the section of the released v
 of the commits since the previous tag that `scripts/build-release-notes.mjs` appends. A version
 without a changelog section fails the release job.
 
+The `release_type` dispatch input chooses the version prepared on `main` after a successful
+publication: `patch`, `minor`, or `major` opens a protected-branch pull request that bumps the three
+version files, the Cargo lockfile entry, and notes the bump under `Unreleased` in the changelog.
+Choose `none` for re-runs or hotfix republishes that must leave `main` unchanged.
+
 ### Portable archives
 
 Every release also carries `windows-x86_64-WorkTimeTracker-portable.zip` and

@@ -215,6 +215,20 @@ production; without that, the `environment:` key adds no approval step. A deploy
 can additionally restrict the `production` jobs to `main`; a run dispatched from another branch can
 still build artifacts, but it cannot migrate the database or publish a release.
 
+After the release is published, the `release_type` dispatch input controls the next version on
+`main`: `patch`, `minor`, or `major` runs `scripts/bump-version.mjs` against the released version and
+opens a `chore(ci): bump version to <next>` pull request with the updated version files, lockfile,
+and a `Bumped the application version to <next>.` line under `Unreleased`. The script never writes a
+dated version heading; releasing turns `Unreleased` into one, as described in
+[`CONTRIBUTING.md`](../CONTRIBUTING.md#changelog). `none` skips the bump for re-runs and hotfix
+republishes. The bump job depends plainly on `release`, so failed, cancelled, or unapproved releases
+leave `main` untouched.
+
+The bump job pushes and opens its pull request with the installation token of a GitHub App
+(`vars.RELEASE_BOT_APP_ID` and `secrets.RELEASE_BOT_PRIVATE_KEY`, with `contents: write` and
+`pull requests: write` on this repository). `GITHUB_TOKEN` cannot be used here: a push made with it
+starts no workflow, so the bump pull request would never receive its required checks.
+
 ### Portable archives
 
 The `bundle` job packs the same build a second time as
