@@ -1,0 +1,78 @@
+import type { TimeEntry } from './time-entry-schema'
+
+const MIN_QUERY_LENGTH = 3
+const DEFAULT_LIMIT = 6
+
+/** Normalized usage statistics for one distinct note, derived once per entry list. */
+export type NoteUsage = {
+  note: string
+  noteKey: string
+  latestUsedAt: number
+  frequency: number
+}
+
+function usageTime(entry: TimeEntry): number {
+  // Updated rows are the freshest source, with start time as fallback in tests/imports.
+  const updated = Date.parse(entry.updatedAt)
+  if (Number.isFinite(updated)) return updated
+  const start = Date.parse(entry.startTime)
+  return Number.isFinite(start) ? start : 0
+}
+
+/** Collects distinct notes with their latest usage and frequency, keeping the most recent spelling. */
+export function buildNoteUsage(entries: TimeEntry[]): NoteUsage[] {
+  const notes = new Map<string, NoteUsage>()
+  for (const entry of entries) {
+    const note = entry.note?.trim()
+    if (!note) continue
+    const noteKey = note.toLowerCase()
+    const previous = notes.get(noteKey)
+    const usedAt = usageTime(entry)
+    if (!previous) {
+      notes.set(noteKey, { note, noteKey, latestUsedAt: usedAt, frequency: 1 })
+      continue
+    }
+    notes.set(noteKey, {
+      note: previous.latestUsedAt >= usedAt ? previous.note : note,
+      noteKey,
+      latestUsedAt: Math.max(previous.latestUsedAt, usedAt),
+      frequency: previous.frequency + 1,
+    })
+  }
+  return [...notes.values()]
+}
+
+/**
+ * Ranks precomputed note usage once at least three characters are typed.
+ * Matches are case-insensitive and ordered by prefix, recency, frequency and name.
+ */
+export function rankNoteSuggestions(
+  usage: NoteUsage[],
+  query: string,
+  limit = DEFAULT_LIMIT,
+): string[] {
+  const needle = query.trim().toLowerCase()
+  if (needle.length < MIN_QUERY_LENGTH) return []
+
+  return usage
+    .filter((candidate) => candidate.noteKey.includes(needle))
+    .sort((a, b) => {
+      const aPrefix = a.noteKey.startsWith(needle) ? 0 : 1
+      const bPrefix = b.noteKey.startsWith(needle) ? 0 : 1
+      if (aPrefix !== bPrefix) return aPrefix - bPrefix
+      if (a.latestUsedAt !== b.latestUsedAt) return b.latestUsedAt - a.latestUsedAt
+      if (a.frequency !== b.frequency) return b.frequency - a.frequency
+      return a.note.localeCompare(b.note)
+    })
+    .slice(0, limit)
+    .map((candidate) => candidate.note)
+}
+
+/** Convenience wrapper that builds the usage index and ranks it in one step. */
+export function getNoteSuggestions(
+  entries: TimeEntry[],
+  query: string,
+  limit = DEFAULT_LIMIT,
+): string[] {
+  return rankNoteSuggestions(buildNoteUsage(entries), query, limit)
+}
