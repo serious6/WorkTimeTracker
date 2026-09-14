@@ -25,8 +25,15 @@ export function nextVersion(version, type) {
 }
 
 export function bumpJson(contents, version) {
-  JSON.parse(contents)
-  const replaced = contents.replace(/^(\s*"version"\s*:\s*)"[^"]*"/m, `$1"${version}"`)
+  const parsed = JSON.parse(contents)
+  if (!Object.hasOwn(parsed, 'version')) throw new Error('JSON file has no top-level version field to update.')
+
+  const indent = contents.match(/^{\r?\n([ \t]+)"/)?.[1]
+  if (!indent) throw new Error('JSON file format is not supported for preserving the version field.')
+  const replaced = contents.replace(
+    new RegExp(`^(${escapeRegExp(indent)}"version"\\s*:\\s*)"[^"]*"`, 'm'),
+    `$1"${version}"`,
+  )
   if (replaced === contents) throw new Error('JSON file has no top-level version field to update.')
   JSON.parse(replaced)
   return replaced
@@ -48,7 +55,7 @@ export function bumpCargoToml(contents, version) {
 }
 
 export function bumpCargoLock(contents, packageName, version) {
-  const chunks = contents.split(/(?=\[\[package\]\]\n)/)
+  const chunks = contents.split(/(?=\[\[package\]\]\r?\n)/)
   return chunks
     .map((chunk) => {
       if (!new RegExp(`^name = "${escapeRegExp(packageName)}"$`, 'm').test(chunk)) return chunk

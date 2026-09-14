@@ -10,7 +10,7 @@ import {
   parseVersion,
 } from './bump-version.mjs'
 
-describe('nextVersion', () => {
+describe('version and argument parsing', () => {
   test.each([
     ['1.2.3', 'patch', '1.2.4'],
     ['1.9.9', 'minor', '1.10.0'],
@@ -67,6 +67,30 @@ describe('metadata rewrites', () => {
     expect(bumpJson(json, '1.2.4')).toBe('{\n  "name": "work-time-tracker",\n  "version": "1.2.4",\n  "private": true\n}\n')
   })
 
+  test('only rewrites the top-level JSON version field', () => {
+    const json = [
+      '{',
+      '  "name": "work-time-tracker",',
+      '  "config": {',
+      '    "version": "9.9.9"',
+      '  },',
+      '  "version": "1.2.3"',
+      '}',
+      '',
+    ].join('\n')
+
+    expect(bumpJson(json, '1.2.4')).toBe([
+      '{',
+      '  "name": "work-time-tracker",',
+      '  "config": {',
+      '    "version": "9.9.9"',
+      '  },',
+      '  "version": "1.2.4"',
+      '}',
+      '',
+    ].join('\n'))
+  })
+
   test('only rewrites the workspace package version in Cargo.lock', () => {
     const lock = [
       '[[package]]',
@@ -95,6 +119,30 @@ describe('metadata rewrites', () => {
       ']',
       '',
     ].join('\n'))
+  })
+
+  test('rewrites Cargo.lock package blocks with CRLF line endings', () => {
+    const lock = [
+      '[[package]]',
+      'name = "serde"',
+      'version = "1.0.0"',
+      '',
+      '[[package]]',
+      'name = "work-time-tracker"',
+      'version = "1.2.3"',
+      '',
+    ].join('\r\n')
+
+    expect(bumpCargoLock(lock, 'work-time-tracker', '1.2.4')).toBe([
+      '[[package]]',
+      'name = "serde"',
+      'version = "1.0.0"',
+      '',
+      '[[package]]',
+      'name = "work-time-tracker"',
+      'version = "1.2.4"',
+      '',
+    ].join('\r\n'))
   })
 })
 
