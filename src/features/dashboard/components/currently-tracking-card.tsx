@@ -61,14 +61,6 @@ export function CurrentlyTrackingCard({
   const noteSuggestionsOpen = noteFocused && noteSuggestions.length > 0
 
   useEffect(() => {
-    if (!noteSuggestionsOpen) {
-      if (activeSuggestion !== -1) setActiveSuggestion(-1)
-      return
-    }
-    setActiveSuggestion((current) => (current < 0 || current >= noteSuggestions.length ? 0 : current))
-  }, [activeSuggestion, noteSuggestions.length, noteSuggestionsOpen])
-
-  useEffect(() => {
     if (!noteSuggestionsOpen) return
     function onPointerDown(event: MouseEvent) {
       if (!noteRef.current?.contains(event.target as Node)) {
@@ -85,6 +77,11 @@ export function CurrentlyTrackingCard({
     setActiveSuggestion(-1)
     void setNote(suggestion)
   }
+
+  const highlightedSuggestion =
+    noteSuggestionsOpen && activeSuggestion >= 0
+      ? Math.min(activeSuggestion, noteSuggestions.length - 1)
+      : -1
 
   if (!active) {
     return (
@@ -217,8 +214,8 @@ export function CurrentlyTrackingCard({
           <div className="relative w-full" ref={noteRef}>
             <Input
               aria-activedescendant={
-                noteSuggestionsOpen && activeSuggestion >= 0
-                  ? `${noteListId}-option-${activeSuggestion}`
+                highlightedSuggestion >= 0
+                  ? `${noteListId}-option-${highlightedSuggestion}`
                   : undefined
               }
               aria-controls={noteSuggestionsOpen ? noteListId : undefined}
@@ -253,9 +250,9 @@ export function CurrentlyTrackingCard({
                   )
                   return
                 }
-                if (event.key === 'Enter' && activeSuggestion >= 0) {
+                if (event.key === 'Enter' && highlightedSuggestion >= 0) {
                   event.preventDefault()
-                  chooseSuggestion(noteSuggestions[activeSuggestion])
+                  chooseSuggestion(noteSuggestions[highlightedSuggestion])
                 }
               }}
               placeholder="Add a note..."
@@ -270,7 +267,7 @@ export function CurrentlyTrackingCard({
               >
                 {noteSuggestions.map((suggestion, index) => (
                   <Button
-                    aria-selected={index === activeSuggestion}
+                    aria-selected={index === highlightedSuggestion}
                     className="flex w-full items-center px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
                     id={`${noteListId}-option-${index}`}
                     key={suggestion}
