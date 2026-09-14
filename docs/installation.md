@@ -124,3 +124,24 @@ keeps the log in `<app data directory>/logs/work-time-tracker.log` instead. It i
 Error messages always name the file and the setting, never a value. Still stuck? Open an issue on
 the [issue tracker](https://github.com/serious6/WorkTimeTracker/issues) and attach the last lines of
 the log file.
+
+## 9. Password managers
+
+The sign-in and the registration form are marked up so that password managers (1Password,
+Bitwarden, the Apple Keychain, browser built-ins) recognise them: the forms are named `login-form`
+and `registration-form`, the fields carry the ids `email`, `password` and `new-password` with the
+autocomplete tokens `username`, `current-password` and `new-password`, and the window is titled
+*WorkTimeTracker — Sign in* or *WorkTimeTracker — Create account* while a form is open, so a saved
+item is named after the application instead of an unknown window. The application itself neither
+stores nor reads anything from a password manager and sends nothing to it.
+
+Support depends on the system webview, because a password manager has to reach into that webview:
+
+| Platform | Webview | What works |
+| --- | --- | --- |
+| Windows | WebView2 | The 1Password desktop app fills and saves through its Windows integration. Browser extensions do not load in WebView2. |
+| macOS | WKWebView | The 1Password desktop app fills and saves through its universal autofill; grant it Accessibility permission once in *System Settings* → *Privacy & Security*. |
+| Linux | WebKitGTK | No desktop integration is available today. Copy and paste the credential from your password manager. |
+
+Signing in never depends on a password manager: typing the credentials and submitting with the
+keyboard (<kbd>Enter</kbd> in either field) always works.

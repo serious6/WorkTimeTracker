@@ -30,6 +30,32 @@ describe('UserCreationPage', () => {
     expect(screen.getByRole('heading', { name: /create your account/i })).toBeInTheDocument()
   })
 
+  test('exposes the form identity password managers look for', () => {
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
+
+    const form = document.querySelector('form')!
+    expect(form).toHaveAttribute('id', 'registration-form')
+    expect(form).toHaveAttribute('name', 'registration-form')
+    expect(form).toHaveAttribute('method', 'post')
+
+    const email = screen.getByLabelText('Email')
+    expect(email).toHaveAttribute('id', 'email')
+    expect(email).toHaveAttribute('name', 'email')
+    expect(email).toHaveAttribute('autocomplete', 'username')
+
+    const password = screen.getByLabelText('Password')
+    expect(password).toHaveAttribute('id', 'new-password')
+    expect(password).toHaveAttribute('name', 'password')
+    expect(password).toHaveAttribute('autocomplete', 'new-password')
+
+    expect(screen.getByRole('button', { name: 'Register' })).toHaveAttribute('type', 'submit')
+  })
+
+  test('names the window so a saved credential is recognisable', () => {
+    renderWithProviders(<UserCreationPage onCancel={() => {}} {...legalTextHandlers} />)
+    expect(document.title).toBe('WorkTimeTracker — Create account')
+  })
+
   test('calls onCancel when Cancel is clicked', () => {
     let cancelled = false
     renderWithProviders(<UserCreationPage onCancel={() => { cancelled = true }} {...legalTextHandlers} />)

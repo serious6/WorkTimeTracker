@@ -6,6 +6,7 @@ import { configDefaults, defineConfig } from 'vitest/config'
 const jsdomTestFiles = [
   'src/boot-status.test.ts',
   'src/lib/global-errors.test.ts',
+  'src/lib/use-document-title.test.ts',
   'src/features/auth/session-queries.test.ts',
   'src/features/storage/tauri-repository.test.ts',
   'src/features/dashboard/use-keyboard-shortcuts.test.ts',
