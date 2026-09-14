@@ -391,6 +391,10 @@ jobs:
           RELEASE_TYPE: ${{ inputs.release_type }}
         run: |
           branch="chore/bump-to-$NEXT"
+          if [ -z "$NEXT" ]; then
+            echo "::error::The bump script did not report the next version."
+            exit 1
+          fi
           if git diff --quiet; then
             echo "Main already carries version $NEXT; no bump PR is needed."
             exit 0

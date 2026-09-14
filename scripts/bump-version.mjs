@@ -98,6 +98,8 @@ export function changelogWithSection(contents, version, date = new Date()) {
   return updateChangelogLinks(body, version, previousVersion, newline)
 }
 
+// The workflow passes `--type` and `--from`; local runs may omit `--from` to
+// bump from the current version in `src-tauri/tauri.conf.json`.
 export function parseArgs(argv) {
   const args = {}
   for (let index = 0; index < argv.length; index += 1) {
