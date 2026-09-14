@@ -31,6 +31,9 @@ See [`docs/development.md`](docs/development.md#repository-layout).
   `src/test/setup.ts` pins their seed. The matching Rust fuzz targets live in `src-tauri/fuzz` and
   reach the backend through its `fuzzing` feature.
 - Script tests sit next to the script as `scripts/<name>.test.mjs`.
+- Daylight saving behaviour is covered by `<name>.timezone.test.ts`; those files run forked in
+  `Europe/Berlin` (see the `timezone` project in `vitest.config.ts`), because Node reads `TZ` once
+  per process.
 - Rust tests are `#[cfg(test)]` modules in the file they cover; shared helpers live in
   `src-tauri/src/test_support.rs`.
 - End-to-end tests are `e2e/<topic>.spec.ts`, use `e2e/helpers.ts`, and are documented in

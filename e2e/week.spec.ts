@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { createProject, dateKey, gotoPage, startSignedInSession } from './helpers'
+import { addEntry, createProject, dateKey, gotoPage, startSignedInSession } from './helpers'
 
 test.beforeEach(async ({ page }) => {
   await startSignedInSession(page)
@@ -46,4 +46,25 @@ test('W2: quick add updates day delta, week progress and month overview metrics'
   await expect(
     page.getByText('Tracked month-to-date').locator('xpath=following-sibling::p[1]'),
   ).toHaveText(monthTitle.startsWith(currentMonth) ? '2h 00m' : '0h 00m')
+})
+
+// W3 in docs/e2e-test-cases.md
+test('W3: daily and weekly project summaries show both duration formats', async ({ page }) => {
+  await createProject(page, 'Week Alpha')
+  await createProject(page, 'Week Beta')
+  await addEntry(page, 'Week Alpha', '09:00', '10:07', dateKey(0))
+  await addEntry(page, 'Week Beta', '11:00', '11:30', dateKey(0))
+  await gotoPage(page, 'Week')
+
+  const dayProjects = page.getByRole('list', { name: /Projects on/ }).filter({ hasText: 'Week Alpha' })
+  await expect(dayProjects.getByText('1.12 h · 1h 07m')).toBeVisible()
+  await expect(dayProjects.getByText('0.50 h · 0h 30m')).toBeVisible()
+  await expect(
+    page.getByLabel(/Projects on .* total/).filter({ hasText: '1.62 h · 1h 37m' }),
+  ).toBeVisible()
+
+  const weekProjects = page.getByRole('list', { name: 'Projects this week' })
+  await expect(weekProjects.getByText('Week Alpha')).toBeVisible()
+  await expect(weekProjects.getByText('Week Beta')).toBeVisible()
+  await expect(page.getByLabel('Projects this week total')).toContainText('1.62 h · 1h 37m')
 })

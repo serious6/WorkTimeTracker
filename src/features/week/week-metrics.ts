@@ -1,6 +1,13 @@
 import { NO_ABSENCES, type AbsenceIndex } from '@/features/absences/absence-index'
 import type { AbsenceType } from '@/features/absences/absence-schema'
-import { type DateRange, entriesInRange, entryMinutesInRange, monthRange, weekRange } from '@/features/dashboard/metrics'
+import {
+  type DateRange,
+  entriesInRange,
+  entryMinutesInRange,
+  monthRange,
+  projectTotals,
+  weekRange,
+} from '@/features/dashboard/metrics'
 import type { Project } from '@/features/projects/project-schema'
 import {
   dailyTargetMinutes,
@@ -29,6 +36,7 @@ export type RangeMetricsDay = {
   hasEntries: boolean
   absenceType: AbsenceType | null
   status: DayStatus
+  projects: RangeMetricsProject[]
 }
 
 export const DAY_STATUS_LABELS: Record<DayStatus, string> = {
@@ -97,8 +105,6 @@ export type MonthOverviewMetrics = RangeMetrics & {
   weekStrip: MonthWeekStrip[]
 }
 
-const DELETED_PROJECT_COLOR = '#64748b'
-
 function round(value: number): number {
   return Math.round(value)
 }
@@ -136,14 +142,6 @@ function touchesDay(entry: TimeEntry, day: DateRange, now: number): boolean {
   return end > day.start.getTime() || (end === start && start >= day.start.getTime())
 }
 
-function projectName(project: Project | undefined): string {
-  return project?.name ?? 'Deleted project'
-}
-
-function projectColor(project: Project | undefined): string {
-  return project?.color ?? DELETED_PROJECT_COLOR
-}
-
 export function rangeMetrics({
   entries,
   projects,
@@ -164,7 +162,6 @@ export function rangeMetrics({
   const rangeEntries = entriesInRange(entries, range, now)
   const inRange = rangeEntries.filter((entry) => !isBreak(entry))
   const dayList = timeline(range)
-  const projectById = new Map(projects.map((project) => [project.id, project] as const))
   const elapsed = elapsedRange(nowDate, range)
   const completed = completedRange(nowDate, range)
   const elapsedDays = timeline(elapsed)
@@ -192,6 +189,13 @@ export function rangeMetrics({
     const hasEntries = rangeEntries.some((entry) => touchesDay(entry, dayInterval, now))
     const absenceType = absences.get(toDateKey(day)) ?? null
     const hasStarted = day <= today
+    const dayProjects = projectTotals(inRange, projects, now, dayInterval).map((item) => ({
+      projectId: item.projectId,
+      name: item.name,
+      color: item.color,
+      minutes: item.minutes,
+      sharePercentage: item.percentage,
+    }))
     return {
       date: day,
       dateKey: toDateKey(day),
@@ -201,6 +205,7 @@ export function rangeMetrics({
       hasEntries,
       absenceType,
       status: dayStatus(trackedMinutes, hasEntries, isWorkingDay(settings, day), hasStarted, absenceType),
+      projects: dayProjects,
     }
   })
 
@@ -233,26 +238,13 @@ export function rangeMetrics({
   const requiredAveragePerRemainingDayMinutes =
     remainingWorkingDays > 0 ? remainingMinutes / remainingWorkingDays : 0
 
-  const perProject = new Map<number | null, { minutes: number }>()
-  for (const entry of inRange) {
-    const minutes = entryMinutesInRange(entry, range, now)
-    const current = perProject.get(entry.projectId) ?? { minutes: 0 }
-    perProject.set(entry.projectId, { minutes: current.minutes + minutes })
-  }
-
-  const projectsBreakdown = [...perProject.entries()]
-    .filter(([, row]) => row.minutes > 0)
-    .map(([projectId, row]) => {
-      const project = projectId ? projectById.get(projectId) : undefined
-      return {
-        projectId,
-        name: projectName(project),
-        color: projectColor(project),
-        minutes: row.minutes,
-        sharePercentage: percentage(row.minutes, trackedMinutes),
-      }
-    })
-    .sort((left, right) => right.minutes - left.minutes)
+  const projectsBreakdown = projectTotals(inRange, projects, now, range).map((item) => ({
+    projectId: item.projectId,
+    name: item.name,
+    color: item.color,
+    minutes: item.minutes,
+    sharePercentage: item.percentage,
+  }))
 
   return {
     range,

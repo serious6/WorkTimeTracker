@@ -30,9 +30,11 @@ import {
   monthOverviewMetrics,
   weekMetrics,
 } from '@/features/week/week-metrics'
+import { ProjectSummary } from '@/features/week/components/project-summary'
 import {
   addDays,
   formatDay,
+  formatDecimalHours,
   formatDuration,
   formatSignedDuration,
   isFutureDay,
@@ -284,22 +286,15 @@ export function WeekPage() {
         <CardHeader>
           <CardTitle>Projects this week</CardTitle>
         </CardHeader>
-        <CardContent>
-          {week.projects.length === 0 ? (
+        <CardContent className="space-y-2">
+          {week.projects.length === 0 && (
             <p className="text-sm text-muted-foreground">No tracked projects this week.</p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {week.projects.map((item) => (
-                <li className="flex items-center gap-2" key={`${item.projectId}`}>
-                  <span aria-hidden className="size-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {formatDuration(item.minutes)} · {item.sharePercentage}%
-                  </span>
-                </li>
-              ))}
-            </ul>
           )}
+          <ProjectSummary
+            label="Projects this week"
+            projects={week.projects}
+            totalMinutes={week.trackedMinutes}
+          />
         </CardContent>
       </Card>
 
@@ -412,7 +407,10 @@ export function WeekPage() {
                   <div>
                     <h3 className="font-medium">{formatDay(day.date)}</h3>
                     <p className="text-xs text-muted-foreground">
-                      {formatDuration(day.trackedMinutes)} ·{' '}
+                      <span className="whitespace-nowrap tabular-nums">
+                        {formatDecimalHours(day.trackedMinutes)} · {formatDuration(day.trackedMinutes)}
+                      </span>{' '}
+                      ·{' '}
                       <span className={day.trackedMinutes >= day.targetMinutes ? 'text-success' : 'text-warning'}>
                         {dayTargetDeltaLabel(day.trackedMinutes, day.targetMinutes)}
                       </span>
@@ -422,6 +420,13 @@ export function WeekPage() {
                     <Plus className="size-4" />
                     Add entry
                   </Button>
+                </div>
+                <div className="mb-3 rounded-md bg-muted/40 p-3">
+                  <ProjectSummary
+                    label={`Projects on ${formatDay(day.date)}`}
+                    projects={day.projects}
+                    totalMinutes={day.trackedMinutes}
+                  />
                 </div>
                 <TimeEntryList
                   emptyState={<p className="text-sm text-muted-foreground">No bookings on this day.</p>}
