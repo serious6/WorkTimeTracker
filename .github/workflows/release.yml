@@ -395,15 +395,21 @@ jobs:
             echo "::error::The bump script did not report the next version."
             exit 1
           fi
-          if git diff --quiet; then
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$branch"
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
+          if git diff --cached --quiet; then
             echo "Main already carries version $NEXT; no bump PR is needed."
             exit 0
           fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout -b "$branch"
-          git commit -am "chore(ci): bump version to $NEXT"
-          git push origin "$branch"
+          git commit -m "chore(ci): bump version to $NEXT"
+          git push --force-with-lease origin "$branch"
+          existing_pr=$(gh pr list --base main --head "$branch" --state open --json url --jq '.[0].url')
+          if [ -n "$existing_pr" ]; then
+            echo "Updated existing bump pull request: $existing_pr"
+            exit 0
+          fi
           gh pr create --base main --head "$branch" \
             --title "chore(ci): bump version to $NEXT" \
             --body "Automated post-release $RELEASE_TYPE bump after v$RELEASED_VERSION."

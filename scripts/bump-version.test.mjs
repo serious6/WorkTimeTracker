@@ -34,6 +34,10 @@ describe('version and argument parsing', () => {
   test('rejects a missing released version argument', () => {
     expect(() => parseArgs(['--type', 'patch', '--from'])).toThrow(/--from needs a value/)
   })
+
+  test('rejects an invalid released version argument before running the bump', () => {
+    expect(() => parseArgs(['--type', 'patch', '--from', '1.2.3-beta'])).toThrow(/plain MAJOR\.MINOR\.PATCH/)
+  })
 })
 
 describe('metadata rewrites', () => {
@@ -59,6 +63,28 @@ describe('metadata rewrites', () => {
       'postgres = "0.19.14"',
       '',
     ].join('\n'))
+  })
+
+  test('preserves CRLF line endings when rewriting Cargo.toml', () => {
+    const cargoToml = [
+      '[package]',
+      'name = "work-time-tracker"',
+      'version = "1.2.3"',
+      '',
+      '[dependencies]',
+      'serde = { version = "1.0", features = ["derive"] }',
+      '',
+    ].join('\r\n')
+
+    expect(bumpCargoToml(cargoToml, '1.2.4')).toBe([
+      '[package]',
+      'name = "work-time-tracker"',
+      'version = "1.2.4"',
+      '',
+      '[dependencies]',
+      'serde = { version = "1.0", features = ["derive"] }',
+      '',
+    ].join('\r\n'))
   })
 
   test('preserves JSON formatting around the version field', () => {

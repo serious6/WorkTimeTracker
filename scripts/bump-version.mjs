@@ -40,7 +40,8 @@ export function bumpJson(contents, version) {
 }
 
 export function bumpCargoToml(contents, version) {
-  const lines = contents.split('\n')
+  const newline = contents.includes('\r\n') ? '\r\n' : '\n'
+  const lines = contents.split(/\r?\n/)
   const packageStart = lines.findIndex((line) => line.trim() === '[package]')
   if (packageStart === -1) throw new Error('Cargo.toml has no [package] section.')
 
@@ -48,7 +49,7 @@ export function bumpCargoToml(contents, version) {
     if (/^\s*\[/.test(lines[index])) break
     if (/^version\s*=\s*"[^"]*"\s*$/.test(lines[index])) {
       lines[index] = lines[index].replace(/^(version\s*=\s*)"[^"]*"(\s*)$/, `$1"${version}"$2`)
-      return lines.join('\n')
+      return lines.join(newline)
     }
   }
   throw new Error('Cargo.toml [package] section has no version field to update.')
@@ -73,29 +74,51 @@ export function changelogWithSection(contents, version, date = new Date()) {
   const unreleased = lines.findIndex((line) => line.trim() === '## [Unreleased]')
   if (unreleased === -1) throw new Error('CHANGELOG.md has no ## [Unreleased] section.')
 
-  const section = lines.findIndex((line) => line === heading || line.startsWith(`## [${version}] - `))
-  let insert = section === -1 ? lines.length : section
-  for (let index = unreleased + 1; index < lines.length; index += 1) {
-    if (versionHeading.test(lines[index])) {
-      if (section === -1) insert = index
-      break
-    }
-  }
-  let previousIndex = insert + (section === -1 ? 0 : 1)
-  while (previousIndex < lines.length && !versionHeading.test(lines[previousIndex])) previousIndex += 1
-  const previousVersion = previousIndex < lines.length ? /^## \[([^\]]+)\]/.exec(lines[previousIndex])?.[1] : null
+  const { exists, insert, previousVersion } = changelogSectionPlan(lines, version, unreleased)
   const body =
-    section === -1
-      ? [
+    exists
+      ? contents
+      : [
           ...trimTrailingBlankLines(lines.slice(0, insert)),
           '',
           heading,
           '',
           ...trimLeadingBlankLines(lines.slice(insert)),
         ].join(newline)
-      : contents
 
   return updateChangelogLinks(body, version, previousVersion, newline)
+}
+
+function changelogSectionPlan(lines, version, unreleased) {
+  const section = lines.findIndex((line) => line.startsWith(`## [${version}] - `))
+  if (section !== -1) {
+    return {
+      exists: true,
+      insert: section,
+      previousVersion: nextChangelogVersion(lines, section + 1),
+    }
+  }
+
+  const firstVersion = lines.findIndex((line, index) => index > unreleased && versionHeading.test(line))
+  const insert = firstVersion === -1 ? lines.length : firstVersion
+  return {
+    exists: false,
+    insert,
+    previousVersion: changelogVersion(lines[insert]),
+  }
+}
+
+function nextChangelogVersion(lines, start) {
+  for (let index = start; index < lines.length; index += 1) {
+    const version = changelogVersion(lines[index])
+    if (version) return version
+  }
+  return null
+}
+
+function changelogVersion(line) {
+  const match = versionHeading.exec(line ?? '')
+  return match ? `${match[1]}.${match[2]}.${match[3]}` : null
 }
 
 // The workflow passes `--type` and `--from`; local runs may omit `--from` to
@@ -116,6 +139,7 @@ export function parseArgs(argv) {
   if (!['patch', 'minor', 'major'].includes(args.type)) {
     throw new Error(`--type must be one of patch, minor, or major, got '${args.type}'.`)
   }
+  if (args.from !== undefined) parseVersion(args.from)
   return args
 }
 
