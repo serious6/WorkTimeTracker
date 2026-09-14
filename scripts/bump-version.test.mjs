@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest'
 
-import { bumpCargoToml, bumpJson, changelogWithSection, nextVersion, parseArgs, parseVersion } from './bump-version.mjs'
+import {
+  bumpCargoLock,
+  bumpCargoToml,
+  bumpJson,
+  changelogWithSection,
+  nextVersion,
+  parseArgs,
+  parseVersion,
+} from './bump-version.mjs'
 
 describe('nextVersion', () => {
   test.each([
@@ -49,6 +57,36 @@ describe('metadata rewrites', () => {
     const json = '{\n  "name": "work-time-tracker",\n  "version": "1.2.3",\n  "private": true\n}\n'
 
     expect(bumpJson(json, '1.2.4')).toBe('{\n  "name": "work-time-tracker",\n  "version": "1.2.4",\n  "private": true\n}\n')
+  })
+
+  test('only rewrites the workspace package version in Cargo.lock', () => {
+    const lock = [
+      '[[package]]',
+      'name = "serde"',
+      'version = "1.0.0"',
+      '',
+      '[[package]]',
+      'name = "work-time-tracker"',
+      'version = "1.2.3"',
+      'dependencies = [',
+      ' "serde",',
+      ']',
+      '',
+    ].join('\n')
+
+    expect(bumpCargoLock(lock, 'work-time-tracker', '1.2.4')).toBe([
+      '[[package]]',
+      'name = "serde"',
+      'version = "1.0.0"',
+      '',
+      '[[package]]',
+      'name = "work-time-tracker"',
+      'version = "1.2.4"',
+      'dependencies = [',
+      ' "serde",',
+      ']',
+      '',
+    ].join('\n'))
   })
 })
 
