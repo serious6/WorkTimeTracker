@@ -3,14 +3,18 @@
  *
  * A failure of the module graph — a bundle that does not load, a module that
  * throws while it is evaluated — happens before any component exists, so
- * nothing would replace the spinner `index.html` renders. This module runs
- * first and turns such a failure into the same panel the application shows for
- * a failed start. The content security policy of the webview forbids inline
- * scripts, so it is a module of its own instead of a script tag in the page.
+ * nothing would replace the logo `index.html` renders. This module runs first,
+ * cycles the loading texts under that logo, and turns such a failure into the
+ * same panel the application shows for a failed start. The content security
+ * policy of the webview forbids inline scripts, so it is a module of its own
+ * instead of a script tag in the page.
  */
+
+import { LOADING_MESSAGE_INTERVAL_MS, loadingMessageAt } from './lib/loading-messages.ts'
 
 const BOOT_ROOT_ID = 'root'
 const BOOT_MARKER = '[data-boot-screen]'
+const BOOT_TEXT_MARKER = '[data-boot-text]'
 const TITLE = 'WorkTimeTracker could not start'
 const FALLBACK = 'The application could not be loaded.'
 
@@ -26,7 +30,7 @@ function messageOf(reason: unknown): string {
 }
 
 /**
- * Replaces the boot spinner with the failure. Written with DOM calls instead of
+ * Replaces the boot screen with the failure. Written with DOM calls instead of
  * `innerHTML`, so no part of the message can be read as markup.
  */
 export function showBootError(document: Document, message: string): void {
@@ -56,14 +60,35 @@ export function showBootError(document: Document, message: string): void {
 }
 
 /**
+ * Cycles the loading texts under the boot logo until the window is handed over.
+ * The application repeats this with `useLoadingMessage` once React mounts, so
+ * the text keeps changing across the mount.
+ */
+export function rotateBootText(document: Document): () => void {
+  const text = document.querySelector(BOOT_TEXT_MARKER)
+  if (!text) return () => {}
+
+  const initial = text.textContent ?? ''
+  let step = 0
+  const interval = setInterval(() => {
+    step += 1
+    text.textContent = loadingMessageAt(initial, step)
+  }, LOADING_MESSAGE_INTERVAL_MS)
+
+  return () => clearInterval(interval)
+}
+
+/**
  * Watches for failures until the application mounts. Errors after the mount
  * belong to the running application, which reports them itself.
  */
 export function watchBoot(target: Window): BootWatch {
   let done = false
+  const stopText = rotateBootText(target.document)
   const report = (reason: unknown) => {
     if (done) return
     done = true
+    stopText()
     showBootError(target.document, messageOf(reason))
   }
 
@@ -75,6 +100,7 @@ export function watchBoot(target: Window): BootWatch {
   return {
     finish: () => {
       done = true
+      stopText()
     },
   }
 }

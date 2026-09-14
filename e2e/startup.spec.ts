@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 // #ST1 in docs/e2e-test-cases.md
-test('ST1: shows the startup spinner before the application appears', async ({ page }) => {
+test('ST1: shows the startup logo before the application appears', async ({ page }) => {
   // The bundle is held back so the state before the mount can be read at all.
   let release = () => {}
   const held = new Promise<void>((resolve) => {

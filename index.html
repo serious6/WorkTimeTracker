@@ -11,7 +11,8 @@
       The window is never blank: this turning logo is replaced by the
       application as soon as it mounts, and by the boot error panel when it
       cannot. It uses the markup and the classes of the loading screen of the
-      application, so the mount causes no visual jump.
+      application, so the mount causes no visual jump. `src/boot-status.ts`
+      cycles the loading texts in `[data-boot-text]` until then.
     -->
     <div id="root">
       <div class="boot-screen" data-boot-screen role="status" aria-live="polite">
@@ -30,7 +31,8 @@
             <path d="m15 15.2 2.4 2.6 4.4-5.6" />
           </svg>
         </span>
-        <p class="boot-text">Starting WorkTimeTracker…</p>
+        <p class="boot-text" data-boot-text aria-hidden="true">Starting WorkTimeTracker…</p>
+        <span class="sr-only">Starting WorkTimeTracker…</span>
       </div>
     </div>
     <script type="module" src="/src/boot-status.ts"></script>

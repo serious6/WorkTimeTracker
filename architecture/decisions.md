@@ -200,11 +200,13 @@ blank window.
 
 **Decision:** The setup records a failed start in the managed `StartupState` instead of returning an
 error, so the window always opens. `startup_status` and `retry_startup` are public commands; the
-frontend gates on them and renders a spinner while the start runs, and the redacted failure with a
-Retry action as content of the window. `Database` is managed only after a successful start, so data
-commands keep failing while the start is broken. `index.html` ships the same boot screen statically
-and `src/boot-status.ts` turns a pre-mount error into it, both without inline code. The native
-dialog stays as the fallback for a failure that leaves no window, with stderr as the last resort.
+frontend gates on them and renders the turning brand logo with the changing loading texts of
+`src/lib/loading-messages.ts` while the start runs, and the redacted failure with a Retry action as
+content of the window. `Database` is managed only after a successful start, so data commands keep
+failing while the start is broken. `index.html` ships the same boot screen statically, and
+`src/boot-status.ts` cycles its texts until the mount and turns a pre-mount error into the failure
+panel, both without inline code. The native dialog stays as the fallback for a failure that leaves
+no window, with stderr as the last resort.
 
 **Consequences:** A start failure is recoverable without restarting: a database that becomes
 available later is picked up by a retry. Any new startup step has to record its failure in

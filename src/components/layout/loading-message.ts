@@ -1,22 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-
-/**
- * The texts shown under the turning logo while the application waits. They are
- * light-hearted takes on time travel: a wait without a progress bar still feels
- * alive when the screen keeps talking about the clock it is winding up.
- */
-export const LOADING_MESSAGES = [
-  'Fueling the time machine',
-  'Enabling Flux Compensator',
-  'Calibrating the chronometer',
-  'Winding up the mainspring',
-  'Synchronizing parallel timelines',
-  'Charging the flux capacitor',
-  'Polishing the second hand',
-] as const
-
-/** How long a single loading text stays on screen. */
-export const LOADING_MESSAGE_INTERVAL_MS = 1_500
+import { useEffect, useState } from 'react'
+import { LOADING_MESSAGE_INTERVAL_MS, loadingMessageAt } from '@/lib/loading-messages'
 
 /**
  * Cycles `initial` and the loading texts, one every
@@ -25,7 +8,6 @@ export const LOADING_MESSAGE_INTERVAL_MS = 1_500
  * waiting one and a half seconds per text.
  */
 export function useLoadingMessage(initial: string): string {
-  const messages = useMemo<readonly string[]>(() => [initial, ...LOADING_MESSAGES], [initial])
   const [step, setStep] = useState(0)
 
   useEffect(() => {
@@ -33,5 +15,5 @@ export function useLoadingMessage(initial: string): string {
     return () => clearInterval(interval)
   }, [])
 
-  return messages[step % messages.length] ?? initial
+  return loadingMessageAt(initial, step)
 }

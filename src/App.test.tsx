@@ -179,7 +179,7 @@ describe('App startup', () => {
     setRepository(null)
   })
 
-  test('turns a spinner while the startup status is still unknown', async () => {
+  test('turns the logo while the startup status is still unknown', async () => {
     let answer = (_status: StartupStatus) => {}
     setRepository({
       ...repository,

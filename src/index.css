@@ -67,7 +67,8 @@ body {
 /*
  * The startup screen. It is written in plain CSS because `index.html` renders
  * it before any component is mounted, and the React components below reuse the
- * same classes so a boot spinner and an application spinner look alike.
+ * same classes so the boot screen and the loading screen of the application
+ * look alike.
  */
 .boot-screen {
   display: flex;
