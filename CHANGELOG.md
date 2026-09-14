@@ -18,6 +18,16 @@ as the release notes, so a version without a section here cannot be released. Se
   a saved item is identifiable as WorkTimeTracker. The supported platforms and the known limitations
   are listed in [`docs/installation.md`](docs/installation.md#9-password-managers).
 
+## [0.2.1] - 2026-09-14
+
+### Changed
+
+- Bumped the application version to 0.2.1.
+
+### Breaking changes
+
+None.
+
 ## [0.2.0] - 2026-09-10
 
 ### Changed
@@ -56,6 +66,7 @@ database you control.
 None: this is the first release. Installing it is described in
 [`docs/installation.md`](https://github.com/serious6/WorkTimeTracker/blob/main/docs/installation.md).
 
-[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/serious6/WorkTimeTracker/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/serious6/WorkTimeTracker/releases/tag/v0.1.0
