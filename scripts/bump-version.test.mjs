@@ -170,6 +170,12 @@ describe('metadata rewrites', () => {
       '',
     ].join('\r\n'))
   })
+
+  test('rejects a Cargo.lock without the workspace package entry', () => {
+    const lock = ['[[package]]', 'name = "serde"', 'version = "1.0.0"', ''].join('\n')
+
+    expect(() => bumpCargoLock(lock, 'work-time-tracker', '1.2.4')).toThrow(/no package entry/)
+  })
 })
 
 describe('changelogWithSection', () => {

@@ -57,14 +57,18 @@ export function bumpCargoToml(contents, version) {
 
 export function bumpCargoLock(contents, packageName, version) {
   const chunks = contents.split(/(?=\[\[package\]\]\r?\n)/)
-  return chunks
+  let matched = false
+  const updated = chunks
     .map((chunk) => {
       if (!new RegExp(`^name = "${escapeRegExp(packageName)}"$`, 'm').test(chunk)) return chunk
+      matched = true
       const replaced = chunk.replace(/^version = "[^"]*"$/m, `version = "${version}"`)
       if (replaced === chunk) throw new Error(`Cargo.lock package ${packageName} has no version field to update.`)
       return replaced
     })
     .join('')
+  if (!matched) throw new Error(`Cargo.lock has no package entry named ${packageName}.`)
+  return updated
 }
 
 export function changelogWithSection(contents, version, date = new Date()) {
