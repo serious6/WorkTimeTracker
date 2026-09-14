@@ -60,26 +60,35 @@ export function bumpCargoLock(contents, packageName, version) {
 }
 
 export function changelogWithSection(contents, version, date = new Date()) {
+  const newline = contents.includes('\r\n') ? '\r\n' : '\n'
   const heading = `## [${version}] - ${date.toISOString().slice(0, 10)}`
-  if (contents.split(/\r?\n/).some((line) => line === heading || line.startsWith(`## [${version}] - `))) return contents
-
-  const lines = contents.split('\n')
+  const lines = contents.split(/\r?\n/)
   const unreleased = lines.findIndex((line) => line.trim() === '## [Unreleased]')
   if (unreleased === -1) throw new Error('CHANGELOG.md has no ## [Unreleased] section.')
 
-  let insert = lines.length
+  const section = lines.findIndex((line) => line === heading || line.startsWith(`## [${version}] - `))
+  let insert = section === -1 ? lines.length : section
   for (let index = unreleased + 1; index < lines.length; index += 1) {
     if (versionHeading.test(lines[index])) {
-      insert = index
+      if (section === -1) insert = index
       break
     }
   }
-  const previousVersion = insert < lines.length ? /^## \[([^\]]+)\]/.exec(lines[insert])?.[1] : null
-  const beforeInsert = trimTrailingBlankLines(lines.slice(0, insert))
-  const afterInsert = trimLeadingBlankLines(lines.slice(insert))
-  const body = [...beforeInsert, '', heading, '', ...afterInsert].join('\n')
+  let previousIndex = insert + (section === -1 ? 0 : 1)
+  while (previousIndex < lines.length && !versionHeading.test(lines[previousIndex])) previousIndex += 1
+  const previousVersion = previousIndex < lines.length ? /^## \[([^\]]+)\]/.exec(lines[previousIndex])?.[1] : null
+  const body =
+    section === -1
+      ? [
+          ...trimTrailingBlankLines(lines.slice(0, insert)),
+          '',
+          heading,
+          '',
+          ...trimLeadingBlankLines(lines.slice(insert)),
+        ].join(newline)
+      : contents
 
-  return updateChangelogLinks(body, version, previousVersion)
+  return updateChangelogLinks(body, version, previousVersion, newline)
 }
 
 export function parseArgs(argv) {
@@ -117,14 +126,14 @@ function trimLeadingBlankLines(lines) {
   return copy
 }
 
-function updateChangelogLinks(contents, version, previousVersion) {
+function updateChangelogLinks(contents, version, previousVersion, newline = '\n') {
   const unreleased = contents.match(/^\[Unreleased\]:\s*(.+)$/m)?.[1]
   if (!unreleased) return contents
 
   const compareBase = unreleased.replace(/\/compare\/.*$/, '/compare')
   const releaseBase = unreleased.replace(/\/compare\/.*$/, '/releases/tag')
   const previousTag = previousVersion ? `v${previousVersion}` : null
-  const lines = contents.split('\n').filter((line) => {
+  const lines = contents.split(/\r?\n/).filter((line) => {
     if (line.startsWith('[Unreleased]: ')) return false
     return !line.startsWith(`[${version}]: `)
   })
@@ -137,10 +146,10 @@ function updateChangelogLinks(contents, version, previousVersion) {
       : `[${version}]: ${releaseBase}/v${version}`,
   ]
   if (linksStart === -1) {
-    return [...trimTrailingBlankLines(lines), '', ...linkLines, ''].join('\n')
+    return [...trimTrailingBlankLines(lines), '', ...linkLines, ''].join(newline)
   }
   lines.splice(linksStart, 0, ...linkLines)
-  return lines.join('\n')
+  return lines.join(newline)
 }
 
 function readJson(path) {
@@ -166,11 +175,15 @@ function run(argv) {
     changelog: join(root, 'CHANGELOG.md'),
   }
 
-  writeFileSync(files.packageJson, bumpJson(readFileSync(files.packageJson, 'utf8'), version))
-  writeFileSync(files.tauriConfig, bumpJson(readFileSync(files.tauriConfig, 'utf8'), version))
-  writeFileSync(files.cargoToml, bumpCargoToml(readFileSync(files.cargoToml, 'utf8'), version))
-  writeFileSync(files.cargoLock, bumpCargoLock(readFileSync(files.cargoLock, 'utf8'), 'work-time-tracker', version))
-  writeFileSync(files.changelog, changelogWithSection(readFileSync(files.changelog, 'utf8'), version))
+  const updates = [
+    [files.packageJson, bumpJson(readFileSync(files.packageJson, 'utf8'), version)],
+    [files.tauriConfig, bumpJson(readFileSync(files.tauriConfig, 'utf8'), version)],
+    [files.cargoToml, bumpCargoToml(readFileSync(files.cargoToml, 'utf8'), version)],
+    [files.cargoLock, bumpCargoLock(readFileSync(files.cargoLock, 'utf8'), 'work-time-tracker', version)],
+    [files.changelog, changelogWithSection(readFileSync(files.changelog, 'utf8'), version)],
+  ]
+
+  for (const [path, contents] of updates) writeFileSync(path, contents)
 
   writeOutput(version)
   console.log(`Bumped version from ${from} to ${version}.`)

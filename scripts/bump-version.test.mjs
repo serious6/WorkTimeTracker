@@ -26,6 +26,14 @@ describe('nextVersion', () => {
   test('rejects an unknown release type', () => {
     expect(() => parseArgs(['--type', 'daily'])).toThrow(/must be one of patch, minor, or major/)
   })
+
+  test('parses the released version argument', () => {
+    expect(parseArgs(['--type', 'patch', '--from', '1.2.3'])).toEqual({ type: 'patch', from: '1.2.3' })
+  })
+
+  test('rejects a missing released version argument', () => {
+    expect(() => parseArgs(['--type', 'patch', '--from'])).toThrow(/--from needs a value/)
+  })
 })
 
 describe('metadata rewrites', () => {
@@ -118,5 +126,29 @@ describe('changelogWithSection', () => {
     const once = changelogWithSection(changelog, '1.2.4', new Date('2026-09-15T12:00:00Z'))
 
     expect(changelogWithSection(once, '1.2.4', new Date('2026-09-16T12:00:00Z'))).toBe(once)
+  })
+
+  test('refreshes links when the version section already exists', () => {
+    const stale = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '## [1.2.4] - 2026-09-15',
+      '',
+      '## [1.2.3] - 2026-09-14',
+      '',
+      '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD',
+      '[1.2.3]: https://github.com/serious6/WorkTimeTracker/releases/tag/v1.2.3',
+      '',
+    ].join('\n')
+
+    const updated = changelogWithSection(stale, '1.2.4', new Date('2026-09-16T12:00:00Z'))
+
+    expect(updated).toContain('## [1.2.4] - 2026-09-15')
+    expect(updated).not.toContain('## [1.2.4] - 2026-09-16')
+    expect(updated.match(/^## \[1\.2\.4\]/gm)).toHaveLength(1)
+    expect(updated).toContain('[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.4...HEAD')
+    expect(updated).toContain('[1.2.4]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...v1.2.4')
   })
 })
