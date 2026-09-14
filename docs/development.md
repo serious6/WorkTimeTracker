@@ -215,6 +215,12 @@ production; without that, the `environment:` key adds no approval step. A deploy
 can additionally restrict the `production` jobs to `main`; a run dispatched from another branch can
 still build artifacts, but it cannot migrate the database or publish a release.
 
+After the release is published, the `release_type` dispatch input controls the next version on
+`main`: `patch`, `minor`, or `major` runs `scripts/bump-version.mjs` against the released version and
+opens a `chore(ci): bump version to <next>` pull request with the updated version files, lockfile,
+and empty changelog section. `none` skips the bump for re-runs and hotfix republishes. The bump job
+depends plainly on `release`, so failed, cancelled, or unapproved releases leave `main` untouched.
+
 ### Portable archives
 
 The `bundle` job packs the same build a second time as
