@@ -11,6 +11,13 @@ as the release notes, so a version without a section here cannot be released. Se
 
 ## [Unreleased]
 
+### Fixed
+
+- A session that is started right after a rounded up one is no longer discarded: the timer measures
+  the elapsed time from the moment it was started, so a session of 40 seconds is stored as one
+  minute even when the previous rounding reached past the clock. The timer also writes its decisions
+  and every failure into the log file, so a session that is not stored explains itself.
+
 ## [0.2.1] - 2026-09-14
 
 ### Added

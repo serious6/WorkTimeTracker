@@ -7,12 +7,13 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: () => mockIsTauri(),
 }))
 
-const { logError } = await import('./logger')
+const { logError, logInfo } = await import('./logger')
 
 beforeEach(() => {
   mockInvoke.mockReset().mockResolvedValue(undefined)
   mockIsTauri.mockReset().mockReturnValue(true)
   vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.spyOn(console, 'info').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -98,5 +99,51 @@ describe('logError', () => {
 
     const { message } = mockInvoke.mock.calls[0]![1] as { message: string }
     expect(message).toBe('Unknown error')
+  })
+})
+
+describe('logInfo', () => {
+  test('sends the lifecycle line to the log file of the backend', async () => {
+    await logInfo('timer', 'stop elapsedMs=40000 minutes=1 segments=1')
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1)
+    const [command, args] = mockInvoke.mock.calls[0]!
+    expect(command).toBe('log_client_info')
+    expect(args).toEqual({
+      source: 'timer',
+      message: 'stop elapsedMs=40000 minutes=1 segments=1',
+    })
+  })
+
+  test('removes sensitive values before they reach the log', async () => {
+    await logInfo('timer', 'stopped for jane@example.com')
+
+    const { message } = mockInvoke.mock.calls[0]![1] as { message: string }
+    expect(message).not.toContain('jane@example.com')
+    expect(message).toContain('[redacted]')
+  })
+
+  test('shortens long lines', async () => {
+    await logInfo('timer', 'x'.repeat(5_000))
+
+    const { message } = mockInvoke.mock.calls[0]![1] as { message: string }
+    expect(message.length).toBeLessThanOrEqual(2_000)
+  })
+
+  test('falls back to the console when the command fails', async () => {
+    mockInvoke.mockRejectedValue(new Error('no backend'))
+
+    await logInfo('timer', 'stop discarded the session')
+
+    expect(console.info).toHaveBeenCalledWith('[timer] stop discarded the session')
+  })
+
+  test('logs to the console in the browser fallback', async () => {
+    mockIsTauri.mockReturnValue(false)
+
+    await logInfo('timer', 'stop discarded the session')
+
+    expect(mockInvoke).not.toHaveBeenCalled()
+    expect(console.info).toHaveBeenCalledWith('[timer] stop discarded the session')
   })
 })

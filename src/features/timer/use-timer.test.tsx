@@ -10,9 +10,16 @@ import {
   signIn,
 } from '@/test/harness'
 import { entryMinutes } from '@/features/dashboard/metrics'
+import { logInfo, reportError } from '@/lib/logger'
 import { DISCARDED_ENTRY_TITLE } from './round-duration'
 import { useTimerStore } from './timer-store'
 import { useTimer } from './use-timer'
+
+vi.mock('@/lib/logger', () => ({
+  logError: vi.fn(async () => {}),
+  logInfo: vi.fn(async () => {}),
+  reportError: vi.fn(),
+}))
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = createTestQueryClient()
@@ -20,6 +27,8 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(async () => {
+  vi.mocked(logInfo).mockClear()
+  vi.mocked(reportError).mockClear()
   await resetAppState()
   await signIn()
 })
@@ -210,6 +219,56 @@ describe('useTimer', () => {
     await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
     const stored = await createLocalRepository().listTimeEntries()
     expect(stored.reduce((total, entry) => total + entryMinutes(entry), 0)).toBe(1)
+  })
+
+  it('stop keeps a session whose stored start was moved ahead of the clock', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    const now = Date.now()
+    // The session before rounded up past the clock, so tracking continues at
+    // that end and the stored start lies in the future.
+    const running = await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now + 25_000),
+      endTime: null,
+    })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 0,
+        startedAtMs: now - 40_000,
+        segmentIds: [running.id],
+        paused: false,
+      },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    const stored = await createLocalRepository().listTimeEntries()
+    expect(stored.map((entry) => entryMinutes(entry))).toEqual([1])
+  })
+
+  it('stop logs an error when the tracked minutes belong to no stored segment', async () => {
+    const project = await seedProject('Website')
+    useTimerStore.setState({
+      session: { projectId: project.id, carriedMs: 120_000, segmentIds: [4_711], paused: true },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.any(Error))
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith('timer', expect.stringContaining('segments=0'))
   })
 
   it('start tracks again right after a session was rounded up', async () => {
@@ -440,6 +499,7 @@ describe('useTimer – error paths', () => {
     })
 
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
     vi.restoreAllMocks()
   })
 
@@ -465,6 +525,7 @@ describe('useTimer – error paths', () => {
     })
 
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
     vi.restoreAllMocks()
   })
 
@@ -490,6 +551,7 @@ describe('useTimer – error paths', () => {
     })
 
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
     vi.restoreAllMocks()
   })
 

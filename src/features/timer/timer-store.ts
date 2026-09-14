@@ -6,6 +6,14 @@ export type TimerSession = {
   /** Tracked time of the already closed segments of the session, in milliseconds. */
   carriedMs: number
   /**
+   * Wall-clock moment the running segment was started. A segment may be stored
+   * with a start time up to MAX_ROUNDING_MS in the future, because the session
+   * before it rounded up past the clock. Rounding on that shifted start would
+   * drop up to half a minute of real work, so the elapsed time is measured from
+   * here as well. Sessions stored before this field carry none.
+   */
+  startedAtMs?: number
+  /**
    * Ids of the entries that belong to the session, so stopping can round the
    * whole session and not just the running segment. Sessions that were stored
    * before the ids were tracked carry none.

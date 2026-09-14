@@ -20,6 +20,7 @@ import {
 } from '@/features/time-entries/time-entry-schema'
 import { formatDuration, formatTimeOfDay, isFutureDay, MINUTE_MS } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
+import { logInfo, reportError } from '@/lib/logger'
 import { reconcileSession } from './recover-session'
 import {
   DISCARDED_ENTRY_MESSAGE,
@@ -29,7 +30,24 @@ import {
   roundedStart,
   roundToMinutes,
 } from './round-duration'
-import { useTimerStore, withSegment } from './timer-store'
+import { useTimerStore, type TimerSession, withSegment } from './timer-store'
+
+/**
+ * Elapsed time of the running segment. Its stored start may lie in the future,
+ * because the session before it rounded up past the clock, so the wall-clock
+ * time since the timer was started counts whenever it is longer. Without this
+ * the borrowed rounding time would swallow the beginning of the session.
+ */
+function runningMs(
+  running: TimeEntry | undefined,
+  session: TimerSession | null,
+  atMs: number,
+): number {
+  if (!running) return 0
+  const trackedMs = entryDurationMs(running, atMs)
+  const startedAtMs = session?.startedAtMs
+  return startedAtMs === undefined ? trackedMs : Math.max(trackedMs, atMs - startedAtMs)
+}
 
 export type TimerStatus = {
   running: TimeEntry | undefined
@@ -122,7 +140,7 @@ export function useTimer(now: number) {
     running,
     paused,
     projectId: running?.projectId ?? (paused ? (session?.projectId ?? null) : null),
-    elapsedMs: carriedMs + (running ? entryDurationMs(running, now) : 0),
+    elapsedMs: carriedMs + runningMs(running, session, now),
   }
 
   const projectName = useCallback(
@@ -150,6 +168,7 @@ export function useTimer(now: number) {
   const start = useCallback(
     async (projectId: number, note: string | null = null) => {
       if (futureDay) {
+        void logInfo('timer', 'start refused on a day that lies ahead')
         errorToast('The timer was not started', FUTURE_DAY_MESSAGE)
         return
       }
@@ -160,9 +179,16 @@ export function useTimer(now: number) {
           endTime: null,
           note,
         })
-        setSession({ projectId, carriedMs: 0, segmentIds: [entry.id], paused: false })
+        setSession({
+          projectId,
+          carriedMs: 0,
+          startedAtMs: Date.now(),
+          segmentIds: [entry.id],
+          paused: false,
+        })
         toast('Timer started', `Tracking ${projectName(projectId)}`)
       } catch (error) {
+        reportError('timer', error)
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
@@ -178,11 +204,18 @@ export function useTimer(now: number) {
   const stop = useCallback(async () => {
     try {
       const stoppedAt = Date.now()
-      const minutes = roundToMinutes(
-        carriedMs + (running ? entryDurationMs(running, stoppedAt) : 0),
-      )
+      const elapsedMs = carriedMs + runningMs(running, session, stoppedAt)
+      const minutes = roundToMinutes(elapsedMs)
       const projectId = running?.projectId ?? session?.projectId ?? null
       const segments = sessionSegments(entries, session?.segmentIds ?? [], running)
+      void logInfo(
+        'timer',
+        `stop elapsedMs=${elapsedMs} minutes=${minutes} segments=${segments.length}`,
+      )
+      /** Nothing to trim while time was tracked means the session is lost silently. */
+      if (segments.length === 0 && minutes > 0) {
+        reportError('timer', new Error(`stop found no segments for ${minutes} rounded minutes`))
+      }
       const sessionIds = segments.map((segment) => segment.id)
       let remainingMs = minutes * MINUTE_MS
       let closedAtMs = Number.NEGATIVE_INFINITY
@@ -192,6 +225,7 @@ export function useTimer(now: number) {
         const keptMs = index === segments.length - 1 ? remainingMs : Math.min(durationMs, remainingMs)
         remainingMs -= keptMs
         if (keptMs <= 0) {
+          void logInfo('timer', `stop discards segment ${segment.id} durationMs=${durationMs}`)
           await deleteEntry.mutateAsync(segment.id)
           continue
         }
@@ -217,11 +251,13 @@ export function useTimer(now: number) {
       }
       setSession(null)
       if (minutes === 0) {
+        void logInfo('timer', `stop discarded the session elapsedMs=${elapsedMs}`)
         toast(DISCARDED_ENTRY_TITLE, DISCARDED_ENTRY_MESSAGE)
         return
       }
       toast('Timer stopped', `${formatDuration(minutes)} added to ${projectName(projectId)}`)
     } catch (error) {
+      reportError('timer', error)
       errorToast('The timer could not be stopped', errorMessage(error, 'Please try again'))
     }
   }, [carriedMs, closeSegment, deleteEntry, entries, projectName, running, session, setSession])
@@ -238,6 +274,7 @@ export function useTimer(now: number) {
       })
       toast('Timer paused', projectName(running.projectId))
     } catch (error) {
+      reportError('timer', error)
       errorToast('The timer could not be paused', errorMessage(error, 'Please try again'))
     }
   }, [carriedMs, closeSegment, projectName, running, session, setSession])
@@ -245,10 +282,12 @@ export function useTimer(now: number) {
   const resume = useCallback(async () => {
     if (!session) return
     if (futureDay) {
+      void logInfo('timer', 'resume refused on a day that lies ahead')
       errorToast('The timer was not resumed', FUTURE_DAY_MESSAGE)
       return
     }
     if (session.projectId === null) {
+      void logInfo('timer', 'resume refused because the session has no project')
       errorToast(TIMER_ERROR_MESSAGE, 'The original project no longer exists')
       return
     }
@@ -261,11 +300,13 @@ export function useTimer(now: number) {
       })
       setSession({
         ...session,
+        startedAtMs: Date.now(),
         segmentIds: withSegment(session.segmentIds, entry.id),
         paused: false,
       })
       toast('Timer resumed', `Tracking ${projectName(session.projectId)}`)
     } catch (error) {
+      reportError('timer', error)
       errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
     }
   }, [createEntry, futureDay, projectName, session, setSession])
@@ -274,6 +315,7 @@ export function useTimer(now: number) {
   const switchTo = useCallback(
     async (projectId: number) => {
       if (futureDay) {
+        void logInfo('timer', 'switch refused on a day that lies ahead')
         errorToast('The project was not switched', FUTURE_DAY_MESSAGE)
         return
       }
@@ -285,9 +327,16 @@ export function useTimer(now: number) {
               input: { projectId, startTime: timestamp, endTime: null, note: null },
             })
           : await createEntry.mutateAsync({ projectId, startTime: timestamp, endTime: null, note: null })
-        setSession({ projectId, carriedMs: 0, segmentIds: [entry.id], paused: false })
+        setSession({
+          projectId,
+          carriedMs: 0,
+          startedAtMs: Date.now(),
+          segmentIds: [entry.id],
+          paused: false,
+        })
         toast(`Switched to ${projectName(projectId)}`)
       } catch (error) {
+        reportError('timer', error)
         errorToast(TIMER_ERROR_MESSAGE, errorMessage(error, TIMER_ERROR_MESSAGE))
       }
     },
@@ -322,6 +371,7 @@ export function useTimer(now: number) {
         )
         return true
       } catch (error) {
+        reportError('timer', error)
         errorToast('The start time was not changed', errorMessage(error, 'Please try again'))
         return false
       }
@@ -332,7 +382,13 @@ export function useTimer(now: number) {
   const setNote = useCallback(
     async (note: string) => {
       if (!running) return
-      await updateNote.mutateAsync({ id: running.id, note: note.trim() || null })
+      try {
+        await updateNote.mutateAsync({ id: running.id, note: note.trim() || null })
+      } catch (error) {
+        /** The note is saved on blur, so a failure has no caller that could report it. */
+        reportError('timer', error)
+        errorToast('The note was not saved', errorMessage(error, 'Please try again'))
+      }
     },
     [running, updateNote],
   )

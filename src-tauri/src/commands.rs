@@ -553,21 +553,36 @@ pub fn retry_startup(
     Ok(startup.status())
 }
 
+/// One line of the user interface, trimmed and bounded, so a client cannot fill
+/// the log file with a single call.
+fn client_line(value: String) -> String {
+    value
+        .trim()
+        .chars()
+        .take(logging::MAX_MESSAGE_CHARS)
+        .collect()
+}
+
 /// Writes a failure of the user interface into the same log file. The message is
 /// redacted by the logger, so client-side data cannot leak into the log either.
 #[tauri::command]
 pub fn log_client_error(source: String, message: String) -> AppResult<()> {
-    let source: String = source
-        .trim()
-        .chars()
-        .take(logging::MAX_MESSAGE_CHARS)
-        .collect();
-    let message: String = message
-        .trim()
-        .chars()
-        .take(logging::MAX_MESSAGE_CHARS)
-        .collect();
-    logging::error(&format!("ui/{source}"), &message);
+    logging::error(
+        &format!("ui/{}", client_line(source)),
+        &client_line(message),
+    );
+    Ok(())
+}
+
+/// Writes a lifecycle line of the user interface into the same log file, so a
+/// run that ends without a failure still explains what it decided. Trimming and
+/// redaction match [`log_client_error`].
+#[tauri::command]
+pub fn log_client_info(source: String, message: String) -> AppResult<()> {
+    logging::info(
+        &format!("ui/{}", client_line(source)),
+        &client_line(message),
+    );
     Ok(())
 }
 
@@ -577,17 +592,18 @@ mod tests {
 
     /// Commands that run without a signed in user, each one deliberately public:
     /// the three that create or end a session, the session probe that answers
-    /// `null` when nobody is signed in, the application version, the log sink of
-    /// the user interface and the two startup commands the window needs before a
-    /// database exists. Every other command is written with `authed_command!`,
+    /// `null` when nobody is signed in, the application version, the two log
+    /// sinks of the user interface and the two startup commands the window needs
+    /// before a database exists. Every other command is written with `authed_command!`,
     /// and the tests below fail when a hand written command is not listed here.
-    const PUBLIC_COMMANDS: [&str; 8] = [
+    const PUBLIC_COMMANDS: [&str; 9] = [
         "register",
         "login",
         "logout",
         "current_session",
         "get_app_version",
         "log_client_error",
+        "log_client_info",
         "startup_status",
         "retry_startup",
     ];
@@ -714,6 +730,23 @@ mod tests {
         assert!(
             checked >= 5,
             "the session aware commands were not found: {checked}"
+        );
+    }
+
+    #[test]
+    fn the_client_log_sinks_accept_a_line_from_the_user_interface() {
+        assert_eq!(log_client_error("timer".into(), " boom ".into()), Ok(()));
+        assert_eq!(log_client_info("timer".into(), " stopped ".into()), Ok(()));
+    }
+
+    #[test]
+    fn a_client_log_line_is_trimmed_and_bounded() {
+        assert_eq!(client_line("  timer \n".into()), "timer");
+        assert_eq!(
+            client_line("a".repeat(logging::MAX_MESSAGE_CHARS + 100))
+                .chars()
+                .count(),
+            logging::MAX_MESSAGE_CHARS
         );
     }
 
