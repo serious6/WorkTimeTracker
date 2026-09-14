@@ -18,6 +18,32 @@ describe('LoginPage', () => {
     expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
 
+  test('exposes the form identity password managers look for', () => {
+    renderWithProviders(<LoginPage onRegister={() => {}} />)
+
+    const form = document.querySelector('form')!
+    expect(form).toHaveAttribute('id', 'login-form')
+    expect(form).toHaveAttribute('name', 'login-form')
+    expect(form).toHaveAttribute('method', 'post')
+
+    const email = screen.getByLabelText('Email')
+    expect(email).toHaveAttribute('id', 'email')
+    expect(email).toHaveAttribute('name', 'email')
+    expect(email).toHaveAttribute('autocomplete', 'username')
+
+    const password = screen.getByLabelText('Password')
+    expect(password).toHaveAttribute('id', 'password')
+    expect(password).toHaveAttribute('name', 'password')
+    expect(password).toHaveAttribute('autocomplete', 'current-password')
+
+    expect(screen.getByRole('button', { name: 'Login' })).toHaveAttribute('type', 'submit')
+  })
+
+  test('names the window so a saved credential is recognisable', () => {
+    renderWithProviders(<LoginPage onRegister={() => {}} />)
+    expect(document.title).toBe('WorkTimeTracker — Sign in')
+  })
+
   test('shows validation error when password is empty', async () => {
     renderWithProviders(<LoginPage onRegister={() => {}} />)
     // type a valid email but no password

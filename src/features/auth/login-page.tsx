@@ -6,9 +6,11 @@ import { Field, Input } from '@/components/ui/input'
 import { errorMessage } from '@/lib/errors'
 import { credentialsSchema, INVALID_CREDENTIALS_MESSAGE } from './auth-schema'
 import { useLogin } from './session-queries'
+import { useDocumentTitle } from './use-document-title'
 
 /** Entry point of the application while nobody is signed in. */
 export function LoginPage({ onRegister }: { onRegister: () => void }) {
+  useDocumentTitle('WorkTimeTracker — Sign in')
   const login = useLogin()
   const [error, setError] = useState<{ field: string | null; message: string }>()
 
@@ -40,12 +42,30 @@ export function LoginPage({ onRegister }: { onRegister: () => void }) {
             <AppLogo className="size-6 text-primary" />
             <h1 className="text-lg font-semibold">Sign in to TimeTrack</h1>
           </div>
-          <form className="space-y-4" onSubmit={submit}>
+          {/*
+            Identity for password managers: the form and its inputs carry stable names and ids so
+            1Password and friends recognise the sign-in, offer to save the credential and can
+            autofill it. `action` stays a no-op because `submit` handles the request locally.
+          */}
+          <form
+            action="#"
+            className="space-y-4"
+            id="login-form"
+            method="post"
+            name="login-form"
+            onSubmit={submit}
+          >
             <Field error={error?.field === 'email' ? error.message : undefined} label="Email">
-              <Input autoComplete="username" name="email" placeholder="you@example.com" type="email" />
+              <Input
+                autoComplete="username"
+                id="email"
+                name="email"
+                placeholder="you@example.com"
+                type="email"
+              />
             </Field>
             <Field error={error?.field === 'password' ? error.message : undefined} label="Password">
-              <Input autoComplete="current-password" name="password" type="password" />
+              <Input autoComplete="current-password" id="password" name="password" type="password" />
             </Field>
             {error?.field === null && (
               <p className="text-sm text-destructive" role="alert">

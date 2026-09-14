@@ -41,6 +41,40 @@ test('shows the login page when no user is signed in', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
 })
 
+// #27 in docs/e2e-test-cases.md
+test('lets a password manager fill and submit the sign-in form', async ({ page }) => {
+  await openAccountMenu(page)
+  await page.getByRole('menuitem', { name: 'Logout' }).click()
+
+  await expect(page).toHaveTitle('WorkTimeTracker \u2014 Sign in')
+  const form = page.locator('form#login-form')
+  await expect(form).toHaveAttribute('method', 'post')
+  await expect(form).toHaveAttribute('name', 'login-form')
+  await expect(page.locator('#email')).toHaveAttribute('autocomplete', 'username')
+  await expect(page.locator('#password')).toHaveAttribute('autocomplete', 'current-password')
+
+  // Autofill of a password manager: the values are set programmatically and the
+  // form is submitted with the keyboard instead of a click on "Login".
+  await page.evaluate(
+    ({ email, password }) => {
+      const fill = (selector: string, value: string) => {
+        const input = document.querySelector<HTMLInputElement>(selector)
+        if (!input) throw new Error(`missing input ${selector}`)
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+        setter?.call(input, value)
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      fill('#email', email)
+      fill('#password', password)
+    },
+    { email: 'first@example.com', password: PASSWORD },
+  )
+  await page.locator('#password').press('Enter')
+
+  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
+})
+
 // #3 in docs/e2e-test-cases.md
 test('validates the password policy while typing and blocks weak passwords', async ({ page }) => {
   await openAccountMenu(page)

@@ -11,8 +11,12 @@ as the release notes, so a version without a section here cannot be released. Se
 
 ## [Unreleased]
 
-Nothing yet. Add the change under `Added`, `Changed`, `Fixed`, `Removed` or `Security`, and note the
-upgrade impact under `Breaking changes`.
+### Added
+
+- The sign-in and registration forms are now recognisable to password managers: named forms, stable
+  field ids with the matching autocomplete tokens, and a window title that names the application, so
+  a saved item is identifiable as WorkTimeTracker. The supported platforms and the known limitations
+  are listed in [`docs/installation.md`](docs/installation.md#9-password-managers).
 
 ## [0.2.0] - 2026-09-10
 
