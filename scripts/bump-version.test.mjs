@@ -33,10 +33,13 @@ describe('version and argument parsing', () => {
 
   test('rejects a missing released version argument', () => {
     expect(() => parseArgs(['--type', 'patch', '--from'])).toThrow(/--from needs a value/)
+    expect(() => parseArgs(['--from', '--type', 'patch'])).toThrow(/--from needs a value, got '--type'/)
   })
 
   test('rejects an invalid released version argument before running the bump', () => {
-    expect(() => parseArgs(['--type', 'patch', '--from', '1.2.3-beta'])).toThrow(/plain MAJOR\.MINOR\.PATCH/)
+    expect(() => parseArgs(['--type', 'patch', '--from', '1.2.3-beta'])).toThrow(
+      /--from Version must be plain MAJOR\.MINOR\.PATCH/,
+    )
   })
 })
 

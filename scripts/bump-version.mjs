@@ -71,6 +71,8 @@ export function bumpCargoLock(contents, packageName, version) {
   return updated
 }
 
+// Adds the future version section once, keeps an existing section date, and
+// refreshes the `[Unreleased]` and `[version]` compare links every time.
 export function changelogWithSection(contents, version, date = new Date()) {
   const newline = contents.includes('\r\n') ? '\r\n' : '\n'
   const heading = `## [${version}] - ${date.toISOString().slice(0, 10)}`
@@ -135,7 +137,8 @@ export function parseArgs(argv) {
     const name = flag.slice(2)
     const value = argv[index + 1]
     if (!['type', 'from'].includes(name)) throw new Error(`Unknown option '${flag}'.`)
-    if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value.`)
+    if (value === undefined) throw new Error(`${flag} needs a value.`)
+    if (value.startsWith('--')) throw new Error(`${flag} needs a value, got '${value}'.`)
     args[name] = value
     index += 1
   }
@@ -143,7 +146,13 @@ export function parseArgs(argv) {
   if (!['patch', 'minor', 'major'].includes(args.type)) {
     throw new Error(`--type must be one of patch, minor, or major, got '${args.type}'.`)
   }
-  if (args.from !== undefined) parseVersion(args.from)
+  if (args.from !== undefined) {
+    try {
+      parseVersion(args.from)
+    } catch (error) {
+      throw new Error(`--from ${error.message}`)
+    }
+  }
   return args
 }
 
