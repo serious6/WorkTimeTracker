@@ -189,7 +189,7 @@ export function rangeMetrics({
     const hasEntries = rangeEntries.some((entry) => touchesDay(entry, dayInterval, now))
     const absenceType = absences.get(toDateKey(day)) ?? null
     const hasStarted = day <= today
-    const dayProjects = projectTotals(rangeEntries, projects, now, dayInterval).map((item) => ({
+    const dayProjects = projectTotals(inRange, projects, now, dayInterval).map((item) => ({
       projectId: item.projectId,
       name: item.name,
       color: item.color,

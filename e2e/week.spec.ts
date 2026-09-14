@@ -66,5 +66,5 @@ test('W3: daily and weekly project summaries show both duration formats', async 
   const weekProjects = page.getByRole('list', { name: 'Projects this week' })
   await expect(weekProjects.getByText('Week Alpha')).toBeVisible()
   await expect(weekProjects.getByText('Week Beta')).toBeVisible()
-  await expect(page.getByLabel('Projects this week total')).toHaveText(/1.62 h · 1h 37m/)
+  await expect(page.getByLabel('Projects this week total')).toContainText('1.62 h · 1h 37m')
 })

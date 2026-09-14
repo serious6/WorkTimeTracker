@@ -32,6 +32,7 @@ export function ProjectSummary({
       <div
         aria-label={`${label} total`}
         className="flex items-center justify-between gap-2 border-t border-border pt-2 font-medium"
+        role="group"
       >
         <span>Total</span>
         <span className="whitespace-nowrap tabular-nums">{formatDurationPair(totalMinutes)}</span>
