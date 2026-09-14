@@ -13,6 +13,9 @@ const jsdomTestFiles = [
   'src/features/timer/use-ticker.test.ts',
 ]
 
+// `*.timezone.test.ts` runs in a fixed timezone, see the `timezone` project.
+const timezoneTestFiles = 'src/**/*.timezone.test.ts'
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -30,7 +33,20 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
-          exclude: [...configDefaults.exclude, ...jsdomTestFiles],
+          exclude: [...configDefaults.exclude, ...jsdomTestFiles, timezoneTestFiles],
+        },
+      },
+      {
+        // Node reads the timezone once per process, so `TZ` only takes effect in
+        // a forked child. These tests assert daylight saving behaviour and need
+        // a DST observing zone no matter where they run.
+        extends: true,
+        test: {
+          name: 'timezone',
+          environment: 'node',
+          pool: 'forks',
+          env: { TZ: 'Europe/Berlin' },
+          include: [timezoneTestFiles],
         },
       },
       {

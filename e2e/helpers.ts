@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { addDays, toDateKey } from '../src/lib/date'
 import {
   AUTH_STORAGE_KEYS,
   SEEDED_AUTH_USER_ID,
@@ -16,10 +17,13 @@ export function trackingCard(page: Page) {
   return page.getByRole('region', { name: 'Currently Tracking' })
 }
 
+/**
+ * Local calendar day, offset by whole days. The app interprets days in the
+ * local timezone, so a UTC serialisation would pick the wrong day around
+ * midnight outside UTC.
+ */
 export function dateKey(inDays: number) {
-  const date = new Date()
-  date.setDate(date.getDate() + inDays)
-  return date.toISOString().slice(0, 10)
+  return toDateKey(addDays(new Date(), inDays))
 }
 
 export async function createProject(page: Page, name: string) {

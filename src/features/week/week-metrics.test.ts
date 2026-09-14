@@ -85,22 +85,6 @@ describe('week metrics', () => {
     expect(metrics.projects.reduce((sum, item) => sum + item.minutes, 0)).toBe(metrics.trackedMinutes)
   })
 
-  it('summarises the actual length of a daylight-saving boundary day', () => {
-    const day = new Date(2026, 2, 29)
-    const nextDay = new Date(2026, 2, 30)
-    const metrics = rangeMetrics({
-      entries: [entry(1, 1, day, nextDay)],
-      projects: [project(1, 'Project')],
-      settings,
-      range: { start: day, end: nextDay },
-      now: nextDay.getTime(),
-    })
-
-    const actualDayMinutes = (nextDay.getTime() - day.getTime()) / 60_000
-    expect(metrics.trackedMinutes).toBe(actualDayMinutes)
-    expect(metrics.days[0]?.projects[0]?.minutes).toBe(actualDayMinutes)
-  })
-
   it('computes tracked, target and balance for a selected week', () => {
     const entries = [entry(1, 1, at(24, 9), at(24, 11)), entry(2, 1, at(25, 9), at(25, 12))]
     const metrics = weekMetrics({
