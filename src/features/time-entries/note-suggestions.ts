@@ -3,7 +3,8 @@ import type { TimeEntry } from './time-entry-schema'
 const MIN_QUERY_LENGTH = 3
 const DEFAULT_LIMIT = 6
 
-type NoteSuggestion = {
+/** Normalized usage statistics for one distinct note, derived once per entry list. */
+export type NoteUsage = {
   note: string
   noteKey: string
   latestUsedAt: number
@@ -18,19 +19,9 @@ function usageTime(entry: TimeEntry): number {
   return Number.isFinite(start) ? start : 0
 }
 
-/**
- * Returns note suggestions once at least three characters are typed.
- * Matches are case-insensitive, de-duplicated, ordered by prefix, recency, frequency and name.
- */
-export function getNoteSuggestions(
-  entries: TimeEntry[],
-  query: string,
-  limit = DEFAULT_LIMIT,
-): string[] {
-  const needle = query.trim().toLowerCase()
-  if (needle.length < MIN_QUERY_LENGTH) return []
-
-  const notes = new Map<string, NoteSuggestion>()
+/** Collects distinct notes with their latest usage and frequency, keeping the most recent spelling. */
+export function buildNoteUsage(entries: TimeEntry[]): NoteUsage[] {
+  const notes = new Map<string, NoteUsage>()
   for (const entry of entries) {
     const note = entry.note?.trim()
     if (!note) continue
@@ -48,8 +39,22 @@ export function getNoteSuggestions(
       frequency: previous.frequency + 1,
     })
   }
-
   return [...notes.values()]
+}
+
+/**
+ * Ranks precomputed note usage once at least three characters are typed.
+ * Matches are case-insensitive and ordered by prefix, recency, frequency and name.
+ */
+export function rankNoteSuggestions(
+  usage: NoteUsage[],
+  query: string,
+  limit = DEFAULT_LIMIT,
+): string[] {
+  const needle = query.trim().toLowerCase()
+  if (needle.length < MIN_QUERY_LENGTH) return []
+
+  return usage
     .filter((candidate) => candidate.noteKey.includes(needle))
     .sort((a, b) => {
       const aPrefix = a.noteKey.startsWith(needle) ? 0 : 1
@@ -61,4 +66,13 @@ export function getNoteSuggestions(
     })
     .slice(0, limit)
     .map((candidate) => candidate.note)
+}
+
+/** Convenience wrapper that builds the usage index and ranks it in one step. */
+export function getNoteSuggestions(
+  entries: TimeEntry[],
+  query: string,
+  limit = DEFAULT_LIMIT,
+): string[] {
+  return rankNoteSuggestions(buildNoteUsage(entries), query, limit)
 }

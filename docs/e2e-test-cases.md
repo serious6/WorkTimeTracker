@@ -207,6 +207,7 @@ spec answers the GitHub Releases API itself, so the cases stay independent of pu
 | X4 | `X4: monthly exports include tracked rows in CSV and PDF` | A monthly tracked entry exists | The user exports monthly record from Working Time | CSV and PDF exports contain the expected tracked duration row |
 | X5 | `X5: empty-state pages stay stable and switch to first values after data creation` | Calendar/Week/Budgets/Absences/Overtime/Reports have no data | The user visits each page, then creates first values and revisits | Empty states render without crashes and each page shows first-value content afterwards |
 | X6 | `X6: currently tracking note suggestions can be selected and saved` | A user has already tracked a note on a project | The user starts a new timer, types 3+ characters in "Add a note", and picks the suggestion | The suggestion fills the note field, closes the list, and the stopped entry stores the selected note |
+| X7 | `X7: currently tracking note suggestions stay hidden below 3 characters and after Escape` | A user has already tracked a note on a project | The user types fewer than three characters, then three characters and presses Escape | No list appears below three characters, and Escape closes the list while the typed text stays |
 
 ## Conventions
 

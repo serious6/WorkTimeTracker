@@ -45,3 +45,28 @@ test('X6: currently tracking note suggestions can be selected and saved', async 
   await gotoPage(page, 'Time Entries')
   await expect(page.locator('main').getByText('Daily standup sync').first()).toBeVisible()
 })
+
+// X7 in docs/e2e-test-cases.md
+test('X7: currently tracking note suggestions stay hidden below 3 characters and after Escape', async ({
+  page,
+}) => {
+  await startTimer(page, 'Client Portal')
+  const note = trackingCard(page).getByRole('combobox', { name: 'Add a note' })
+  await note.fill('Daily standup sync')
+  await note.blur()
+  await page.clock.fastForward('00:00:30')
+  await trackingCard(page).getByRole('button', { name: 'Stop timer' }).click()
+  await expect(page.getByText('0h 01m added to Client Portal')).toBeVisible()
+
+  await trackingCard(page).getByRole('button', { name: 'Start timer' }).click()
+  await expect(trackingCard(page).getByRole('button', { name: 'Stop timer' })).toBeVisible()
+
+  await note.fill('da')
+  await expect(trackingCard(page).getByRole('listbox')).toHaveCount(0)
+
+  await note.fill('dai')
+  await expect(trackingCard(page).getByRole('listbox')).toBeVisible()
+  await note.press('Escape')
+  await expect(trackingCard(page).getByRole('listbox')).toHaveCount(0)
+  await expect(note).toHaveValue('dai')
+})

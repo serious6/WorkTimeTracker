@@ -12,7 +12,7 @@ import {
   FUTURE_DAY_MESSAGE,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
-import { getNoteSuggestions } from '@/features/time-entries/note-suggestions'
+import { buildNoteUsage, rankNoteSuggestions } from '@/features/time-entries/note-suggestions'
 import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
@@ -47,7 +47,6 @@ export function CurrentlyTrackingCard({
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
   const noteRef = useRef<HTMLDivElement>(null)
-  const skipBlurSave = useRef(false)
   const noteListId = useId()
   const active = Boolean(status.running) || status.paused
   const project = projects.find((candidate) => candidate.id === status.projectId)
@@ -59,7 +58,9 @@ export function CurrentlyTrackingCard({
     setNoteSource(status.running?.note ?? null)
     setNoteValue(status.running?.note ?? '')
   }
-  const noteSuggestions = useMemo(() => getNoteSuggestions(entries, note), [entries, note])
+  /** The usage index only changes with the entry list, so typing just re-ranks it. */
+  const noteUsage = useMemo(() => buildNoteUsage(entries), [entries])
+  const noteSuggestions = useMemo(() => rankNoteSuggestions(noteUsage, note), [noteUsage, note])
   const noteSuggestionsOpen = noteFocused && !suggestionsDismissed && noteSuggestions.length > 0
 
   useEffect(() => {
@@ -74,10 +75,9 @@ export function CurrentlyTrackingCard({
   }, [noteSuggestionsOpen])
 
   function chooseSuggestion(suggestion: string) {
-    skipBlurSave.current = true
+    // Selecting keeps the input focused, so the list closes through the dismissed state.
     setNoteValue(suggestion)
-    setNoteFocused(false)
-    setSuggestionsDismissed(false)
+    setSuggestionsDismissed(true)
     setActiveSuggestion(-1)
     void setNote(suggestion)
   }
@@ -224,6 +224,7 @@ export function CurrentlyTrackingCard({
               }
               aria-controls={noteSuggestionsOpen ? noteListId : undefined}
               aria-expanded={noteSuggestionsOpen}
+              aria-autocomplete="list"
               aria-label="Add a note"
               autoComplete="off"
               className="border-0 px-0 focus-visible:ring-0"
@@ -232,10 +233,6 @@ export function CurrentlyTrackingCard({
                 setNoteFocused(false)
                 setSuggestionsDismissed(false)
                 setActiveSuggestion(-1)
-                if (skipBlurSave.current) {
-                  skipBlurSave.current = false
-                  return
-                }
                 void setNote(note)
               }}
               onChange={(event) => {
