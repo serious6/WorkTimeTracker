@@ -11,12 +11,17 @@ type NoteSuggestion = {
 }
 
 function usageTime(entry: TimeEntry): number {
+  /** Updated rows are the freshest source, with start time as fallback in tests/imports. */
   const updated = Date.parse(entry.updatedAt)
   if (Number.isFinite(updated)) return updated
   const start = Date.parse(entry.startTime)
   return Number.isFinite(start) ? start : 0
 }
 
+/**
+ * Returns note suggestions once at least three characters are typed.
+ * Matches are case-insensitive, de-duplicated, ordered by prefix, recency, frequency and name.
+ */
 export function getNoteSuggestions(
   entries: TimeEntry[],
   query: string,

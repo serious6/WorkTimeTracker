@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Clock, Pause, Play, Square, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -46,6 +46,7 @@ export function CurrentlyTrackingCard({
   const [noteFocused, setNoteFocused] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
   const noteRef = useRef<HTMLDivElement>(null)
+  const skipBlurSave = useRef(false)
   const noteListId = useId()
   const active = Boolean(status.running) || status.paused
   const project = projects.find((candidate) => candidate.id === status.projectId)
@@ -57,7 +58,7 @@ export function CurrentlyTrackingCard({
     setNoteSource(status.running?.note ?? null)
     setNoteValue(status.running?.note ?? '')
   }
-  const noteSuggestions = getNoteSuggestions(entries, note)
+  const noteSuggestions = useMemo(() => getNoteSuggestions(entries, note), [entries, note])
   const noteSuggestionsOpen = noteFocused && noteSuggestions.length > 0
 
   useEffect(() => {
@@ -72,6 +73,7 @@ export function CurrentlyTrackingCard({
   }, [noteSuggestionsOpen])
 
   function chooseSuggestion(suggestion: string) {
+    skipBlurSave.current = true
     setNoteValue(suggestion)
     setNoteFocused(false)
     setActiveSuggestion(-1)
@@ -227,6 +229,10 @@ export function CurrentlyTrackingCard({
               onBlur={() => {
                 setNoteFocused(false)
                 setActiveSuggestion(-1)
+                if (skipBlurSave.current) {
+                  skipBlurSave.current = false
+                  return
+                }
                 void setNote(note)
               }}
               onChange={(event) => setNoteValue(event.target.value)}
@@ -266,7 +272,7 @@ export function CurrentlyTrackingCard({
                 role="listbox"
               >
                 {noteSuggestions.map((suggestion, index) => (
-                  <Button
+                  <div
                     aria-selected={index === highlightedSuggestion}
                     className="flex w-full items-center px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
                     id={`${noteListId}-option-${index}`}
@@ -274,11 +280,9 @@ export function CurrentlyTrackingCard({
                     onClick={() => chooseSuggestion(suggestion)}
                     onMouseDown={(event) => event.preventDefault()}
                     role="option"
-                    type="button"
-                    variant="ghost"
                   >
                     {suggestion}
-                  </Button>
+                  </div>
                 ))}
               </div>
             )}
