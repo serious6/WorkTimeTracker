@@ -316,6 +316,80 @@ describe('CurrentlyTrackingCard – note behaviour', () => {
     expect(setNote).toHaveBeenCalledWith('Some note')
   })
 
+  it('does not show suggestions before 3 characters are typed', () => {
+    const running = makeRunningEntry()
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        entries={[makeRunningEntry('Daily standup')]}
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ status: { running, paused: false, projectId: 1, elapsedMs: 0 } })}
+      />,
+    )
+    const noteInput = screen.getByRole('combobox', { name: 'Add a note' })
+    fireEvent.focus(noteInput)
+    fireEvent.change(noteInput, { target: { value: 'da' } })
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('shows suggestions from past notes and saves a clicked suggestion', () => {
+    const setNote = vi.fn()
+    const running = makeRunningEntry()
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        entries={[
+          makeRunningEntry('Daily standup'),
+          makeRunningEntry('Daily planning'),
+          makeRunningEntry('Refactor auth'),
+        ]}
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ setNote, status: { running, paused: false, projectId: 1, elapsedMs: 0 } })}
+      />,
+    )
+    const noteInput = screen.getByRole('combobox', { name: 'Add a note' })
+    fireEvent.focus(noteInput)
+    fireEvent.change(noteInput, { target: { value: 'dai' } })
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('option', { name: 'Daily standup' }))
+    expect(setNote).toHaveBeenCalledWith('Daily standup')
+    expect((screen.getByLabelText('Add a note') as HTMLInputElement).value).toBe('Daily standup')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('supports keyboard navigation and closes suggestions on Escape', () => {
+    const running = makeRunningEntry()
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        entries={[makeRunningEntry('Daily standup'), makeRunningEntry('Daily planning')]}
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ status: { running, paused: false, projectId: 1, elapsedMs: 0 } })}
+      />,
+    )
+    const noteInput = screen.getByRole('combobox', { name: 'Add a note' })
+    fireEvent.focus(noteInput)
+    fireEvent.change(noteInput, { target: { value: 'dai' } })
+    expect(noteInput).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.keyDown(noteInput, { key: 'ArrowDown' })
+    expect(noteInput).toHaveAttribute('aria-activedescendant')
+
+    fireEvent.keyDown(noteInput, { key: 'Escape' })
+    expect(noteInput).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
   it('syncs note field when running entry note changes between renders', () => {
     const running1 = makeRunningEntry(null)
     const running2 = makeRunningEntry('Updated note')

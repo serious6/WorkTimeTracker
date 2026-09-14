@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Clock, Pause, Play, Square, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import {
   FUTURE_DAY_MESSAGE,
   type TimeEntry,
 } from '@/features/time-entries/time-entry-schema'
+import { getNoteSuggestions } from '@/features/time-entries/note-suggestions'
 import { StartCorrectionDialog } from '@/features/timer/components/start-correction-dialog'
 import type { useTimer } from '@/features/timer/use-timer'
 import { formatStopwatch } from '@/lib/date'
@@ -42,6 +43,10 @@ export function CurrentlyTrackingCard({
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [note, setNoteValue] = useState('')
+  const [noteFocused, setNoteFocused] = useState(false)
+  const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const noteRef = useRef<HTMLDivElement>(null)
+  const noteListId = useId()
   const active = Boolean(status.running) || status.paused
   const project = projects.find((candidate) => candidate.id === status.projectId)
   /** The running state is named, not only coloured, so it does not rely on colour alone. */
@@ -51,6 +56,34 @@ export function CurrentlyTrackingCard({
   if (noteSource !== (status.running?.note ?? null)) {
     setNoteSource(status.running?.note ?? null)
     setNoteValue(status.running?.note ?? '')
+  }
+  const noteSuggestions = getNoteSuggestions(entries, note)
+  const noteSuggestionsOpen = noteFocused && noteSuggestions.length > 0
+
+  useEffect(() => {
+    if (!noteSuggestionsOpen) {
+      if (activeSuggestion !== -1) setActiveSuggestion(-1)
+      return
+    }
+    setActiveSuggestion((current) => (current < 0 || current >= noteSuggestions.length ? 0 : current))
+  }, [activeSuggestion, noteSuggestions.length, noteSuggestionsOpen])
+
+  useEffect(() => {
+    if (!noteSuggestionsOpen) return
+    function onPointerDown(event: MouseEvent) {
+      if (!noteRef.current?.contains(event.target as Node)) {
+        setNoteFocused(false)
+      }
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [noteSuggestionsOpen])
+
+  function chooseSuggestion(suggestion: string) {
+    setNoteValue(suggestion)
+    setNoteFocused(false)
+    setActiveSuggestion(-1)
+    void setNote(suggestion)
   }
 
   if (!active) {
@@ -181,15 +214,78 @@ export function CurrentlyTrackingCard({
       <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center">
         <div className="flex flex-1 items-center gap-2">
           <Tag className="size-4 shrink-0 text-muted-foreground" />
-          <Input
-            aria-label="Add a note"
-            className="border-0 px-0 focus-visible:ring-0"
-            disabled={isPending}
-            onBlur={() => void setNote(note)}
-            onChange={(event) => setNoteValue(event.target.value)}
-            placeholder="Add a note..."
-            value={note}
-          />
+          <div className="relative w-full" ref={noteRef}>
+            <Input
+              aria-activedescendant={
+                noteSuggestionsOpen && activeSuggestion >= 0
+                  ? `${noteListId}-option-${activeSuggestion}`
+                  : undefined
+              }
+              aria-controls={noteSuggestionsOpen ? noteListId : undefined}
+              aria-expanded={noteSuggestionsOpen}
+              aria-label="Add a note"
+              autoComplete="off"
+              className="border-0 px-0 focus-visible:ring-0"
+              disabled={isPending}
+              onBlur={() => {
+                setNoteFocused(false)
+                setActiveSuggestion(-1)
+                void setNote(note)
+              }}
+              onChange={(event) => setNoteValue(event.target.value)}
+              onFocus={() => setNoteFocused(true)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setNoteFocused(false)
+                  setActiveSuggestion(-1)
+                  return
+                }
+                if (!noteSuggestionsOpen) return
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  setActiveSuggestion((index) => (index + 1) % noteSuggestions.length)
+                  return
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  setActiveSuggestion((index) =>
+                    index <= 0 ? noteSuggestions.length - 1 : index - 1,
+                  )
+                  return
+                }
+                if (event.key === 'Enter' && activeSuggestion >= 0) {
+                  event.preventDefault()
+                  chooseSuggestion(noteSuggestions[activeSuggestion])
+                }
+              }}
+              placeholder="Add a note..."
+              role="combobox"
+              value={note}
+            />
+            {noteSuggestionsOpen && (
+              <div
+                className="absolute z-40 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-lg"
+                id={noteListId}
+                role="listbox"
+              >
+                {noteSuggestions.map((suggestion, index) => (
+                  <Button
+                    aria-selected={index === activeSuggestion}
+                    className="flex w-full items-center px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
+                    id={`${noteListId}-option-${index}`}
+                    key={suggestion}
+                    onClick={() => chooseSuggestion(suggestion)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    role="option"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {suggestion}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <ProjectPicker
           disabled={futureDay}

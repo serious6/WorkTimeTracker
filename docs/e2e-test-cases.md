@@ -3,7 +3,7 @@
 Every Playwright test in [`e2e/app.spec.ts`](../e2e/app.spec.ts),
 [`e2e/timer-rounding.spec.ts`](../e2e/timer-rounding.spec.ts) and the focused page/journey specs
 (`calendar`, `week`, `projects`, `absences`, `overtime`, `note-templates`, `audit-trails`, `reports-settings`,
-`licenses`, `legal`, `security-csp`, `website`, `persistence`, `startup`) covers one use case as a complete click path. The marker
+`licenses`, `legal`, `security-csp`, `website`, `persistence`, `startup`, `dashboard-note-suggestions`) covers one use case as a complete click path. The marker
 in the first column is repeated as a comment above the matching test (`#<number>`, `E<number>`,
 `C<number>`, `W<number>`, `P<number>`, `A<number>`, `O<number>`, `NT<number>`, `AT<number>`, `R<number>`,
 `S<number>`, `ST<number>`, `L<number>`, `LG<number>`, `SEC<number>`, `WEB<number>`, `X<number>`), so a
@@ -206,6 +206,7 @@ spec answers the GitHub Releases API itself, so the cases stay independent of pu
 | X3 | `X3: pausing and resuming from the entry list continues the running timer` | A running timer exists | The user pauses and resumes from Time Entries list controls | The running timer continues and is visible again on Dashboard |
 | X4 | `X4: monthly exports include tracked rows in CSV and PDF` | A monthly tracked entry exists | The user exports monthly record from Working Time | CSV and PDF exports contain the expected tracked duration row |
 | X5 | `X5: empty-state pages stay stable and switch to first values after data creation` | Calendar/Week/Budgets/Absences/Overtime/Reports have no data | The user visits each page, then creates first values and revisits | Empty states render without crashes and each page shows first-value content afterwards |
+| X6 | `X6: currently tracking note suggestions can be selected and saved` | A user has already tracked a note on a project | The user starts a new timer, types 3+ characters in "Add a note", and picks the suggestion | The suggestion fills the note field, closes the list, and the stopped entry stores the selected note |
 
 ## Conventions
 
