@@ -10,9 +10,16 @@ import {
   signIn,
 } from '@/test/harness'
 import { entryMinutes } from '@/features/dashboard/metrics'
+import { logInfo, reportError } from '@/lib/logger'
 import { DISCARDED_ENTRY_TITLE } from './round-duration'
 import { useTimerStore } from './timer-store'
 import { useTimer } from './use-timer'
+
+vi.mock('@/lib/logger', () => ({
+  logError: vi.fn(async () => {}),
+  logInfo: vi.fn(async () => {}),
+  reportError: vi.fn(),
+}))
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = createTestQueryClient()
@@ -20,6 +27,8 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(async () => {
+  vi.mocked(logInfo).mockClear()
+  vi.mocked(reportError).mockClear()
   await resetAppState()
   await signIn()
 })
@@ -210,6 +219,97 @@ describe('useTimer', () => {
     await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
     const stored = await createLocalRepository().listTimeEntries()
     expect(stored.reduce((total, entry) => total + entryMinutes(entry), 0)).toBe(1)
+  })
+
+  it('stop keeps a session whose stored start was moved ahead of the clock', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    const now = Date.now()
+    // The session before rounded up past the clock, so the timer was started 40
+    // seconds ago but its entry begins 25 seconds after that moment.
+    const running = await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 15_000),
+      endTime: null,
+    })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 0,
+        startedAtMs: now - 40_000,
+        segmentIds: [running.id],
+        paused: false,
+      },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    const stored = await createLocalRepository().listTimeEntries()
+    expect(stored.map((entry) => entryMinutes(entry))).toEqual([1])
+  })
+
+  it('pause carries the wall-clock time of a session whose start lies ahead', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const project = await seedProject('Website')
+    const now = Date.now()
+    // The timer was started 40 seconds ago, its entry begins 25 seconds later.
+    const running = await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now - 15_000),
+      endTime: null,
+    })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 0,
+        startedAtMs: now - 40_000,
+        segmentIds: [running.id],
+        paused: false,
+      },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    await act(async () => {
+      await result.current.pause()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session?.paused).toBe(true))
+    // The pause keeps the 40 tracked seconds, not the 15 stored ones.
+    expect(useTimerStore.getState().session?.carriedMs).toBeGreaterThanOrEqual(39_000)
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    await waitFor(() => expect(useTimerStore.getState().session).toBeNull())
+    const stored = await createLocalRepository().listTimeEntries()
+    expect(stored.map((entry) => entryMinutes(entry))).toEqual([1])
+  })
+
+  it('stop logs an error when the tracked minutes belong to no stored segment', async () => {
+    const project = await seedProject('Website')
+    useTimerStore.setState({
+      session: { projectId: project.id, carriedMs: 120_000, segmentIds: [4_711], paused: true },
+    })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(useTimerStore.getState().recovered).toBe(true))
+
+    await act(async () => {
+      await result.current.stop()
+    })
+
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.any(Error))
+    expect(vi.mocked(logInfo)).toHaveBeenCalledWith('timer', expect.stringContaining('segments=0'))
+    expect(useTimerStore.getState().session).toBeNull()
   })
 
   it('start tracks again right after a session was rounded up', async () => {
@@ -440,6 +540,7 @@ describe('useTimer – error paths', () => {
     })
 
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
     vi.restoreAllMocks()
   })
 
@@ -465,6 +566,7 @@ describe('useTimer – error paths', () => {
     })
 
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
     vi.restoreAllMocks()
   })
 
@@ -490,6 +592,36 @@ describe('useTimer – error paths', () => {
     })
 
     expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
+    vi.restoreAllMocks()
+  })
+
+  it('setNote shows a destructive toast when the note cannot be saved', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 30_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    vi.spyOn(createLocalRepository(), 'updateTimeEntryNote').mockRejectedValueOnce(
+      new Error('db error'),
+    )
+    useToastStore.setState({ toasts: [] })
+
+    // The note is saved on blur, so the failure must not escape unhandled.
+    await act(async () => {
+      await result.current.setNote('my note')
+    })
+
+    expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
     vi.restoreAllMocks()
   })
 
@@ -600,6 +732,42 @@ describe('useTimer – retroactive start correction', () => {
     )
     expect(result.current.status.running?.endTime).toBeNull()
     expect(result.current.status.elapsedMs).toBe(3 * 60 * 60_000)
+  })
+
+  it('moves the start forward and drops the wall-clock baseline of the session', async () => {
+    const project = await seedProject('Website')
+    const now = new Date()
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(now.getTime() - 60_000),
+      endTime: null,
+    })
+    useTimerStore.setState({
+      session: {
+        projectId: project.id,
+        carriedMs: 0,
+        startedAtMs: now.getTime() - 60_000,
+        paused: false,
+      },
+    })
+
+    const { result } = renderHook(() => useTimer(now.getTime()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+    expect(result.current.status.elapsedMs).toBe(60_000)
+
+    const laterStart = new Date(now.getTime() - 20_000)
+    let corrected = false
+    await act(async () => {
+      corrected = await result.current.correctStart(laterStart)
+    })
+
+    expect(corrected).toBe(true)
+    await waitFor(() =>
+      expect(result.current.status.running?.startTime).toBe(laterStart.toISOString()),
+    )
+    // The removed time stays removed instead of returning through the baseline.
+    expect(useTimerStore.getState().session?.startedAtMs).toBe(laterStart.getTime())
+    expect(result.current.status.elapsedMs).toBe(20_000)
   })
 
   it('rejects a start time in the future', async () => {

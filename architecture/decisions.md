@@ -15,7 +15,8 @@ UI and Playwright tests. Without a shared contract the two storage paths can dri
 **Decision:** Domain rules live in `contract/domain-rules.json`, entity shapes in
 `contract/entities.json`. Rust contract tests and TypeScript contract tests execute those files.
 Frontend application data access goes through the `Repository` type in `src/features/storage/`.
-The explicit infrastructure exception is `log_client_error`, which may invoke the backend directly.
+The explicit infrastructure exception is the client log sinks `log_client_error` and
+`log_client_info`, which may invoke the backend directly.
 
 **Consequences:** Validation, overlap, limit, and entity changes start in `contract/` and update both
 backends. A capability used by the frontend needs a Rust command, command registration, repository
@@ -30,7 +31,8 @@ React need one diagnostic path without leaking credentials.
 
 **Decision:** Commands return the `AppError` variants from `src-tauri/src/error.rs`. The frontend
 branches on `kind` through `src/lib/errors.ts`. Backend failures are written by
-`src-tauri/src/logging.rs`; frontend failures use `log_client_error` and `src/lib/logger.ts`.
+`src-tauri/src/logging.rs`; frontend failures use `log_client_error` and lifecycle decisions that
+explain an empty result use `log_client_info`, both through `src/lib/logger.ts`.
 Redaction rules stay mirrored with `src/lib/redact.ts`.
 
 **Consequences:** New command errors use an existing `AppError` kind or add a kind on both sides.
@@ -112,11 +114,15 @@ sleep without trusting a client-side clock.
 **Decision:** Mutations write audit rows in the same transaction as the change. A running timer is a
 `time_entries` row with `end_time` null. Recovery reconciles the stored entries; stopping rounds once
 and stores the rounded result. A segment that rounds up grows into the free time before it instead of
-ending ahead of the clock, and a new timer starts at that end when the space was too small.
+ending ahead of the clock, and a new timer starts at that end when the space was too small. Because
+that start can lie ahead of the clock, the session keeps the wall-clock moment it was started and
+measures the running segment as the longer of the two, corrected by at most the rounding window of
+half a minute.
 
 **Consequences:** Rejected writes do not produce audit rows. Reports, exports, and balances derive
 from stored timestamps and do not round a second time. Rounding never blocks tracking the current
-moment.
+moment. The wall-clock moment only ever compensates that bounded shift: a session recovered after a
+restart carries none, and a corrected start replaces it.
 
 ## Harden development and webview entry points
 

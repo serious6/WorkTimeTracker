@@ -39,6 +39,24 @@ export async function logError(source: string, error: unknown): Promise<void> {
   }
 }
 
+/**
+ * Records a lifecycle decision of the user interface in the same log file, so a
+ * run that ends without an error still explains itself. Redaction and the
+ * console fallback match [`logError`].
+ */
+export async function logInfo(source: string, message: string): Promise<void> {
+  const line = clamp(redact(message))
+  if (!isTauri()) {
+    console.info(`[${source}] ${line}`)
+    return
+  }
+  try {
+    await invoke('log_client_info', { source, message: line })
+  } catch {
+    console.info(`[${source}] ${line}`)
+  }
+}
+
 /** Fire-and-forget variant for synchronous error handlers. */
 export function reportError(source: string, error: unknown): void {
   void logError(source, error)

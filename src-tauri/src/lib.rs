@@ -199,7 +199,8 @@ pub fn run() {
                 commands::get_app_version,
                 commands::startup_status,
                 commands::retry_startup,
-                commands::log_client_error
+                commands::log_client_error,
+                commands::log_client_info
             ])
             .run(tauri::generate_context!())
     }));
