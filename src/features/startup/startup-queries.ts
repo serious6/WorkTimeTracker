@@ -5,9 +5,10 @@ import type { StartupStatus } from './startup-schema'
 export const startupKeys = { status: ['startup-status'] as const }
 
 /**
- * Whether the backend finished its startup. The window shows a spinner while
- * this is pending and the failure of the start instead of the application when
- * it answers `failed`, so a missing database is never a blank window.
+ * Whether the backend finished its startup. The window shows the turning logo
+ * with the changing loading texts while this is pending and the failure of the
+ * start instead of the application when it answers `failed`, so a missing
+ * database is never a blank window.
  */
 export function useStartupStatus() {
   return useQuery({

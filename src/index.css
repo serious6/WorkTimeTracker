@@ -67,7 +67,8 @@ body {
 /*
  * The startup screen. It is written in plain CSS because `index.html` renders
  * it before any component is mounted, and the React components below reuse the
- * same classes so a boot spinner and an application spinner look alike.
+ * same classes so the boot screen and the loading screen of the application
+ * look alike.
  */
 .boot-screen {
   display: flex;
@@ -97,6 +98,28 @@ body {
   overflow-wrap: anywhere;
 }
 
+/*
+ * The brand mark of the loading screen: the white watch on the blue tile of the
+ * application icon, turning while the application waits. The wait is never
+ * shown as a busy mouse cursor, which would look like the system is stuck.
+ */
+.boot-logo {
+  display: flex;
+  width: 4rem;
+  height: 4rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1.125rem;
+  background: linear-gradient(135deg, #5b9eff, #0462d3);
+  color: #ffffff;
+  animation: boot-spin 2.4s linear infinite;
+}
+
+.boot-logo svg {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
 .boot-spinner {
   display: block;
   width: 2.5rem;
@@ -119,10 +142,17 @@ body {
   }
 }
 
-/* A slower turn still shows progress without a fast repeating motion. */
+/*
+ * A slower turn still shows progress without a fast repeating motion; the logo
+ * stops turning entirely and the changing texts report the progress instead.
+ */
 @media (prefers-reduced-motion: reduce) {
   .boot-spinner {
     animation-duration: 3s;
+  }
+
+  .boot-logo {
+    animation: none;
   }
 }
 
