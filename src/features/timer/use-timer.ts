@@ -274,10 +274,16 @@ export function useTimer(now: number) {
   const pause = useCallback(async () => {
     if (!running) return
     try {
-      const segment = await closeSegment(running, new Date().toISOString())
+      const pausedAt = Date.now()
+      /**
+       * The pause carries the displayed time, not the stored one, so a start
+       * that lies ahead of the clock does not shorten the session.
+       */
+      const trackedMs = runningMs(running, session, pausedAt)
+      await closeSegment(running, new Date(pausedAt).toISOString())
       setSession({
         projectId: running.projectId,
-        carriedMs: carriedMs + segment,
+        carriedMs: carriedMs + trackedMs,
         segmentIds: withSegment(session?.segmentIds, running.id),
         paused: true,
       })
@@ -378,6 +384,12 @@ export function useTimer(now: number) {
           'Start time updated',
           `${projectName(running.projectId)} now starts at ${formatTimeOfDay(startTime)}`,
         )
+        /**
+         * The correction replaces the moment the segment began, so the elapsed
+         * time follows it. Without this the wall-clock baseline would re-add
+         * time that the user has just removed from the entry.
+         */
+        if (session) setSession({ ...session, startedAtMs: startTime.getTime() })
         return true
       } catch (error) {
         reportError('timer', error)
@@ -385,7 +397,7 @@ export function useTimer(now: number) {
         return false
       }
     },
-    [projectName, running, updateEntry],
+    [projectName, running, session, setSession, updateEntry],
   )
 
   const setNote = useCallback(

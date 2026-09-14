@@ -238,6 +238,9 @@ test('E15: starts the next session right after a rounded up session', async ({ p
 
 // E18 in docs/e2e-test-cases.md
 test('E18: stores a session that follows a rounded up session', async ({ page }) => {
+  // The earlier entry ends at 09:00, so the rounded minute of the next session
+  // cannot grow into the past and ends ahead of the clock instead.
+  await addEntry(page, PROJECT, '08:00', '09:00')
   await startTimer(page, PROJECT)
   await page.clock.fastForward('00:00:35')
   await stopTimer(page)
@@ -251,7 +254,7 @@ test('E18: stores a session that follows a rounded up session', async ({ page })
 
   // Both sessions were stored, so the toast of each one is on screen.
   await expect(page.getByText(`0h 01m added to ${PROJECT}`)).toHaveCount(2)
-  await expect(page.getByText('Total: 0h 02m')).toBeVisible()
+  await expect(page.getByText('Total: 1h 02m')).toBeVisible()
 })
 
 // E16 in docs/e2e-test-cases.md
