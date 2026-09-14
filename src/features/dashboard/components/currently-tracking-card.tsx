@@ -44,6 +44,7 @@ export function CurrentlyTrackingCard({
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [note, setNoteValue] = useState('')
   const [noteFocused, setNoteFocused] = useState(false)
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
   const noteRef = useRef<HTMLDivElement>(null)
   const skipBlurSave = useRef(false)
@@ -59,13 +60,14 @@ export function CurrentlyTrackingCard({
     setNoteValue(status.running?.note ?? '')
   }
   const noteSuggestions = useMemo(() => getNoteSuggestions(entries, note), [entries, note])
-  const noteSuggestionsOpen = noteFocused && noteSuggestions.length > 0
+  const noteSuggestionsOpen = noteFocused && !suggestionsDismissed && noteSuggestions.length > 0
 
   useEffect(() => {
     if (!noteSuggestionsOpen) return
     function onPointerDown(event: MouseEvent) {
       if (!noteRef.current?.contains(event.target as Node)) {
         setNoteFocused(false)
+        setSuggestionsDismissed(false)
       }
     }
     document.addEventListener('mousedown', onPointerDown)
@@ -76,6 +78,7 @@ export function CurrentlyTrackingCard({
     skipBlurSave.current = true
     setNoteValue(suggestion)
     setNoteFocused(false)
+    setSuggestionsDismissed(false)
     setActiveSuggestion(-1)
     void setNote(suggestion)
   }
@@ -228,6 +231,7 @@ export function CurrentlyTrackingCard({
               disabled={isPending}
               onBlur={() => {
                 setNoteFocused(false)
+                setSuggestionsDismissed(false)
                 setActiveSuggestion(-1)
                 if (skipBlurSave.current) {
                   skipBlurSave.current = false
@@ -235,11 +239,18 @@ export function CurrentlyTrackingCard({
                 }
                 void setNote(note)
               }}
-              onChange={(event) => setNoteValue(event.target.value)}
-              onFocus={() => setNoteFocused(true)}
+              onChange={(event) => {
+                setNoteValue(event.target.value)
+                setSuggestionsDismissed(false)
+                setActiveSuggestion(-1)
+              }}
+              onFocus={() => {
+                setNoteFocused(true)
+                setSuggestionsDismissed(false)
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Escape') {
-                  setNoteFocused(false)
+                  setSuggestionsDismissed(true)
                   setActiveSuggestion(-1)
                   return
                 }

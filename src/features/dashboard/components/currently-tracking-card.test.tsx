@@ -388,6 +388,33 @@ describe('CurrentlyTrackingCard – note behaviour', () => {
     fireEvent.keyDown(noteInput, { key: 'Escape' })
     expect(noteInput).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    fireEvent.change(noteInput, { target: { value: 'dail' } })
+    expect(noteInput).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+
+  it('resets the highlighted suggestion when the query changes', () => {
+    const running = makeRunningEntry()
+    renderWithProviders(
+      <CurrentlyTrackingCard
+        entries={[makeRunningEntry('Daily standup'), makeRunningEntry('Daily planning')]}
+        now={Date.now()}
+        onCreateProject={vi.fn()}
+        onPickerOpenChange={vi.fn()}
+        pickerOpen={false}
+        projects={[project(1, 'Website')]}
+        timer={makeTimer({ status: { running, paused: false, projectId: 1, elapsedMs: 0 } })}
+      />,
+    )
+    const noteInput = screen.getByRole('combobox', { name: 'Add a note' })
+    fireEvent.focus(noteInput)
+    fireEvent.change(noteInput, { target: { value: 'dai' } })
+    fireEvent.keyDown(noteInput, { key: 'ArrowDown' })
+    expect(noteInput).toHaveAttribute('aria-activedescendant')
+
+    fireEvent.change(noteInput, { target: { value: 'daily p' } })
+    expect(noteInput).not.toHaveAttribute('aria-activedescendant')
   })
 
   it('syncs note field when running entry note changes between renders', () => {
