@@ -159,8 +159,9 @@ timer on it. E16 and E17 start and end the session with the row controls of "Tod
 
 ## Startup
 
-The window reports its own start: a spinner while the backend is still starting and the failure of
-the start as content of the window, never as a dialog. The browser fallback has no backend, so the
+The window reports its own start: the turning brand logo with changing loading texts while the
+backend is still starting and the failure of the start as content of the window, never as a dialog.
+The wait is never signalled by a busy mouse cursor. The browser fallback has no backend, so the
 spec stores the failure it should render under `work-time-tracker.startup-failure`. These tests
 start without a registered user and therefore do not use the shared registration setup.
 
@@ -169,6 +170,7 @@ start without a registered user and therefore do not use the shared registration
 | ST1 | `ST1: shows the startup spinner before the application appears` | The application is loaded | The document is opened and the boot markup is read before the application mounts | The window shows "Starting WorkTimeTracker…" and is replaced by the login page |
 | ST2 | `ST2: shows a failed start in the window and recovers on a retry` | The start reports a failed database connection | The user reads the failure and retries after the database is available again | The failure is shown inside the window with no dialog, and the retry reaches the login page |
 | ST3 | `ST3: keeps reporting the failure when the retry fails again` | The start reports a failed database connection | The user retries while the database is still unavailable | The window keeps showing the failure of the retry |
+| ST4 | `ST4: turns the logo while loading instead of showing a busy cursor` | The application is loaded | The boot screen is read before the application mounts | The brand logo turns on the boot screen and the mouse cursor stays the default one |
 
 ## Content Security Policy
 

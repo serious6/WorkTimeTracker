@@ -2,8 +2,9 @@ import { expect, test } from '@playwright/test'
 import { STARTUP_FAILURE_KEY } from '../src/features/storage/local-repository'
 
 /**
- * The window reports what the start is doing: a spinner while it runs and the
- * failure inside the application when it cannot finish. Neither is a dialog.
+ * The window reports what the start is doing: the turning brand logo while it
+ * runs and the failure inside the application when it cannot finish. Neither is
+ * a dialog, and neither switches the mouse cursor to a busy one.
  */
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -60,4 +61,32 @@ test('ST3: keeps reporting the failure when the retry fails again', async ({ pag
   await page.getByRole('button', { name: 'Retry' }).click()
 
   await expect(page.getByRole('alert')).toContainText('the database is still gone')
+})
+
+// #ST4 in docs/e2e-test-cases.md
+test('ST4: turns the logo while loading instead of showing a busy cursor', async ({ page }) => {
+  // The bundle is held back so the state before the mount can be read at all.
+  let release = () => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/assets/*.js', async (route) => {
+    await held
+    await route.continue()
+  })
+
+  const loaded = page.goto('/')
+  const logo = page.locator('[data-boot-logo]')
+  await expect(logo).toBeVisible()
+
+  const loading = await logo.evaluate((element) => ({
+    animation: getComputedStyle(element).animationName,
+    cursor: getComputedStyle(element.ownerDocument.body).cursor,
+  }))
+  expect(loading.animation).toBe('boot-spin')
+  expect(loading.cursor).toBe('auto')
+
+  release()
+  await loaded
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
 })

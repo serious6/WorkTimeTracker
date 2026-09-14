@@ -8,12 +8,28 @@
   </head>
   <body>
     <!--
-      The window is never blank: this spinner is replaced by the application as
-      soon as it mounts, and by the boot error panel when it cannot.
+      The window is never blank: this turning logo is replaced by the
+      application as soon as it mounts, and by the boot error panel when it
+      cannot. It uses the markup and the classes of the loading screen of the
+      application, so the mount causes no visual jump.
     -->
     <div id="root">
       <div class="boot-screen" data-boot-screen role="status" aria-live="polite">
-        <span class="boot-spinner"></span>
+        <span class="boot-logo" data-boot-logo aria-hidden="true">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+          >
+            <path d="M16.7 16.7A8 8 0 1 1 16.7 5.3" />
+            <path d="M11 6v5l3 1.8" />
+            <path d="m15 15.2 2.4 2.6 4.4-5.6" />
+          </svg>
+        </span>
         <p class="boot-text">Starting WorkTimeTracker…</p>
       </div>
     </div>
