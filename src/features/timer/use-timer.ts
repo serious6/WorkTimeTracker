@@ -33,10 +33,12 @@ import {
 import { useTimerStore, type TimerSession, withSegment } from './timer-store'
 
 /**
- * Elapsed time of the running segment. Its stored start may lie in the future,
- * because the session before it rounded up past the clock, so the wall-clock
- * time since the timer was started counts whenever it is longer. Without this
- * the borrowed rounding time would swallow the beginning of the session.
+ * Elapsed time of the running segment. Its stored start may lie up to
+ * MAX_ROUNDING_MS after the moment the timer was started, because the session
+ * before it rounded up past the clock, so the wall-clock time since the start
+ * counts whenever it is longer. Only that much is corrected: a session that
+ * survived a restart carries a start of its own, and an unbounded correction
+ * would book time it never tracked.
  */
 function runningMs(
   running: TimeEntry | undefined,
@@ -46,7 +48,8 @@ function runningMs(
   if (!running) return 0
   const trackedMs = entryDurationMs(running, atMs)
   const startedAtMs = session?.startedAtMs
-  return startedAtMs === undefined ? trackedMs : Math.max(trackedMs, atMs - startedAtMs)
+  if (startedAtMs === undefined) return trackedMs
+  return Math.min(Math.max(trackedMs, atMs - startedAtMs), trackedMs + MAX_ROUNDING_MS)
 }
 
 export type TimerStatus = {
@@ -212,9 +215,15 @@ export function useTimer(now: number) {
         'timer',
         `stop elapsedMs=${elapsedMs} minutes=${minutes} segments=${segments.length}`,
       )
-      /** Nothing to trim while time was tracked means the session is lost silently. */
+      /**
+       * Nothing to trim while time was tracked means the session is lost. The
+       * stop ends it, but reports the loss instead of a stored duration.
+       */
       if (segments.length === 0 && minutes > 0) {
         reportError('timer', new Error(`stop found no segments for ${minutes} rounded minutes`))
+        setSession(null)
+        errorToast('The timer could not be stopped', 'The tracked time was not found')
+        return
       }
       const sessionIds = segments.map((segment) => segment.id)
       let remainingMs = minutes * MINUTE_MS

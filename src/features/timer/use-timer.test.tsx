@@ -225,11 +225,11 @@ describe('useTimer', () => {
     const { createLocalRepository } = await import('@/features/storage/local-repository')
     const project = await seedProject('Website')
     const now = Date.now()
-    // The session before rounded up past the clock, so tracking continues at
-    // that end and the stored start lies in the future.
+    // The session before rounded up past the clock, so the timer was started 40
+    // seconds ago but its entry begins 25 seconds after that moment.
     const running = await seedTimeEntry({
       projectId: project.id,
-      startTime: new Date(now + 25_000),
+      startTime: new Date(now - 15_000),
       endTime: null,
     })
     useTimerStore.setState({
@@ -269,6 +269,7 @@ describe('useTimer', () => {
 
     expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.any(Error))
     expect(vi.mocked(logInfo)).toHaveBeenCalledWith('timer', expect.stringContaining('segments=0'))
+    expect(useTimerStore.getState().session).toBeNull()
   })
 
   it('start tracks again right after a session was rounded up', async () => {
