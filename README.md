@@ -83,7 +83,7 @@ without a changelog section fails the release job.
 
 The `release_type` dispatch input chooses the version prepared on `main` after a successful
 publication: `patch`, `minor`, or `major` opens a protected-branch pull request that bumps the three
-version files, the Cargo lockfile entry, and a new empty changelog section for the next release.
+version files, the Cargo lockfile entry, and notes the bump under `Unreleased` in the changelog.
 Choose `none` for re-runs or hotfix republishes that must leave `main` unchanged.
 
 ### Portable archives

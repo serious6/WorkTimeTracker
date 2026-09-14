@@ -4,7 +4,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const versionPattern = '(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)'
-const versionHeading = new RegExp(`^## \\[${versionPattern}\\] - \\d{4}-\\d{2}-\\d{2}$`)
 
 export function parseVersion(version) {
   const match = new RegExp(`^${versionPattern}$`).exec(String(version ?? ''))
@@ -71,60 +70,51 @@ export function bumpCargoLock(contents, packageName, version) {
   return updated
 }
 
-// Adds the future version section once, keeps an existing section date, and
-// refreshes the `[Unreleased]` and `[version]` compare links every time.
-export function changelogWithSection(contents, version, date = new Date()) {
+// The bump only records the version change under `## [Unreleased]`: releasing
+// turns that section into a dated version heading (CONTRIBUTING.md#changelog),
+// so the script must never create one for an unreleased version.
+export function changelogWithBumpEntry(contents, version) {
   const newline = contents.includes('\r\n') ? '\r\n' : '\n'
-  const heading = `## [${version}] - ${date.toISOString().slice(0, 10)}`
   const lines = contents.split(/\r?\n/)
-  const unreleased = lines.findIndex((line) => line.trim() === '## [Unreleased]')
-  if (unreleased === -1) throw new Error('CHANGELOG.md has no ## [Unreleased] section.')
+  const start = lines.findIndex((line) => line.trim() === '## [Unreleased]')
+  if (start === -1) throw new Error('CHANGELOG.md has no ## [Unreleased] section.')
 
-  const { exists, insert, previousVersion } = changelogSectionPlan(lines, version, unreleased)
-  const body =
-    exists
-      ? contents
-      : [
-          ...trimTrailingBlankLines(lines.slice(0, insert)),
-          '',
-          heading,
-          '',
-          ...trimLeadingBlankLines(lines.slice(insert)),
-        ].join(newline)
+  const end = blockEnd(lines, start + 1, lines.length, /^## /)
+  const entry = `- Bumped the application version to ${version}.`
+  if (lines.slice(start + 1, end).some((line) => line.trim() === entry)) return contents
 
-  return updateChangelogLinks(body, version, previousVersion, newline)
-}
-
-function changelogSectionPlan(lines, version, unreleased) {
-  const section = lines.findIndex((line) => line.startsWith(`## [${version}] - `))
-  if (section !== -1) {
-    return {
-      exists: true,
-      insert: section,
-      previousVersion: nextChangelogVersion(lines, section + 1),
-    }
+  const changed = findHeading(lines, start + 1, end, '### Changed')
+  if (changed !== -1) {
+    const at = lastContentIndex(lines, changed + 1, blockEnd(lines, changed + 1, end, /^#{2,3} /))
+    lines.splice(at, 0, entry)
+    return lines.join(newline)
   }
 
-  const firstVersion = lines.findIndex((line, index) => index > unreleased && versionHeading.test(line))
-  const insert = firstVersion === -1 ? lines.length : firstVersion
-  return {
-    exists: false,
-    insert,
-    previousVersion: changelogVersion(lines[insert]),
-  }
+  const breaking = findHeading(lines, start + 1, end, '### Breaking changes')
+  const at = lastContentIndex(lines, start + 1, breaking === -1 ? end : breaking)
+  lines.splice(at, 0, '', '### Changed', '', entry)
+  return lines.join(newline)
 }
 
-function nextChangelogVersion(lines, start) {
-  for (let index = start; index < lines.length; index += 1) {
-    const version = changelogVersion(lines[index])
-    if (version) return version
+// A section ends at the next heading or at the link definitions of the file.
+function blockEnd(lines, from, limit, headingPattern) {
+  for (let index = from; index < limit; index += 1) {
+    if (headingPattern.test(lines[index]) || /^\[[^\]]+\]:\s/.test(lines[index])) return index
   }
-  return null
+  return limit
 }
 
-function changelogVersion(line) {
-  const match = versionHeading.exec(line ?? '')
-  return match ? `${match[1]}.${match[2]}.${match[3]}` : null
+function findHeading(lines, from, limit, heading) {
+  for (let index = from; index < limit; index += 1) {
+    if (lines[index].trim() === heading) return index
+  }
+  return -1
+}
+
+function lastContentIndex(lines, from, limit) {
+  let index = limit
+  while (index > from && lines[index - 1].trim() === '') index -= 1
+  return index
 }
 
 // The workflow passes `--type` and `--from`; local runs may omit `--from` to
@@ -160,44 +150,6 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function trimTrailingBlankLines(lines) {
-  const copy = [...lines]
-  while (copy.length > 0 && copy.at(-1) === '') copy.pop()
-  return copy
-}
-
-function trimLeadingBlankLines(lines) {
-  const copy = [...lines]
-  while (copy.length > 0 && copy[0] === '') copy.shift()
-  return copy
-}
-
-function updateChangelogLinks(contents, version, previousVersion, newline = '\n') {
-  const unreleased = contents.match(/^\[Unreleased\]:\s*(.+)$/m)?.[1]
-  if (!unreleased) return contents
-
-  const compareBase = unreleased.replace(/\/compare\/.*$/, '/compare')
-  const releaseBase = unreleased.replace(/\/compare\/.*$/, '/releases/tag')
-  const previousTag = previousVersion ? `v${previousVersion}` : null
-  const lines = contents.split(/\r?\n/).filter((line) => {
-    if (line.startsWith('[Unreleased]: ')) return false
-    return !line.startsWith(`[${version}]: `)
-  })
-
-  const linksStart = lines.findIndex((line) => /^\[(Unreleased|\d[^\]]*)\]:\s/.test(line))
-  const linkLines = [
-    `[Unreleased]: ${compareBase}/v${version}...HEAD`,
-    previousTag
-      ? `[${version}]: ${compareBase}/${previousTag}...v${version}`
-      : `[${version}]: ${releaseBase}/v${version}`,
-  ]
-  if (linksStart === -1) {
-    return [...trimTrailingBlankLines(lines), '', ...linkLines, ''].join(newline)
-  }
-  lines.splice(linksStart, 0, ...linkLines)
-  return lines.join(newline)
-}
-
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
@@ -226,7 +178,7 @@ function run(argv) {
     [files.tauriConfig, bumpJson(readFileSync(files.tauriConfig, 'utf8'), version)],
     [files.cargoToml, bumpCargoToml(readFileSync(files.cargoToml, 'utf8'), version)],
     [files.cargoLock, bumpCargoLock(readFileSync(files.cargoLock, 'utf8'), 'work-time-tracker', version)],
-    [files.changelog, changelogWithSection(readFileSync(files.changelog, 'utf8'), version)],
+    [files.changelog, changelogWithBumpEntry(readFileSync(files.changelog, 'utf8'), version)],
   ]
 
   for (const [path, contents] of updates) writeFileSync(path, contents)

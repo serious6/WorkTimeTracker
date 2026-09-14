@@ -4,7 +4,7 @@ import {
   bumpCargoLock,
   bumpCargoToml,
   bumpJson,
-  changelogWithSection,
+  changelogWithBumpEntry,
   nextVersion,
   parseArgs,
   parseVersion,
@@ -181,7 +181,7 @@ describe('metadata rewrites', () => {
   })
 })
 
-describe('changelogWithSection', () => {
+describe('changelogWithBumpEntry', () => {
   const changelog = [
     '# Changelog',
     '',
@@ -189,49 +189,76 @@ describe('changelogWithSection', () => {
     '',
     '## [1.2.3] - 2026-09-14',
     '',
-    '- Previous release.',
+    '### Changed',
+    '',
+    '- Bumped the application version to 1.2.3.',
     '',
     '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD',
     '[1.2.3]: https://github.com/serious6/WorkTimeTracker/releases/tag/v1.2.3',
     '',
   ].join('\n')
 
-  test('adds exactly one new empty section after Unreleased', () => {
-    const updated = changelogWithSection(changelog, '1.2.4', new Date('2026-09-15T12:00:00Z'))
+  test('records the bump under Unreleased instead of dating a new section', () => {
+    const updated = changelogWithBumpEntry(changelog, '1.2.4')
 
-    expect(updated).toContain('## [Unreleased]\n\n## [1.2.4] - 2026-09-15\n\n## [1.2.3] - 2026-09-14')
-    expect(updated.match(/^## \[1\.2\.4\]/gm)).toHaveLength(1)
-    expect(updated).toContain('[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.4...HEAD')
-    expect(updated).toContain('[1.2.4]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...v1.2.4')
+    expect(updated).toContain(
+      '## [Unreleased]\n\n### Changed\n\n- Bumped the application version to 1.2.4.\n\n## [1.2.3] - 2026-09-14',
+    )
+    expect(updated).not.toMatch(/^## \[1\.2\.4\]/m)
+    expect(updated).toContain('[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD')
   })
 
-  test('does not add a duplicate when the version section already exists', () => {
-    const once = changelogWithSection(changelog, '1.2.4', new Date('2026-09-15T12:00:00Z'))
-
-    expect(changelogWithSection(once, '1.2.4', new Date('2026-09-16T12:00:00Z'))).toBe(once)
-  })
-
-  test('refreshes links when the version section already exists', () => {
-    const stale = [
+  test('appends to an existing Changed subsection and keeps later subsections', () => {
+    const withEntries = [
       '# Changelog',
       '',
       '## [Unreleased]',
       '',
-      '## [1.2.4] - 2026-09-15',
+      '### Changed',
+      '',
+      '- Something changed.',
+      '',
+      '### Breaking changes',
+      '',
+      'None.',
       '',
       '## [1.2.3] - 2026-09-14',
       '',
-      '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD',
-      '[1.2.3]: https://github.com/serious6/WorkTimeTracker/releases/tag/v1.2.3',
+    ].join('\n')
+
+    expect(changelogWithBumpEntry(withEntries, '1.2.4')).toContain(
+      '### Changed\n\n- Something changed.\n- Bumped the application version to 1.2.4.\n\n### Breaking changes',
+    )
+  })
+
+  test('adds the Changed subsection before Breaking changes', () => {
+    const withBreaking = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Added',
+      '',
+      '- Something new.',
+      '',
+      '### Breaking changes',
+      '',
+      'None.',
       '',
     ].join('\n')
 
-    const updated = changelogWithSection(stale, '1.2.4', new Date('2026-09-16T12:00:00Z'))
+    expect(changelogWithBumpEntry(withBreaking, '1.2.4')).toContain(
+      '- Something new.\n\n### Changed\n\n- Bumped the application version to 1.2.4.\n\n### Breaking changes',
+    )
+  })
 
-    expect(updated).toContain('## [1.2.4] - 2026-09-15')
-    expect(updated).not.toContain('## [1.2.4] - 2026-09-16')
-    expect(updated.match(/^## \[1\.2\.4\]/gm)).toHaveLength(1)
-    expect(updated).toContain('[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.4...HEAD')
-    expect(updated).toContain('[1.2.4]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...v1.2.4')
+  test('does not add a duplicate entry when it is already there', () => {
+    const once = changelogWithBumpEntry(changelog, '1.2.4')
+
+    expect(changelogWithBumpEntry(once, '1.2.4')).toBe(once)
+  })
+
+  test('rejects a changelog without an Unreleased section', () => {
+    expect(() => changelogWithBumpEntry('# Changelog\n', '1.2.4')).toThrow(/no ## \[Unreleased\] section/)
   })
 })
