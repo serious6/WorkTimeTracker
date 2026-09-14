@@ -596,6 +596,35 @@ describe('useTimer – error paths', () => {
     vi.restoreAllMocks()
   })
 
+  it('setNote shows a destructive toast when the note cannot be saved', async () => {
+    const { createLocalRepository } = await import('@/features/storage/local-repository')
+    const { useToastStore } = await import('@/components/ui/toast-store')
+    const project = await seedProject('Website')
+    await seedTimeEntry({
+      projectId: project.id,
+      startTime: new Date(Date.now() - 30_000),
+      endTime: null,
+    })
+    useTimerStore.setState({ session: { projectId: project.id, carriedMs: 0, paused: false } })
+
+    const { result } = renderHook(() => useTimer(Date.now()), { wrapper })
+    await waitFor(() => expect(result.current.status.running).toBeDefined())
+
+    vi.spyOn(createLocalRepository(), 'updateTimeEntryNote').mockRejectedValueOnce(
+      new Error('db error'),
+    )
+    useToastStore.setState({ toasts: [] })
+
+    // The note is saved on blur, so the failure must not escape unhandled.
+    await act(async () => {
+      await result.current.setNote('my note')
+    })
+
+    expect(useToastStore.getState().toasts.some((t) => t.variant === 'destructive')).toBe(true)
+    expect(vi.mocked(reportError)).toHaveBeenCalledWith('timer', expect.anything())
+    vi.restoreAllMocks()
+  })
+
   it('resume shows a destructive toast when createTimeEntry fails', async () => {
     const { createLocalRepository } = await import('@/features/storage/local-repository')
     const { useToastStore } = await import('@/components/ui/toast-store')
