@@ -239,5 +239,6 @@ of the window and written to the log file, with the budget named on a run that m
 **Consequences:** No startup step may block the setup hook; anything that can wait belongs on the
 background start, which also has to settle `StartupState` when it panics, or the window would wait
 forever. The measurement is reproducible on every platform from the log file, and the boot budget is
-held by the tests of `boot.rs`, `opening_the_database_does_not_hold_up_the_setup`, and the e2e case
-ST5.
+held by the tests of `boot.rs`, `opening_the_database_does_not_hold_up_the_setup`, and native e2e
+case ST6, which checks both spawn-to-report and backend elapsed time on Linux, macOS, and Windows.
+Browser case ST5 covers navigation-to-first-contentful-paint only.
