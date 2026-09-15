@@ -4,7 +4,6 @@ import { addDays, startOfDay } from '@/lib/date'
 import {
   absenceAuditRecords,
   auditListRange,
-  auditPageRange,
   auditTrailPage,
   AUDIT_PAGE_SIZE,
   AUDIT_RANGES,
@@ -326,15 +325,6 @@ describe('audit paging', () => {
     }))
   }
 
-  it('reads one row beyond the pages already shown', () => {
-    expect(auditPageRange(undefined, 1)).toEqual({ limit: AUDIT_PAGE_SIZE + 1 })
-    expect(auditPageRange({ from: '2026-03-01', to: '2026-03-16' }, 3)).toEqual({
-      from: '2026-03-01',
-      to: '2026-03-16',
-      limit: 3 * AUDIT_PAGE_SIZE + 1,
-    })
-  })
-
   it('shows the first 50 records and offers the next page', () => {
     const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE + 1), [], 1)
 
@@ -354,7 +344,7 @@ describe('audit paging', () => {
   })
 
   it('ends the list when no record and no trail reaches beyond the page', () => {
-    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE), [], 1, [AUDIT_PAGE_SIZE, 0])
+    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE), [], 1, false)
 
     expect(page.visible).toHaveLength(AUDIT_PAGE_SIZE)
     expect(page.hasMore).toBe(false)
@@ -363,9 +353,7 @@ describe('audit paging', () => {
   it('offers the next page when a trail still holds older records', () => {
     // The type filter hides the rows that were read beyond the page, the trail
     // that filled its window still proves that older records exist.
-    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE), ['absence'], 1, [
-      AUDIT_PAGE_SIZE + 1,
-    ])
+    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE), ['absence'], 1, true)
 
     expect(page.visible.every((record) => record.type === 'absence')).toBe(true)
     expect(page.hasMore).toBe(true)

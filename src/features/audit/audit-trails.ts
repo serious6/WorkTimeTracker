@@ -384,29 +384,18 @@ export function securityAuditRecords(
 /** Records the audit view shows before the reader asks for the next page. */
 export const AUDIT_PAGE_SIZE = 50
 
-/**
- * The window a page of the audit view reads: the bounds of the period plus one
- * row more than the pages read so far, so a trail that still holds older
- * records is recognizable without reading them.
- */
-export function auditPageRange(range: ListRange | undefined, pages: number): ListRange {
-  return { ...range, limit: pages * AUDIT_PAGE_SIZE + 1 }
-}
-
 /** The records a page shows and whether a further page can exist. */
 export type AuditTrailPage = { visible: AuditTrailRecord[]; hasMore: boolean }
 
 /**
- * Cuts the merged records down to the pages read so far. `trailLengths` are the
- * row counts the trails answered with: a trail that filled its window holds
- * older records, even when the type filter hides all of the rows that were read
- * beyond the page.
+ * Cuts the merged records down to the pages read so far. Unexhausted sources
+ * relevant to the type filter can still hold older matching records.
  */
 export function auditTrailPage(
   records: AuditTrailRecord[],
   types: AuditTrailType[],
   pages: number,
-  trailLengths: number[] = [],
+  hasOlderRecords = false,
 ): AuditTrailPage {
   // No selection reads as "all types", so the list is never silently empty.
   const matching = records.filter(
@@ -415,7 +404,7 @@ export function auditTrailPage(
   const limit = pages * AUDIT_PAGE_SIZE
   return {
     visible: matching.slice(0, limit),
-    hasMore: matching.length > limit || trailLengths.some((length) => length > limit),
+    hasMore: matching.length > limit || hasOlderRecords,
   }
 }
 

@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -59,9 +58,6 @@ export function useAbsenceAudits(range?: ListRange) {
       range
         ? getRepository().listAbsenceAudits(range)
         : listAllAuditPages((page) => getRepository().listAbsenceAudits(page)),
-    // A wider window keeps the records read so far on screen, so the list of
-    // the audit view grows instead of being replaced.
-    placeholderData: keepPreviousData,
   })
 }
 

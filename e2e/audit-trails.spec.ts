@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { securityAuditsKey, SEEDED_AUTH_USER_ID } from '../src/test/auth-fixture'
+import { AUTH_STORAGE_KEYS, securityAuditsKey, SEEDED_AUTH_USER_ID } from '../src/test/auth-fixture'
 import {
   addEntry,
   addOvertime,
@@ -272,4 +272,32 @@ test('AT9: the trail shows 50 records and loads the rest on demand', async ({ pa
 
   await expect(auditRows(page)).toHaveCount(50)
   await expect(page.getByRole('button', { name: 'Load more' })).toBeVisible()
+})
+
+// AT10 in docs/e2e-test-cases.md
+test('AT10: a failed next page retains the records and can be retried', async ({ page }) => {
+  await page.clock.install({ time: new Date(`${AUDIT_DAY}T12:00:00`) })
+  await seedConfigurationTrail(page, 60)
+  await gotoPage(page, 'Audit Trails')
+  await expect(auditRows(page)).toHaveCount(50)
+  const original = await auditRows(page).allTextContents()
+  await page.evaluate((sessionsKey) => {
+    const setItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function (key, value) {
+      if (this === localStorage && key === sessionsKey) {
+        Storage.prototype.setItem = setItem
+        throw new Error('storage unavailable')
+      }
+      setItem.call(this, key, value)
+    }
+  }, AUTH_STORAGE_KEYS.sessions)
+
+  await page.getByRole('button', { name: 'Load more' }).click()
+
+  await expect(page.getByText('The next audit records could not be loaded.')).toBeVisible()
+  await expect(auditRows(page)).toHaveText(original)
+  await page.getByRole('button', { name: 'Load more' }).click()
+  await expect(auditRows(page)).toHaveCount(60)
+  await expect(page.getByText('The next audit records could not be loaded.')).toHaveCount(0)
+  await expect(page.getByText('No further audit records.')).toBeVisible()
 })

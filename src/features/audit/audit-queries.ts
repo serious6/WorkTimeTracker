@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
 import { listAllAuditPages, type ListRange } from '@/features/storage/list-range'
 import { timeEntryKeys } from '@/features/time-entries/time-entry-keys'
@@ -39,9 +39,6 @@ export function useTimeEntryAudits(range?: ListRange) {
       range
         ? getRepository().listTimeEntryAudits(range)
         : listAllAuditPages((page) => getRepository().listTimeEntryAudits(page)),
-    // A wider window keeps the records read so far on screen, so the list of
-    // the audit view grows instead of being replaced.
-    placeholderData: keepPreviousData,
   })
 }
 
@@ -56,8 +53,5 @@ export function useSecurityAudits(range?: ListRange) {
       range
         ? getRepository().listSecurityAudits(range)
         : listAllAuditPages((page) => getRepository().listSecurityAudits(page)),
-    // A wider window keeps the records read so far on screen, so the list of
-    // the audit view grows instead of being replaced.
-    placeholderData: keepPreviousData,
   })
 }

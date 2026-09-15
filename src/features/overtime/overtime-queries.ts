@@ -1,5 +1,4 @@
 import {
-  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -40,9 +39,6 @@ export function useOvertimeAudits(range?: ListRange) {
       range
         ? getRepository().listOvertimeAudits(range)
         : listAllAuditPages((page) => getRepository().listOvertimeAudits(page)),
-    // A wider window keeps the records read so far on screen, so the list of
-    // the audit view grows instead of being replaced.
-    placeholderData: keepPreviousData,
   })
 }
 

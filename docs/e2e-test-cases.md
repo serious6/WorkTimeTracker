@@ -132,6 +132,7 @@ timer on it. E16 and E17 start and end the session with the row controls of "Tod
 | AT7 | `AT7: Audit Trails is read-only and exposes no write controls` | Audit records exist for each trail type | The user opens Audit Trails | The main page exposes no create, add, edit, delete or save button |
 | AT8 | `AT8: audit records stay isolated after switching users` | User A has audit records | The user switches to and registers User B | User B's Audit Trails page shows only User B's registration and does not show User A's records |
 | AT9 | `AT9: the trail shows 50 records and loads the rest on demand` | A trail of 61 records exists for the user | The user opens Audit Trails, presses "Load more" and then changes a type filter | The list starts with 50 records, "Load more" appends the remaining ones and is replaced by the end-of-list hint, and the filter change restarts the list at 50 records |
+| AT10 | `AT10: a failed next page retains the records and can be retried` | The first 50 audit records are loaded | The next storage read fails, then the user retries "Load more" | The original rows remain beside the error, and retry appends the remaining records |
 
 ## Reports and Settings
 

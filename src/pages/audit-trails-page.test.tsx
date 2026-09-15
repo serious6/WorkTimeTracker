@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { AUDIT_PAGE_SIZE } from '@/features/audit/audit-trails'
 import { createLocalRepository } from '@/features/storage/local-repository'
+import { filterPointRange, listLimit } from '@/features/storage/list-range'
 import { toDateKey } from '@/lib/date'
 import { AppError } from '@/lib/errors'
 import {
@@ -82,8 +83,7 @@ function mockOvertimeTrail(count: number) {
   return vi
     .spyOn(createLocalRepository(), 'listOvertimeAudits')
     .mockImplementation(async (range) => {
-      const before = range?.to ? trail.filter((audit) => audit.recordedAt < range.to!) : trail
-      return before.slice(0, range?.limit ?? before.length)
+      return filterPointRange(trail, range, (audit) => audit.recordedAt).slice(0, listLimit(range))
     })
 }
 
@@ -223,7 +223,7 @@ describe('AuditTrailsPage', () => {
   })
 
   test('shows the first page of 50 records and appends the next page on demand', async () => {
-    mockOvertimeTrail(120)
+    const trail = mockOvertimeTrail(120)
 
     renderWithProviders(<AuditTrailsPage />)
     await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
@@ -239,6 +239,11 @@ describe('AuditTrailsPage', () => {
     )
     // The first page stays on screen, the second one is appended below it.
     expect(records().getAllByRole('listitem')[0].textContent).toBe(newest)
+    const firstRange = trail.mock.calls[0][0]
+    const nextRange = trail.mock.calls[1][0]
+    expect(nextRange?.from).toBe(firstRange?.from)
+    expect(nextRange?.to).not.toBe(firstRange?.to)
+    expect(nextRange?.limit).toBe(firstRange?.limit)
   })
 
   test('ends the list without a button once no further record exists', async () => {
@@ -300,10 +305,48 @@ describe('AuditTrailsPage', () => {
     )
   })
 
+  test.each(['period', 'type'])('ignores a completed load after the %s filter changes', async (filter) => {
+    const trail = mockOvertimeTrail(120)
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    let release = () => {}
+    trail.mockImplementationOnce(
+      () => new Promise((resolve) => (release = () => resolve([]))),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await screen.findByRole('button', { name: 'Loading more…' })
+
+    if (filter === 'period') {
+      fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'always' } })
+    } else {
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
+    }
+    release()
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Loading more…' })).not.toBeInTheDocument(),
+    )
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    expect(screen.queryByText('No further audit records.')).not.toBeInTheDocument()
+  })
+
+  test('does not offer pages from trails unrelated to the selected types', async () => {
+    mockOvertimeTrail(120)
+    await createLocalRepository().createAbsence({ type: 'vacation', date: toDateKey(new Date()) })
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Absence' }))
+
+    expect(records().getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+  })
+
   test('reports a failed next page without losing the records', async () => {
     const trail = mockOvertimeTrail(120)
     renderWithProviders(<AuditTrailsPage />)
     await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    const original = records().getAllByRole('listitem').map((row) => row.textContent)
     trail.mockRejectedValueOnce(new AppError('database', 'connection lost'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
@@ -311,6 +354,37 @@ describe('AuditTrailsPage', () => {
     expect(
       await screen.findByText('The next audit records could not be loaded.'),
     ).toBeInTheDocument()
+    expect(records().getAllByRole('listitem').map((row) => row.textContent)).toEqual(original)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() =>
+      expect(records().getAllByRole('listitem').length).toBe(2 * AUDIT_PAGE_SIZE),
+    )
+    expect(screen.queryByText('The next audit records could not be loaded.')).not.toBeInTheDocument()
+  })
+
+  test.each([
+    'listTimeEntryAudits',
+    'listAbsenceAudits',
+    'listOvertimeAudits',
+    'listSecurityAudits',
+  ] as const)('hides the previous period while %s loads the new period', async (method) => {
+    await seedEveryTrail()
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(5))
+    let release = () => {}
+    vi.spyOn(createLocalRepository(), method).mockImplementationOnce(
+      () => new Promise<never[]>((resolve) => (release = () => resolve([]))),
+    )
+
+    fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'always' } })
+
+    expect(screen.getByText('Loading the audit trails…')).toBeInTheDocument()
+    expect(screen.queryByTestId('audit-records')).not.toBeInTheDocument()
+    release()
+    await waitFor(() =>
+      expect(screen.queryByText('Loading the audit trails…')).not.toBeInTheDocument(),
+    )
   })
 
   test('shows a load error instead of the empty state', async () => {

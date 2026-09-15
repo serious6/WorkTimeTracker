@@ -16,7 +16,8 @@ as the release notes, so a version without a section here cannot be released. Se
 - The Audit Trails page no longer reads and renders the whole history at once: it shows the newest
   50 records of the selected period and appends the next 50 with a "Load more" button, which is
   replaced by an end-of-list hint once the trail is exhausted. Changing the period or the trail type
-  restarts the list at the first 50 records.
+  restarts the list at the first 50 records. Cursor paging reaches beyond 5,000 records, and a failed
+  next page keeps the loaded records visible for a retry.
 
 ## [0.2.2] - 2026-09-15
 
