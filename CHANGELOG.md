@@ -11,6 +11,13 @@ as the release notes, so a version without a section here cannot be released. Se
 
 ## [Unreleased]
 
+### Changed
+
+- The Audit Trails page no longer reads and renders the whole history at once: it shows the newest
+  50 records of the selected period and appends the next 50 with a "Load more" button, which is
+  replaced by an end-of-list hint once the trail is exhausted. Changing the period or the trail type
+  restarts the list at the first 50 records.
+
 ### Fixed
 
 - A session that is started right after a rounded up one is no longer discarded: the timer measures

@@ -40,7 +40,7 @@ test('AD1: deleting the account erases its data and all of its audit trails', as
   await addOvertime(page, { kind: 'adjustment', overtime: '30m', effectiveDate: dateKey(0) })
   await expect(page.getByText('Overtime saved')).toBeVisible()
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('5 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 5 records of the selected period.')).toBeVisible()
 
   const confirmation = await openDeleteDialog(page)
   const confirm = confirmation.getByRole('button', { name: 'Delete account' })
@@ -62,7 +62,7 @@ test('AD1: deleting the account erases its data and all of its audit trails', as
   await gotoPage(page, 'Projects')
   await expect(page.getByText('Create your first project to start tracking time.')).toBeVisible()
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('1 record in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 1 record of the selected period.')).toBeVisible()
   await expect(page.getByRole('listitem').filter({ hasText: PROJECT })).toHaveCount(0)
 })
 

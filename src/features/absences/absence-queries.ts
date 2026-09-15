@@ -1,4 +1,10 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
 import { listAllAuditPages, listAllPages, type ListRange } from '@/features/storage/list-range'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
@@ -53,6 +59,9 @@ export function useAbsenceAudits(range?: ListRange) {
       range
         ? getRepository().listAbsenceAudits(range)
         : listAllAuditPages((page) => getRepository().listAbsenceAudits(page)),
+    // A wider window keeps the records read so far on screen, so the list of
+    // the audit view grows instead of being replaced.
+    placeholderData: keepPreviousData,
   })
 }
 

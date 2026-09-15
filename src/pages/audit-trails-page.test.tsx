@@ -1,8 +1,9 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { MAX_LIST_LIMIT } from '@/features/storage/list-range'
+import { AUDIT_PAGE_SIZE } from '@/features/audit/audit-trails'
 import { createLocalRepository } from '@/features/storage/local-repository'
 import { toDateKey } from '@/lib/date'
+import { AppError } from '@/lib/errors'
 import {
   atTime,
   renderWithProviders,
@@ -56,6 +57,34 @@ function ageAudits(userId: number, recordedAt: string): void {
     recordedAt,
   }))
   globalThis.localStorage.setItem(securityKey, JSON.stringify(audits))
+}
+
+/**
+ * Answers a trail of `count` overtime records, newest first, that honours the
+ * window of the caller: a backend never returns more rows than the limit.
+ */
+function mockOvertimeTrail(count: number) {
+  const trail = Array.from({ length: count }, (_, index) => ({
+    id: count - index,
+    overtimeEntryId: 1,
+    action: 'created' as const,
+    actor: 'tester@example.com',
+    oldValue: null,
+    newValue: JSON.stringify({
+      effectiveDate: '2026-03-15',
+      minutes: 60,
+      kind: 'adjustment',
+      origin: 'manual',
+      note: null,
+    }),
+    recordedAt: new Date(Date.now() - index * 60_000).toISOString(),
+  }))
+  return vi
+    .spyOn(createLocalRepository(), 'listOvertimeAudits')
+    .mockImplementation(async (range) => {
+      const before = range?.to ? trail.filter((audit) => audit.recordedAt < range.to!) : trail
+      return before.slice(0, range?.limit ?? before.length)
+    })
 }
 
 function daysAgo(days: number): string {
@@ -193,54 +222,96 @@ describe('AuditTrailsPage', () => {
     ).toBeInTheDocument()
   })
 
-  test('reads every page of a trail that exceeds one page in the always window', async () => {
-    // A backend answers at most one page, so the oldest record only shows up
-    // once the view asks for the records before the page it already read.
-    const oldest = {
-      id: MAX_LIST_LIMIT + 1,
-      overtimeEntryId: 1,
-      action: 'created' as const,
-      actor: 'pager@example.com',
-      oldValue: null,
-      newValue: JSON.stringify({
-        effectiveDate: '2020-01-02',
-        minutes: 60,
-        kind: 'adjustment',
-        origin: 'manual',
-        note: null,
-      }),
-      recordedAt: '2020-01-02T00:00:00.000Z',
-    }
-    // The first page ends inside a pair of records of the same instant, the
-    // collision the page bound has to survive.
-    const trail = [
-      ...Array.from({ length: MAX_LIST_LIMIT }, (_, index) => ({
-        ...oldest,
-        id: MAX_LIST_LIMIT - index,
-        // The two oldest rows of the page share their instant.
-        recordedAt: new Date(
-          Date.UTC(2020, 0, 3) + Math.max(MAX_LIST_LIMIT - index, 2) * 60_000,
-        ).toISOString(),
-      })),
-      oldest,
-    ]
-    const asked: (string | undefined)[] = []
-    vi.spyOn(createLocalRepository(), 'listOvertimeAudits').mockImplementation(async (range) => {
-      asked.push(range?.to)
-      const before = range?.to ? trail.filter((audit) => audit.recordedAt < range.to!) : trail
-      return before.slice(0, range?.limit ?? MAX_LIST_LIMIT)
-    })
+  test('shows the first page of 50 records and appends the next page on demand', async () => {
+    mockOvertimeTrail(120)
 
     renderWithProviders(<AuditTrailsPage />)
-    await screen.findByRole('heading', { name: 'Audit Trails' })
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    expect(screen.getByText(`Showing ${AUDIT_PAGE_SIZE} records of the selected period.`))
+      .toBeInTheDocument()
+
+    const newest = records().getAllByRole('listitem')[0].textContent
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    await waitFor(() =>
+      expect(records().getAllByRole('listitem').length).toBe(2 * AUDIT_PAGE_SIZE),
+    )
+    // The first page stays on screen, the second one is appended below it.
+    expect(records().getAllByRole('listitem')[0].textContent).toBe(newest)
+  })
+
+  test('ends the list without a button once no further record exists', async () => {
+    // The 120 overtime records plus the registration of the user.
+    mockOvertimeTrail(120)
+
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() =>
+      expect(records().getAllByRole('listitem').length).toBe(2 * AUDIT_PAGE_SIZE),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(121))
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+    expect(screen.getByText('No further audit records.')).toBeInTheDocument()
+  })
+
+  test('restarts the paging at the first page when a filter changes', async () => {
+    mockOvertimeTrail(120)
+
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() =>
+      expect(records().getAllByRole('listitem').length).toBe(2 * AUDIT_PAGE_SIZE),
+    )
+
     fireEvent.change(screen.getByLabelText('Period'), { target: { value: 'always' } })
 
-    await waitFor(() => expect(asked.length).toBeGreaterThan(1))
-    await waitFor(() =>
-      expect(records().getAllByRole('listitem').length).toBe(MAX_LIST_LIMIT + 1),
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Overtime' }))
+
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeInTheDocument()
+  })
+
+  test('announces the pending next page on the button', async () => {
+    const trail = mockOvertimeTrail(120)
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    let release = () => {}
+    trail.mockImplementationOnce(
+      () => new Promise((resolve) => (release = () => resolve([]))),
     )
-  }, 30_000)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByRole('button', { name: 'Loading more…' })).toBeDisabled()
+    // The records read so far stay on screen while the next page is read.
+    expect(records().getAllByRole('listitem').length).toBeGreaterThanOrEqual(AUDIT_PAGE_SIZE)
+
+    release()
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Loading more…' })).not.toBeInTheDocument(),
+    )
+  })
+
+  test('reports a failed next page without losing the records', async () => {
+    const trail = mockOvertimeTrail(120)
+    renderWithProviders(<AuditTrailsPage />)
+    await waitFor(() => expect(records().getAllByRole('listitem').length).toBe(AUDIT_PAGE_SIZE))
+    trail.mockRejectedValueOnce(new AppError('database', 'connection lost'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(
+      await screen.findByText('The next audit records could not be loaded.'),
+    ).toBeInTheDocument()
+  })
 
   test('shows a load error instead of the empty state', async () => {
     vi.spyOn(createLocalRepository(), 'listTimeEntryAudits').mockRejectedValueOnce(

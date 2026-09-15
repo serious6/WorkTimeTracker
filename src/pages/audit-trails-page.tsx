@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox, Field, Select } from '@/components/ui/input'
 import { useAbsenceAudits } from '@/features/absences/absence-queries'
@@ -7,6 +8,8 @@ import { useSecurityAudits, useTimeEntryAudits } from '@/features/audit/audit-qu
 import {
   absenceAuditRecords,
   auditListRange,
+  auditPageRange,
+  auditTrailPage,
   AUDIT_RANGES,
   AUDIT_TRAIL_ACTION_LABELS,
   AUDIT_TRAIL_TYPES,
@@ -31,7 +34,9 @@ import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 export function AuditTrailsPage() {
   const [rangeId, setRangeId] = useState<AuditRangeId>(DEFAULT_AUDIT_RANGE)
   const [types, setTypes] = useState<AuditTrailType[]>([])
-  const range = useMemo(() => auditListRange(rangeId), [rangeId])
+  // Every filter change restarts the paging at the first page.
+  const [pages, setPages] = useState(1)
+  const range = useMemo(() => auditPageRange(auditListRange(rangeId), pages), [pages, rangeId])
   const timeEntryAudits = useTimeEntryAudits(range)
   const absenceAudits = useAbsenceAudits(range)
   const overtimeAudits = useOvertimeAudits(range)
@@ -44,24 +49,38 @@ export function AuditTrailsPage() {
 
   // The project names label the time entry records, so a failed or pending
   // project query would present every project as deleted.
-  const queries = [timeEntryAudits, absenceAudits, overtimeAudits, securityAudits, projectQuery]
+  const trailQueries = [timeEntryAudits, absenceAudits, overtimeAudits, securityAudits]
+  const queries = [...trailQueries, projectQuery]
   const isError = queries.some((query) => query.isError)
   const isPending = queries.some((query) => query.isPending)
+  // A wider window keeps the records of the previous one on screen, so the
+  // pending page is announced on the button instead of emptying the list.
+  const isLoadingMore = trailQueries.some((query) => query.isFetching)
+  const trails = trailQueries.map((query) => query.data ?? [])
   const records = mergeAuditRecords([
     timeEntryAuditRecords(timeEntryAudits.data ?? [], projectName),
     absenceAuditRecords(absenceAudits.data ?? []),
     overtimeAuditRecords(overtimeAudits.data ?? []),
     securityAuditRecords(securityAudits.data ?? [], projectName),
   ])
-  // No selection reads as "all types", so the list is never silently empty.
-  const visible = records.filter(
-    (record) => types.length === 0 || types.includes(record.type),
+  const { visible, hasMore } = auditTrailPage(
+    records,
+    types,
+    pages,
+    trails.map((trail) => trail.length),
   )
 
-  const toggleType = (type: AuditTrailType) =>
+  const toggleType = (type: AuditTrailType) => {
+    setPages(1)
     setTypes((current) =>
       current.includes(type) ? current.filter((value) => value !== type) : [...current, type],
     )
+  }
+
+  const selectRange = (id: AuditRangeId) => {
+    setPages(1)
+    setRangeId(id)
+  }
 
   return (
     <div className="space-y-5">
@@ -80,13 +99,13 @@ export function AuditTrailsPage() {
             <p className="text-sm text-muted-foreground">
               {isPending
                 ? 'Reading the audit trails…'
-                : `${visible.length} record${visible.length === 1 ? '' : 's'} in the selected period.`}
+                : `Showing ${visible.length} record${visible.length === 1 ? '' : 's'} of the selected period.`}
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-4">
             <Field className="sm:w-48" label="Period">
               <Select
-                onChange={(event) => setRangeId(event.target.value as AuditRangeId)}
+                onChange={(event) => selectRange(event.target.value as AuditRangeId)}
                 value={rangeId}
               >
                 {AUDIT_RANGES.map((option) => (
@@ -113,7 +132,11 @@ export function AuditTrailsPage() {
         </CardHeader>
         <CardContent>
           {isError ? (
-            <p className="py-6 text-sm text-destructive">The audit trails could not be loaded.</p>
+            <p className="py-6 text-sm text-destructive">
+              {pages > 1
+                ? 'The next audit records could not be loaded.'
+                : 'The audit trails could not be loaded.'}
+            </p>
           ) : isPending ? (
             <p className="py-6 text-sm text-muted-foreground">Loading the audit trails…</p>
           ) : visible.length === 0 ? (
@@ -146,6 +169,21 @@ export function AuditTrailsPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {!isError && !isPending && (hasMore || isLoadingMore) && (
+            <div className="pt-4">
+              <Button
+                aria-busy={isLoadingMore}
+                disabled={isLoadingMore}
+                onClick={() => setPages((current) => current + 1)}
+                variant="outline"
+              >
+                {isLoadingMore ? 'Loading more…' : 'Load more'}
+              </Button>
+            </div>
+          )}
+          {!isError && !isPending && !isLoadingMore && !hasMore && pages > 1 && (
+            <p className="pt-4 text-sm text-muted-foreground">No further audit records.</p>
           )}
         </CardContent>
       </Card>
