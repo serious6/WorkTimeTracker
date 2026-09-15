@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, open, rm } from 'node:fs/promises'
 import { createServer } from 'node:net'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 
@@ -49,58 +49,64 @@ export async function measureStartup({
   timeoutMs = REPORT_TIMEOUT_MS,
   verify = () => {},
 }) {
-  await stat(log).then(
-    () => { throw new Error('Startup log already exists; refusing a warm or stale measurement') },
-    (error) => { if (error.code !== 'ENOENT') throw error },
-  )
-  // Start before spawn, not on its "spawn" event or the first backend message.
-  const started = performance.now()
-  const child = spawn(executable, args, {
-    cwd: directory,
-    env,
-    detached: process.platform !== 'win32',
-    stdio: ['ignore', 'ignore', 'pipe'],
-  })
-  let failure
-  let stderr = ''
-  child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-4096) })
-  const diagnostic = () => {
-    // Only classify known failures; arbitrary stderr can contain credentials or paths.
-    if (/cannot open display|failed to open display/i.test(stderr)) return ' (display unavailable)'
-    if (/DRI3|DMA-BUF/i.test(stderr)) {
-      return ' (WebKit graphics unavailable; Xvfb needs WEBKIT_DISABLE_DMABUF_RENDERER=1)'
+  await mkdir(dirname(log), { recursive: true })
+  // Reserve a fresh log atomically and retain its identity while the native logger appends.
+  const logFile = await open(log, 'wx+', 0o600).catch((error) => {
+    if (error.code === 'EEXIST') {
+      throw new Error('Startup log already exists; refusing a warm or stale measurement')
     }
-    if (/error while loading shared libraries|Library not loaded/i.test(stderr)) {
-      return ' (native shared library unavailable)'
-    }
-    if (/WebView2/i.test(stderr)) return ' (WebView2 reported a startup failure)'
-    return ''
-  }
-  child.once('error', () => { failure = new Error('Could not launch native process') })
-  child.once('exit', (code, signal) => {
-    failure = new Error(`Native process exited before the loading-page report (${code ?? signal})`)
+    throw error
   })
-  const closed = new Promise((resolveClosed) => child.once('close', resolveClosed))
   try {
-    while (performance.now() - started < timeoutMs) {
-      if (failure) throw new Error(failure.message + diagnostic())
-      const contents = await readFile(log, 'utf8').catch((error) => {
-        if (error.code !== 'ENOENT') throw error
-        return ''
-      })
-      const match = contents.match(
-        /(?:^|\n)[^\n]* INFO \[boot\] loading page shown after (\d+) ms(?:, [^\n]*)?\r?\n/,
-      )
-      if (match) {
-        const result = { observedMs: performance.now() - started, backendMs: Number(match[1]) }
-        await verify(result)
-        return result
+    // Start before spawn, not on its "spawn" event or the first backend message.
+    const started = performance.now()
+    const child = spawn(executable, args, {
+      cwd: directory,
+      env,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    let failure
+    let stderr = ''
+    child.stderr.on('data', (chunk) => { stderr = (stderr + chunk.toString()).slice(-4096) })
+    const diagnostic = () => {
+      // Only classify known failures; arbitrary stderr can contain credentials or paths.
+      if (/cannot open display|failed to open display/i.test(stderr)) return ' (display unavailable)'
+      if (/DRI3|DMA-BUF/i.test(stderr)) {
+        return ' (WebKit graphics unavailable; Xvfb needs WEBKIT_DISABLE_DMABUF_RENDERER=1)'
       }
-      await delay(10)
+      if (/error while loading shared libraries|Library not loaded/i.test(stderr)) {
+        return ' (native shared library unavailable)'
+      }
+      if (/WebView2/i.test(stderr)) return ' (WebView2 reported a startup failure)'
+      return ''
     }
-    throw new Error(`No loading-page report within ${timeoutMs} ms of process launch${diagnostic()}`)
+    child.once('error', () => { failure = new Error('Could not launch native process') })
+    child.once('exit', (code, signal) => {
+      failure = new Error(`Native process exited before the loading-page report (${code ?? signal})`)
+    })
+    const closed = new Promise((resolveClosed) => child.once('close', resolveClosed))
+    try {
+      let contents = ''
+      while (performance.now() - started < timeoutMs) {
+        if (failure) throw new Error(failure.message + diagnostic())
+        contents += await logFile.readFile('utf8')
+        const match = contents.match(
+          /(?:^|\n)[^\n]* INFO \[boot\] loading page shown after (\d+) ms(?:, [^\n]*)?\r?\n/,
+        )
+        if (match) {
+          const result = { observedMs: performance.now() - started, backendMs: Number(match[1]) }
+          await verify(result)
+          return result
+        }
+        await delay(10)
+      }
+      throw new Error(`No loading-page report within ${timeoutMs} ms of process launch${diagnostic()}`)
+    } finally {
+      await stop(child, closed)
+    }
   } finally {
-    await stop(child, closed)
+    await logFile.close()
   }
 }
 

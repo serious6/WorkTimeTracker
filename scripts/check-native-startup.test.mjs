@@ -48,6 +48,36 @@ describe('native cold-start measurement', () => {
       expect(() => process.kill(pid, 0)).toThrow()
     }))
 
+  test('reserves an empty log before spawning and reads only that file after replacement', () =>
+    fixture(async ({ launch }) => {
+      const result = await launch(`
+        const fs = require('node:fs');
+        const log = process.argv[1];
+        if (fs.readFileSync(log, 'utf8') !== '') process.exit(7);
+        fs.renameSync(log, log + '.original');
+        fs.writeFileSync(log,
+          '2026-09-15T00:00:00.000Z INFO [boot] loading page shown after 1 ms\\n');
+        fs.appendFileSync(log + '.original',
+          '2026-09-15T00:00:00.000Z INFO [boot] loading page shown after 25 ms\\n');
+        setInterval(() => {}, 1000);
+      `)
+
+      expect(result.backendMs).toBe(25)
+    }))
+
+  test('accumulates a report appended across multiple polls', () =>
+    fixture(async ({ launch }) => {
+      const result = await launch(`
+        const fs = require('node:fs');
+        fs.appendFileSync(process.argv[1],
+          '2026-09-15T00:00:00.000Z INFO [boot] loading page shown ');
+        setTimeout(() => fs.appendFileSync(process.argv[1], 'after 25 ms\\n'), 100);
+        setInterval(() => {}, 1000);
+      `)
+
+      expect(result.backendMs).toBe(25)
+    }))
+
   test('rejects a delayed process even when its internal clock claims a fast boot', () =>
     fixture(async ({ launch }) => {
       const result = await launch(`
@@ -90,17 +120,26 @@ describe('native cold-start measurement', () => {
       expect(() => process.kill(pid, 0)).toThrow()
     }))
 
-  test('rejects early exits, spawn failures, and stale reports', () =>
-    fixture(async ({ log, launch }) => {
+  test('rejects early exits', () =>
+    fixture(async ({ launch }) => {
       await expect(launch('process.exit(7)')).rejects.toThrow('exited before')
+    }))
+
+  test('rejects spawn failures', () =>
+    fixture(async ({ directory, log }) => {
       await expect(measureStartup({
         executable: resolve('missing-native-startup-binary'),
-        directory: resolve('.'),
+        directory,
         log,
         env: process.env,
       })).rejects.toThrow('Could not launch')
+    }))
+
+  test('rejects stale reports without modifying them', () =>
+    fixture(async ({ log, launch }) => {
       await writeFile(log, '[boot] loading page shown after 1 ms\n')
       await expect(launch('setInterval(() => {}, 1000)')).rejects.toThrow('already exists')
+      expect(await readFile(log, 'utf8')).toBe('[boot] loading page shown after 1 ms\n')
     }))
 
   test('classifies startup diagnostics without exposing arbitrary stderr', () =>

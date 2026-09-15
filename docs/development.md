@@ -136,6 +136,10 @@ an isolated loopback database listener that accepts connections but never comple
 This makes synchronously opening the database in Tauri setup fail the test even without a real
 Postgres service. The listener must actually receive a connection.
 
+Before launch, the harness exclusively creates an empty log and polls through that open file
+handle. Existing logs are rejected atomically, and replacing the pathname cannot substitute a report.
+The file handle is closed on every exit path.
+
 An external monotonic clock starts **before `spawn`** and stops when the renderer-acknowledged
 `[boot]` log line is observed. Both that elapsed time (including log polling) and the backend's
 reported time must be strictly below 1000 ms. Missing reports fail after five seconds; a late
