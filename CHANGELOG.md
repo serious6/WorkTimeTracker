@@ -18,12 +18,22 @@ as the release notes, so a version without a section here cannot be released. Se
   replaced by an end-of-list hint once the trail is exhausted. Changing the period or the trail type
   restarts the list at the first 50 records.
 
+## [0.2.2] - 2026-09-15
+
+### Changed
+
+- Bumped the application version to 0.2.2.
+
 ### Fixed
 
 - A session that is started right after a rounded up one is no longer discarded: the timer measures
   the elapsed time from the moment it was started, so a session of 40 seconds is stored as one
   minute even when the previous rounding reached past the clock. The timer also writes its decisions
   and every failure into the log file, so a session that is not stored explains itself.
+
+### Breaking changes
+
+None.
 
 ## [0.2.1] - 2026-09-14
 
@@ -80,7 +90,8 @@ database you control.
 None: this is the first release. Installing it is described in
 [`docs/installation.md`](https://github.com/serious6/WorkTimeTracker/blob/main/docs/installation.md).
 
-[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/serious6/WorkTimeTracker/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/serious6/WorkTimeTracker/releases/tag/v0.1.0
