@@ -7,6 +7,7 @@
 //! the log file. A run that misses the budget says so in the same line, so the
 //! budget can be checked on every supported platform without a profiler.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -17,6 +18,11 @@ pub const BUDGET: Duration = Duration::from_millis(1000);
 /// The launch of the process. Written once by [`mark_process_start`]; a later
 /// call keeps the first value, so a measurement never restarts mid-run.
 static PROCESS_START: OnceLock<Instant> = OnceLock::new();
+
+/// Whether the loading page of this run has already been measured. The window
+/// reports it, so a reloaded page — or a second window — must neither restate
+/// the boot nor fill the log file with lines about it.
+static LOADING_PAGE_REPORTED: AtomicBool = AtomicBool::new(false);
 
 /// Remembers the launch of the process as the start of the boot measurement.
 pub fn mark_process_start() {
@@ -46,10 +52,16 @@ fn loading_page_line(elapsed: Duration) -> String {
 /// window itself, because only the webview knows when its first frame is on
 /// screen.
 pub fn record_loading_page() {
-    let Some(elapsed) = since_process_start() else {
-        return;
-    };
-    crate::logging::info("boot", &loading_page_line(elapsed));
+    if let Some(elapsed) = take_loading_page_measurement() {
+        crate::logging::info("boot", &loading_page_line(elapsed));
+    }
+}
+
+/// The boot of this run, `None` once it has been measured and outside a run
+/// that marked its process start.
+fn take_loading_page_measurement() -> Option<Duration> {
+    let elapsed = since_process_start()?;
+    (!LOADING_PAGE_REPORTED.swap(true, Ordering::SeqCst)).then_some(elapsed)
 }
 
 #[cfg(test)]
@@ -74,6 +86,18 @@ mod tests {
 
         assert!(line.contains("1001 ms"), "{line}");
         assert!(line.contains("over the 1000 ms boot budget"), "{line}");
+    }
+
+    /// The measurement belongs to the cold start, so a window that reports its
+    /// loading page again - after a reload, or from a second window - finds the
+    /// run already measured.
+    #[test]
+    fn measures_the_loading_page_once_per_run() {
+        mark_process_start();
+        LOADING_PAGE_REPORTED.store(false, Ordering::SeqCst);
+
+        assert!(take_loading_page_measurement().is_some());
+        assert!(take_loading_page_measurement().is_none());
     }
 
     #[test]
