@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox, Field, Select } from '@/components/ui/input'
-import { useAbsenceAudits } from '@/features/absences/absence-queries'
 import { formatMoment } from '@/features/audit/audit-changes'
-import { useSecurityAudits, useTimeEntryAudits } from '@/features/audit/audit-queries'
 import {
   absenceAuditRecords,
   auditListRange,
+  auditTrailPage,
   AUDIT_RANGES,
   AUDIT_TRAIL_ACTION_LABELS,
   AUDIT_TRAIL_TYPES,
@@ -19,7 +19,7 @@ import {
   type AuditRangeId,
   type AuditTrailType,
 } from '@/features/audit/audit-trails'
-import { useOvertimeAudits } from '@/features/overtime/overtime-queries'
+import { useAuditTrailPages } from '@/features/audit/use-audit-pages'
 import { useProjects } from '@/features/projects/project-queries'
 import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 
@@ -31,11 +31,11 @@ import { DELETED_PROJECT_NAME } from '@/features/time-entries/time-entry-schema'
 export function AuditTrailsPage() {
   const [rangeId, setRangeId] = useState<AuditRangeId>(DEFAULT_AUDIT_RANGE)
   const [types, setTypes] = useState<AuditTrailType[]>([])
+  // Every filter change restarts the paging at the first page.
+  const [pages, setPages] = useState(1)
+  const pagingGeneration = useRef(0)
   const range = useMemo(() => auditListRange(rangeId), [rangeId])
-  const timeEntryAudits = useTimeEntryAudits(range)
-  const absenceAudits = useAbsenceAudits(range)
-  const overtimeAudits = useOvertimeAudits(range)
-  const securityAudits = useSecurityAudits(range)
+  const { timeEntryAudits, absenceAudits, overtimeAudits, securityAudits } = useAuditTrailPages(range)
   const projectQuery = useProjects()
   const projects = projectQuery.data ?? []
 
@@ -44,24 +44,52 @@ export function AuditTrailsPage() {
 
   // The project names label the time entry records, so a failed or pending
   // project query would present every project as deleted.
-  const queries = [timeEntryAudits, absenceAudits, overtimeAudits, securityAudits, projectQuery]
-  const isError = queries.some((query) => query.isError)
+  const trailQueries = [timeEntryAudits, absenceAudits, overtimeAudits, securityAudits]
+  const queries = [...trailQueries, projectQuery]
+  const isError = projectQuery.isError ||
+    trailQueries.some((query) => query.isError && !query.isFetchNextPageError)
   const isPending = queries.some((query) => query.isPending)
+  const isLoadingMore = trailQueries.some((query) => query.isFetchingNextPage)
+  const sourceTypes: AuditTrailType[][] = [
+    ['timeEntry'], ['absence'], ['overtime'], ['identity', 'configuration'],
+  ]
+  const relevantQueries = trailQueries.filter((_, index) =>
+    types.length === 0 || sourceTypes[index].some((type) => types.includes(type)),
+  )
+  const isNextPageError = relevantQueries.some((query) => query.isFetchNextPageError)
   const records = mergeAuditRecords([
     timeEntryAuditRecords(timeEntryAudits.data ?? [], projectName),
     absenceAuditRecords(absenceAudits.data ?? []),
     overtimeAuditRecords(overtimeAudits.data ?? []),
     securityAuditRecords(securityAudits.data ?? [], projectName),
   ])
-  // No selection reads as "all types", so the list is never silently empty.
-  const visible = records.filter(
-    (record) => types.length === 0 || types.includes(record.type),
+  const { visible, hasMore } = auditTrailPage(
+    records, types, pages, relevantQueries.some((query) => query.hasNextPage),
   )
 
-  const toggleType = (type: AuditTrailType) =>
+  const loadMore = async () => {
+    const generation = pagingGeneration.current
+    const results = await Promise.all(
+      relevantQueries.filter((query) => query.hasNextPage).map((query) => query.fetchNextPage()),
+    )
+    if (generation === pagingGeneration.current && results.every((query) => !query.isError)) {
+      setPages((current) => current + 1)
+    }
+  }
+
+  const toggleType = (type: AuditTrailType) => {
+    pagingGeneration.current += 1
+    setPages(1)
     setTypes((current) =>
       current.includes(type) ? current.filter((value) => value !== type) : [...current, type],
     )
+  }
+
+  const selectRange = (id: AuditRangeId) => {
+    pagingGeneration.current += 1
+    setPages(1)
+    setRangeId(id)
+  }
 
   return (
     <div className="space-y-5">
@@ -80,13 +108,13 @@ export function AuditTrailsPage() {
             <p className="text-sm text-muted-foreground">
               {isPending
                 ? 'Reading the audit trails…'
-                : `${visible.length} record${visible.length === 1 ? '' : 's'} in the selected period.`}
+                : `Showing ${visible.length} record${visible.length === 1 ? '' : 's'} of the selected period.`}
             </p>
           </div>
           <div className="flex flex-wrap items-start gap-4">
             <Field className="sm:w-48" label="Period">
               <Select
-                onChange={(event) => setRangeId(event.target.value as AuditRangeId)}
+                onChange={(event) => selectRange(event.target.value as AuditRangeId)}
                 value={rangeId}
               >
                 {AUDIT_RANGES.map((option) => (
@@ -113,7 +141,9 @@ export function AuditTrailsPage() {
         </CardHeader>
         <CardContent>
           {isError ? (
-            <p className="py-6 text-sm text-destructive">The audit trails could not be loaded.</p>
+            <p className="py-6 text-sm text-destructive">
+              The audit trails could not be loaded.
+            </p>
           ) : isPending ? (
             <p className="py-6 text-sm text-muted-foreground">Loading the audit trails…</p>
           ) : visible.length === 0 ? (
@@ -146,6 +176,26 @@ export function AuditTrailsPage() {
                 </li>
               ))}
             </ul>
+          )}
+          {isNextPageError && (
+            <p className="pt-4 text-sm text-destructive">
+              The next audit records could not be loaded.
+            </p>
+          )}
+          {!isError && !isPending && (hasMore || isLoadingMore) && (
+            <div className="pt-4">
+              <Button
+                aria-busy={isLoadingMore}
+                disabled={isLoadingMore}
+                onClick={() => void loadMore()}
+                variant="outline"
+              >
+                {isLoadingMore ? 'Loading more…' : 'Load more'}
+              </Button>
+            </div>
+          )}
+          {!isError && !isNextPageError && !isPending && !isLoadingMore && !hasMore && pages > 1 && (
+            <p className="pt-4 text-sm text-muted-foreground">No further audit records.</p>
           )}
         </CardContent>
       </Card>

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { AUTH_STORAGE_KEYS, securityAuditsKey, SEEDED_AUTH_USER_ID } from '../src/test/auth-fixture'
 import {
   addEntry,
   addOvertime,
@@ -94,7 +95,7 @@ test('AT2: merged trails list time entries, absences, overtime and configuration
   await addOvertime(page, { kind: 'adjustment', overtime: '30m', effectiveDate: AUDIT_DAY })
 
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('4 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 4 records of the selected period.')).toBeVisible()
 
   const rows = await auditRows(page).allTextContents()
   expect(rows).toHaveLength(4)
@@ -113,23 +114,23 @@ test('AT2: merged trails list time entries, absences, overtime and configuration
 test('AT3: type filters support single, combined and all-type selections', async ({ page }) => {
   await seedEveryTrail(page)
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('5 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 5 records of the selected period.')).toBeVisible()
 
   for (const type of TRAIL_TYPES) {
     await page.getByRole('checkbox', { name: type }).check()
-    await expect(page.getByText('1 record in the selected period.')).toBeVisible()
+    await expect(page.getByText('Showing 1 record of the selected period.')).toBeVisible()
     await expectOnlyTypes(page, [type])
     await page.getByRole('checkbox', { name: type }).uncheck()
   }
 
   await page.getByRole('checkbox', { name: 'Absence' }).check()
   await page.getByRole('checkbox', { name: 'Overtime' }).check()
-  await expect(page.getByText('2 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 2 records of the selected period.')).toBeVisible()
   await expectOnlyTypes(page, ['Absence', 'Overtime'])
 
   await page.getByRole('checkbox', { name: 'Absence' }).uncheck()
   await page.getByRole('checkbox', { name: 'Overtime' }).uncheck()
-  await expect(page.getByText('5 records in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 5 records of the selected period.')).toBeVisible()
 })
 
 // AT4 in docs/e2e-test-cases.md
@@ -217,11 +218,86 @@ test('AT8: audit records stay isolated after switching users', async ({ page }) 
   await expectHeading(page, 'Dashboard')
 
   await gotoPage(page, 'Audit Trails')
-  await expect(page.getByText('1 record in the selected period.')).toBeVisible()
+  await expect(page.getByText('Showing 1 record of the selected period.')).toBeVisible()
   await expect(auditRows(page)).toHaveCount(0)
   await expect(
     auditRows(page, 'second@example.com')
       .filter({ hasText: 'Identity' })
       .filter({ hasText: 'Registered' }),
   ).toHaveCount(1)
+})
+
+/**
+ * Seeds `count` configuration records into the shared trail of the signed-in
+ * user, the cheapest way to a trail that spans several pages.
+ */
+async function seedConfigurationTrail(page: Page, count: number) {
+  await page.evaluate(
+    ({ auditKey, count }) => {
+      const stored = JSON.parse(localStorage.getItem(auditKey) ?? '[]') as { id: number }[]
+      const seeded = Array.from({ length: count }, (_, index) => ({
+        id: stored.length + index + 1,
+        entity: 'project',
+        entityId: index + 1,
+        action: 'project.created',
+        actor: 'first@example.com',
+        oldValue: null,
+        newValue: JSON.stringify({ name: `Seeded Project ${index + 1}` }),
+        recordedAt: new Date(Date.now() - (index + 1) * 60_000).toISOString(),
+      }))
+      localStorage.setItem(auditKey, JSON.stringify([...stored, ...seeded]))
+    },
+    { auditKey: securityAuditsKey(SEEDED_AUTH_USER_ID), count },
+  )
+}
+
+// AT9 in docs/e2e-test-cases.md
+test('AT9: the trail shows 50 records and loads the rest on demand', async ({ page }) => {
+  // 60 seeded configuration records plus the registration of the user.
+  await seedConfigurationTrail(page, 60)
+
+  await gotoPage(page, 'Audit Trails')
+  await expect(page.getByText('Showing 50 records of the selected period.')).toBeVisible()
+  await expect(auditRows(page)).toHaveCount(50)
+
+  await page.getByRole('button', { name: 'Load more' }).click()
+
+  await expect(page.getByText('Showing 61 records of the selected period.')).toBeVisible()
+  await expect(auditRows(page)).toHaveCount(61)
+  await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0)
+  await expect(page.getByText('No further audit records.')).toBeVisible()
+
+  // A filter change restarts the paging at the first page.
+  await page.getByRole('checkbox', { name: 'Configuration' }).check()
+
+  await expect(auditRows(page)).toHaveCount(50)
+  await expect(page.getByRole('button', { name: 'Load more' })).toBeVisible()
+})
+
+// AT10 in docs/e2e-test-cases.md
+test('AT10: a failed next page retains the records and can be retried', async ({ page }) => {
+  await page.clock.install({ time: new Date(`${AUDIT_DAY}T12:00:00`) })
+  await seedConfigurationTrail(page, 60)
+  await gotoPage(page, 'Audit Trails')
+  await expect(auditRows(page)).toHaveCount(50)
+  const original = await auditRows(page).allTextContents()
+  await page.evaluate((sessionsKey) => {
+    const setItem = Storage.prototype.setItem
+    Storage.prototype.setItem = function (key, value) {
+      if (this === localStorage && key === sessionsKey) {
+        Storage.prototype.setItem = setItem
+        throw new Error('storage unavailable')
+      }
+      setItem.call(this, key, value)
+    }
+  }, AUTH_STORAGE_KEYS.sessions)
+
+  await page.getByRole('button', { name: 'Load more' }).click()
+
+  await expect(page.getByText('The next audit records could not be loaded.')).toBeVisible()
+  await expect(auditRows(page)).toHaveText(original)
+  await page.getByRole('button', { name: 'Load more' }).click()
+  await expect(auditRows(page)).toHaveCount(60)
+  await expect(page.getByText('The next audit records could not be loaded.')).toHaveCount(0)
+  await expect(page.getByText('No further audit records.')).toBeVisible()
 })

@@ -381,6 +381,33 @@ export function securityAuditRecords(
   })
 }
 
+/** Records the audit view shows before the reader asks for the next page. */
+export const AUDIT_PAGE_SIZE = 50
+
+/** The records a page shows and whether a further page can exist. */
+export type AuditTrailPage = { visible: AuditTrailRecord[]; hasMore: boolean }
+
+/**
+ * Cuts the merged records down to the pages read so far. Unexhausted sources
+ * relevant to the type filter can still hold older matching records.
+ */
+export function auditTrailPage(
+  records: AuditTrailRecord[],
+  types: AuditTrailType[],
+  pages: number,
+  hasOlderRecords = false,
+): AuditTrailPage {
+  // No selection reads as "all types", so the list is never silently empty.
+  const matching = records.filter(
+    (record) => types.length === 0 || types.includes(record.type),
+  )
+  const limit = pages * AUDIT_PAGE_SIZE
+  return {
+    visible: matching.slice(0, limit),
+    hasMore: matching.length > limit || hasOlderRecords,
+  }
+}
+
 /** The records of every trail as one list, newest first. */
 export function mergeAuditRecords(records: AuditTrailRecord[][]): AuditTrailRecord[] {
   return records

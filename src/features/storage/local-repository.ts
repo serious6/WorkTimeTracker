@@ -1182,7 +1182,9 @@ const fallbackRepository: Repository = {
     const window = validateListRange(range)
     return limitDescending(
       filterPointRange(
-        readAbsenceState().audits.sort((left, right) => right.id - left.id),
+        readAbsenceState().audits.sort(
+          (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+        ),
         window,
         (audit) => audit.recordedAt,
       ),
@@ -1256,7 +1258,9 @@ const fallbackRepository: Repository = {
     const window = validateListRange(range)
     return limitDescending(
       filterPointRange(
-        readOvertimeState().audits.sort((left, right) => right.id - left.id),
+        readOvertimeState().audits.sort(
+          (left, right) => right.recordedAt.localeCompare(left.recordedAt) || right.id - left.id,
+        ),
         window,
         (audit) => audit.recordedAt,
       ),
