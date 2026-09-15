@@ -44,6 +44,34 @@ beforeEach(async () => {
   globalThis.sessionStorage?.clear()
 })
 
+describe('audit cursor ordering', () => {
+  it.each([
+    ['absence-state', 'listAbsenceAudits'],
+    ['overtime-state', 'listOvertimeAudits'],
+  ] as const)('orders %s by timestamp before applying the limit', async (stateKey, method) => {
+    const repository = createLocalRepository()
+    const user = await register('first@example.com')
+    await repository.createAbsence({ type: 'vacation', date: '2026-03-15' })
+    await repository.createOvertimeEntry({
+      effectiveDate: '2026-03-15', minutes: 60, kind: 'adjustment', origin: 'manual', note: null,
+    })
+    const key = `work-time-tracker.${user.id}.${stateKey}`
+    const state = JSON.parse(globalThis.localStorage.getItem(key) ?? '{}') as {
+      audits: { id: number; recordedAt: string }[]
+    }
+    state.audits = [
+      { ...state.audits[0], id: 1, recordedAt: '2026-03-15T12:00:00.000Z' },
+      { ...state.audits[0], id: 2, recordedAt: '2026-03-15T12:00:00.000Z' },
+      { ...state.audits[0], id: 3, recordedAt: '2026-03-15T11:00:00.000Z' },
+    ]
+    globalThis.localStorage.setItem(key, JSON.stringify(state))
+
+    expect((await repository[method]({ limit: 2 })).map((row) => row.id)).toEqual([2, 1])
+    expect((await repository[method]({ to: '2026-03-15T12:00:00.000Z' })).map((row) => row.id))
+      .toEqual([3])
+  })
+})
+
 describe('local repository authentication', () => {
   it('signs the new account in right away', async () => {
     const user = await register('First@Example.com')

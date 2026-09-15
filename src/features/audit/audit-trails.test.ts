@@ -4,6 +4,8 @@ import { addDays, startOfDay } from '@/lib/date'
 import {
   absenceAuditRecords,
   auditListRange,
+  auditTrailPage,
+  AUDIT_PAGE_SIZE,
   AUDIT_RANGES,
   DEFAULT_AUDIT_RANGE,
   mergeAuditRecords,
@@ -11,6 +13,7 @@ import {
   securityAuditRecords,
   AUDIT_TRAIL_TYPE_LABELS,
   AUDIT_TRAIL_TYPES,
+  type AuditTrailRecord,
 } from './audit-trails'
 
 const NOW = new Date('2026-03-15T10:30:00.000Z')
@@ -305,5 +308,60 @@ describe('securityAuditRecords', () => {
 
     expect(record.summary).toBe('Project Website')
     expect(record.action).toBe('project.deleted')
+  })
+})
+
+describe('audit paging', () => {
+  /** A merged list of `count` records, newest first, alternating the type. */
+  function trailRecords(count: number): AuditTrailRecord[] {
+    return Array.from({ length: count }, (_, index) => ({
+      key: `record-${index}`,
+      type: index % 2 === 0 ? ('timeEntry' as const) : ('absence' as const),
+      action: 'created' as const,
+      actor: 'tester@example.com',
+      recordedAt: new Date(Date.UTC(2026, 2, 15) - index * 60_000).toISOString(),
+      summary: `record ${index}`,
+      changes: [],
+    }))
+  }
+
+  it('shows the first 50 records and offers the next page', () => {
+    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE + 1), [], 1)
+
+    expect(page.visible).toHaveLength(AUDIT_PAGE_SIZE)
+    expect(page.visible[0].key).toBe('record-0')
+    expect(page.hasMore).toBe(true)
+  })
+
+  it('grows the list by another 50 records per page', () => {
+    const records = trailRecords(2 * AUDIT_PAGE_SIZE)
+
+    const page = auditTrailPage(records, [], 2)
+
+    expect(page.visible).toHaveLength(2 * AUDIT_PAGE_SIZE)
+    expect(page.visible.slice(0, AUDIT_PAGE_SIZE)).toEqual(auditTrailPage(records, [], 1).visible)
+    expect(page.hasMore).toBe(false)
+  })
+
+  it('ends the list when no record and no trail reaches beyond the page', () => {
+    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE), [], 1, false)
+
+    expect(page.visible).toHaveLength(AUDIT_PAGE_SIZE)
+    expect(page.hasMore).toBe(false)
+  })
+
+  it('offers the next page when a trail still holds older records', () => {
+    // The type filter hides the rows that were read beyond the page, the trail
+    // that filled its window still proves that older records exist.
+    const page = auditTrailPage(trailRecords(AUDIT_PAGE_SIZE), ['absence'], 1, true)
+
+    expect(page.visible.every((record) => record.type === 'absence')).toBe(true)
+    expect(page.hasMore).toBe(true)
+  })
+
+  it('counts an empty type selection as every type', () => {
+    const records = trailRecords(4)
+
+    expect(auditTrailPage(records, [], 1).visible).toEqual(records)
   })
 })

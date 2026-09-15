@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { getRepository } from '@/features/storage'
 import { listAllAuditPages, listAllPages, type ListRange } from '@/features/storage/list-range'
 import { absenceIndex, NO_ABSENCES, type AbsenceIndex } from './absence-index'
