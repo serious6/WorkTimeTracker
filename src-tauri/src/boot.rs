@@ -38,7 +38,7 @@ pub fn since_process_start() -> Option<Duration> {
 /// The log line of a boot that reached its loading page.
 fn loading_page_line(elapsed: Duration) -> String {
     let milliseconds = elapsed.as_millis();
-    if elapsed > BUDGET {
+    if elapsed >= BUDGET {
         format!(
             "loading page shown after {milliseconds} ms, over the {} ms boot budget",
             BUDGET.as_millis()
@@ -86,6 +86,17 @@ mod tests {
 
         assert!(line.contains("1001 ms"), "{line}");
         assert!(line.contains("over the 1000 ms boot budget"), "{line}");
+    }
+
+    #[test]
+    fn reaching_the_budget_is_already_too_slow() {
+        let line = loading_page_line(BUDGET);
+
+        assert!(line.contains("over the 1000 ms boot budget"), "{line}");
+        assert_eq!(
+            loading_page_line(BUDGET - Duration::from_nanos(1)),
+            "loading page shown after 999 ms"
+        );
     }
 
     /// The measurement belongs to the cold start, so a window that reports its

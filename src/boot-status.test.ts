@@ -24,6 +24,9 @@ function bootText(): string {
 }
 
 afterEach(() => {
+  document.body.replaceChildren()
+  mockInvoke.mockReset()
+  mockIsTauri.mockReset()
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -68,6 +71,39 @@ describe('boot status', () => {
     showBootError(document, 'The application could not be loaded.')
 
     expect(document.body.textContent).toContain('The application could not be loaded.')
+  })
+
+  test.each([
+    ['module failed', 'module failed'],
+    [new Error(''), 'The application could not be loaded.'],
+    ['   ', 'The application could not be loaded.'],
+    [undefined, 'The application could not be loaded.'],
+  ])('reports a boot rejection with reason %s', (reason, message) => {
+    const target = bootWindow()
+    watchBoot(target)
+    const event = new Event('unhandledrejection') as PromiseRejectionEvent
+    Object.defineProperty(event, 'reason', { value: reason })
+
+    target.dispatchEvent(event)
+
+    expect(document.querySelector('.boot-text')?.textContent).toBe(message)
+  })
+
+  test('uses the event message when an error has no error object', () => {
+    const target = bootWindow()
+    watchBoot(target)
+
+    target.dispatchEvent(new ErrorEvent('error', { message: 'bundle unavailable' }))
+
+    expect(document.body.textContent).toContain('bundle unavailable')
+  })
+
+  test('ignores a failure when the document has no application root', () => {
+    document.body.innerHTML = '<p>Other page</p>'
+
+    showBootError(document, 'no bundle')
+
+    expect(document.body.textContent).toBe('Other page')
   })
 
   test('writes the message as text, so it cannot be read as markup', () => {
@@ -158,6 +194,53 @@ describe('boot measurement', () => {
 
     expect(frame).not.toHaveBeenCalled()
     expect(mockInvoke).not.toHaveBeenCalled()
+  })
+
+  test('does not interrupt boot when the backend rejects the measurement', async () => {
+    vi.useFakeTimers()
+    mockInvoke.mockRejectedValue(new Error('measurement unavailable'))
+    mockIsTauri.mockReturnValue(true)
+    const target = bootWindow()
+    vi.spyOn(target, 'requestAnimationFrame').mockImplementation((frame) => {
+      frame(0)
+      return 0
+    })
+
+    reportLoadingPage(target)
+    await vi.runOnlyPendingTimersAsync()
+
+    expect(mockInvoke).toHaveBeenCalledOnce()
+    expect(document.querySelector('[data-boot-screen]')).not.toBeNull()
+  })
+
+  test('starts watching and measuring when imported with the boot screen present', async () => {
+    vi.useFakeTimers()
+    vi.resetModules()
+    mockInvoke.mockResolvedValue(undefined)
+    mockIsTauri.mockReturnValue(true)
+    bootWindow()
+    const frame = vi.spyOn(window, 'requestAnimationFrame')
+
+    const { bootFinished } = await import('./boot-status')
+    expect(frame).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(20)
+    expect(mockInvoke).toHaveBeenCalledWith('loading_page_shown', undefined)
+
+    bootFinished()
+    await vi.advanceTimersByTimeAsync(LOADING_MESSAGE_INTERVAL_MS)
+    expect(bootText()).toBe('Starting…')
+  })
+
+  test('can finish without a boot screen or browser window', async () => {
+    vi.resetModules()
+    vi.stubGlobal('window', undefined)
+    try {
+      const { bootFinished } = await import('./boot-status')
+      expect(() => bootFinished()).not.toThrow()
+      expect(mockInvoke).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   test('keeps the budget of the backend', () => {

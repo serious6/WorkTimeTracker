@@ -109,12 +109,13 @@ pub fn open_in_background<T: Send + 'static>(
     std::thread::spawn(move || {
         // A panic of this thread must not leave the window waiting forever, so
         // it settles the state like any other failed start.
-        let opened = std::panic::catch_unwind(std::panic::AssertUnwindSafe(open));
+        let opened = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let value = open()?;
+            ready(value);
+            Ok::<(), Box<dyn Error>>(())
+        }));
         match opened {
-            Ok(Ok(value)) => {
-                ready(value);
-                startup.mark_ready();
-            }
+            Ok(Ok(())) => startup.mark_ready(),
             Ok(Err(error)) => {
                 log_failure(error.as_ref());
                 startup.record_failure(error.as_ref());
@@ -296,5 +297,34 @@ mod tests {
             panic!("a panicking start has to be recorded as a failure");
         };
         assert!(message.contains("gave up"), "{message}");
+    }
+
+    #[test]
+    fn reports_a_panicking_handoff_as_a_failure() {
+        let state = StartupState::starting();
+        let (settled, outcome) = mpsc::channel();
+        let waiter = std::thread::spawn({
+            let state = state.clone();
+            move || settled.send(state.status())
+        });
+
+        let thread = open_in_background(
+            &state,
+            || Ok(()),
+            |()| panic!("the database handoff gave up"),
+        );
+        thread.join().expect("the handoff panic is caught");
+
+        let StartupStatus::Failed { message } = outcome
+            .recv_timeout(WAIT)
+            .expect("a handoff panic must wake the waiting status call")
+        else {
+            panic!("a panicking handoff has to be recorded as a failure");
+        };
+        waiter
+            .join()
+            .expect("the waiter returns")
+            .expect("received");
+        assert!(message.contains("handoff gave up"), "{message}");
     }
 }
