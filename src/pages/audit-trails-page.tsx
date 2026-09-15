@@ -56,19 +56,15 @@ export function AuditTrailsPage() {
   // A wider window keeps the records of the previous one on screen, so the
   // pending page is announced on the button instead of emptying the list.
   const isLoadingMore = trailQueries.some((query) => query.isFetching)
-  const trails = trailQueries.map((query) => query.data ?? [])
+  // A trail that filled its window still holds older records.
+  const trailLengths = trailQueries.map((query) => query.data?.length ?? 0)
   const records = mergeAuditRecords([
     timeEntryAuditRecords(timeEntryAudits.data ?? [], projectName),
     absenceAuditRecords(absenceAudits.data ?? []),
     overtimeAuditRecords(overtimeAudits.data ?? []),
     securityAuditRecords(securityAudits.data ?? [], projectName),
   ])
-  const { visible, hasMore } = auditTrailPage(
-    records,
-    types,
-    pages,
-    trails.map((trail) => trail.length),
-  )
+  const { visible, hasMore } = auditTrailPage(records, types, pages, trailLengths)
 
   const toggleType = (type: AuditTrailType) => {
     setPages(1)
