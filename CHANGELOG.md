@@ -11,6 +11,13 @@ as the release notes, so a version without a section here cannot be released. Se
 
 ## [Unreleased]
 
+### Changed
+
+- The window opens without waiting for the database: the connection is made beside the start, so the
+  loading page appears within the boot budget of one second even when the database answers slowly.
+  The time from the launch of the application until that page is shown is written to the log file
+  and names the budget when a start missed it.
+
 ## [0.2.2] - 2026-09-15
 
 ### Changed
