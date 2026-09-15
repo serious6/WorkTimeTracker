@@ -141,3 +141,9 @@ if (bootScreen) reportLoadingPage(window)
 export function bootFinished(): void {
   watch.finish()
 }
+
+export function bootFailed(): void {
+  watch.finish()
+  // Import errors can contain local paths or asset URLs.
+  showBootError(window.document, FALLBACK)
+}

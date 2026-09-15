@@ -235,6 +235,9 @@ paints the boot screen of `index.html` meanwhile, and `startup_status` waits for
 blocking task rather than on the main thread, which keeps the status contract of the window
 unchanged. The boot is measured from `boot::mark_process_start` to the `loading_page_shown` report
 of the window and written to the log file, with the budget named on a run that missed it.
+The sole HTML entry, `src/bootstrap.ts`, loads the styles and boot watch without React, then imports
+the application after the loading page's first paint and report dispatch. A delayed or broken app
+chunk therefore cannot hold up that report; import failures show the boot error panel.
 
 **Consequences:** No startup step may block the setup hook; anything that can wait belongs on the
 background start, which also has to settle `StartupState` when it panics, or the window would wait

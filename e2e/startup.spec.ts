@@ -124,3 +124,72 @@ test('ST5: paints the browser loading page within one second of navigation', asy
   expect(paint).toBeLessThan(BOOT_BUDGET_MS)
   await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
 })
+
+// #ST7 in docs/e2e-test-cases.md
+test('ST7: paints and reports the loading page while the application chunk is delayed', async ({ page }) => {
+  // Only the IPC bridge is stubbed: browser frames, timers and paint are real.
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      isTauri: true,
+      __TAURI_INTERNALS__: {
+        invoke: async (command: string) => {
+          if (command !== 'loading_page_shown') throw new Error('Unexpected boot command')
+          document.documentElement.dataset.bootReported = 'true'
+        },
+      },
+    })
+  })
+  let release = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let appRequested = false
+  await page.route('**/assets/main-*.js', async (route) => {
+    appRequested = true
+    await held
+    await route.continue()
+  })
+
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    await expect.poll(() => appRequested).toBe(true)
+    await expect(page.locator('html')).toHaveAttribute('data-boot-reported', 'true')
+    const logo = page.locator('[data-boot-logo]')
+    await expect(logo).toBeVisible()
+    expect(await logo.evaluate((element) => ({
+      animation: getComputedStyle(element).animationName,
+      width: getComputedStyle(element).width,
+    }))).toEqual({ animation: 'boot-spin', width: '64px' })
+    await expect.poll(() => page.evaluate(
+      () => performance.getEntriesByName('first-contentful-paint').length,
+    )).toBeGreaterThan(0)
+    await expect(page.locator('[data-boot-screen]')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toHaveCount(0)
+    await page.evaluate(() => Object.assign(window, { isTauri: false }))
+  } finally {
+    release()
+  }
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+})
+
+// #ST8 and #ST9 in docs/e2e-test-cases.md
+for (const failure of ['download', 'evaluation'] as const) {
+  const id = failure === 'download' ? 'ST8' : 'ST9'
+  test(`${id}: shows an application chunk ${failure} failure and recovers on reload`, async ({ page }) => {
+    await page.route('**/assets/main-*.js', async (route) => {
+      if (failure === 'download') await route.abort()
+      else await route.fulfill({
+        contentType: 'text/javascript',
+        body: 'throw new Error("private module path")',
+      })
+    })
+    await page.goto('/')
+
+    const alert = page.getByRole('alert')
+    await expect(alert).toContainText('WorkTimeTracker could not start')
+    await expect(alert).toContainText('The application could not be loaded.')
+    await expect(alert).not.toContainText('private module path')
+    await expect(page.locator('[data-boot-screen]')).toHaveCount(0)
+    await page.unroute('**/assets/main-*.js')
+    await page.getByRole('button', { name: 'Reload' }).click()
+    await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+  })
+}

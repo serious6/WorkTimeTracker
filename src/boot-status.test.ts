@@ -243,6 +243,21 @@ describe('boot measurement', () => {
     }
   })
 
+  test('stops the watch and shows a generic failure when importing the application fails', async () => {
+    vi.useFakeTimers()
+    vi.resetModules()
+    bootWindow()
+    const { bootFailed } = await import('./boot-status')
+
+    bootFailed()
+    await vi.advanceTimersByTimeAsync(LOADING_MESSAGE_INTERVAL_MS)
+    window.dispatchEvent(new ErrorEvent('error', { message: 'private module path' }))
+
+    expect(document.querySelector('[data-boot-screen]')).toBeNull()
+    expect(document.body.textContent).toContain('The application could not be loaded.')
+    expect(document.body.textContent).not.toContain('private module path')
+  })
+
   test('keeps the budget of the backend', () => {
     expect(BOOT_BUDGET_MS).toBe(1000)
   })

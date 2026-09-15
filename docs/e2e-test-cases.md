@@ -180,6 +180,9 @@ setup hook, on every CI platform (see [`docs/development.md`](development.md#boo
 | ST3 | `ST3: keeps reporting the failure when the retry fails again` | The start reports a failed database connection | The user retries while the database is still unavailable | The window keeps showing the failure of the retry |
 | ST4 | `ST4: turns the logo while loading instead of showing a busy cursor` | A fresh browser page | The boot screen is read before the application mounts | The brand logo turns on the boot screen and the mouse cursor stays the default one |
 | ST5 | `ST5: paints the browser loading page within one second of navigation` | A fresh browser page, with no native backend | The first navigation's first contentful paint is observed | Browser navigation paints within one second and the application follows; this does not measure native startup |
+| ST7 | `ST7: paints and reports the loading page while the application chunk is delayed` | The production application chunk is held back and only the IPC bridge is stubbed | The bootstrap runs with real browser frames and timers | The styled, animated logo paints and reports before the app chunk is released; login follows its release |
+| ST8 | `ST8: shows an application chunk download failure and recovers on reload` | The production application chunk cannot download | The import fails and the user reloads after recovery | The window shows a generic failure with Reload, then reaches login |
+| ST9 | `ST9: shows an application chunk evaluation failure and recovers on reload` | The production application chunk throws during evaluation | The import fails and the user reloads after recovery | The window shows a generic failure without exposing module paths, then reaches login |
 
 | # | Native check | Given | When | Then |
 |---|--------------|-------|------|------|

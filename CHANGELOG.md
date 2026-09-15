@@ -13,6 +13,8 @@ as the release notes, so a version without a section here cannot be released. Se
 
 ### Changed
 
+- The loading screen paints and reports startup before loading the React application; a broken
+  application bundle shows a reloadable error instead of leaving the logo stuck.
 - The window opens without waiting for the database: the connection is made beside the start, so the
   loading page appears within the boot budget of one second even when the database answers slowly.
   The time from the launch of the application until that page is shown is written to the log file
