@@ -103,6 +103,40 @@ Run `npx playwright install --with-deps chromium` before the first e2e run in a 
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
 
+## Boot budget
+
+The application has to reach its loading page within **one second**, measured from the launch of
+the process. Both ends of that measurement live in the code, so it can be repeated on Windows,
+macOS and Linux without a profiler:
+
+- `boot::mark_process_start` in [`src-tauri/src/boot.rs`](../src-tauri/src/boot.rs) takes the time
+  as the first statement of `run`.
+- The window calls `loading_page_shown` after the frame with the loading page is on screen
+  (`reportLoadingPage` in [`src/boot-status.ts`](../src/boot-status.ts)).
+- The backend writes the difference to its log file and names the budget when a run missed it:
+
+  ```text
+  2026-09-15T09:00:36.213Z INFO boot loading page shown after 412 ms
+  2026-09-15T09:00:36.213Z INFO boot loading page shown after 1310 ms, over the 1000 ms boot budget
+  ```
+
+Measuring a cold start:
+
+1. Build the application: `npm run tauri build`.
+2. Reboot, or at least close a previously running instance, so the run is not served from a warm
+   process or a warm connection pool.
+3. Start the built binary and wait for the loading page.
+4. Read the last `boot` line of `work-time-tracker.log` (see
+   [`docs/installation.md`](installation.md) for its location).
+
+Nothing in the boot may wait for the database: the Tauri setup hook runs on the main thread before
+the event loop starts, so it opens the database on a background thread
+(`startup_state::open_in_background`) and the window shows its loading page until the start settles.
+`startup_status` waits for that outcome on a blocking task instead of on the main thread. The
+budget is guarded by `opening_the_database_does_not_hold_up_the_setup` in
+[`src-tauri/src/startup_state.rs`](../src-tauri/src/startup_state.rs), the tests of `boot.rs`, and
+the e2e case ST5, which measures the first contentful paint of the loading page.
+
 ## Fuzzing
 
 Parsers and validators see input nobody wrote an example for: a driver error that ends up in a log,

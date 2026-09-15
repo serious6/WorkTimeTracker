@@ -10,6 +10,7 @@
  * instead of a script tag in the page.
  */
 
+import { invoke, isTauri } from '@tauri-apps/api/core'
 import { LOADING_MESSAGE_INTERVAL_MS, loadingMessageAt } from './lib/loading-messages.ts'
 
 const BOOT_ROOT_ID = 'root'
@@ -106,13 +107,36 @@ export function watchBoot(target: Window): BootWatch {
 }
 
 /**
+ * The time the start may take from the launch of the process until this loading
+ * page is on screen. Mirrors `boot::BUDGET` of the backend, which measures the
+ * boot against it and writes the result to the log file.
+ */
+export const BOOT_BUDGET_MS = 1000
+
+/**
+ * Tells the backend that the loading page is on screen, which ends its boot
+ * measurement. The call is made after the first frame — a frame callback runs
+ * before the paint, the timeout behind it after — and never awaited, so the
+ * measurement cannot delay the boot it measures. Outside the desktop
+ * application there is no backend to report to.
+ */
+export function reportLoadingPage(target: Window): void {
+  if (!isTauri()) return
+  target.requestAnimationFrame(() => {
+    target.setTimeout(() => {
+      void invoke('loading_page_shown').catch(() => {})
+    }, 0)
+  })
+}
+
+/**
  * The watch of the running window. It starts only where the boot screen of
  * `index.html` exists, so importing this module in a test observes nothing.
  */
-const watch: BootWatch =
-  typeof window !== 'undefined' && window.document.querySelector(BOOT_MARKER)
-    ? watchBoot(window)
-    : { finish: () => {} }
+const bootScreen =
+  typeof window === 'undefined' ? null : window.document.querySelector(BOOT_MARKER)
+const watch: BootWatch = bootScreen ? watchBoot(window) : { finish: () => {} }
+if (bootScreen) reportLoadingPage(window)
 
 export function bootFinished(): void {
   watch.finish()

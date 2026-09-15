@@ -15,8 +15,8 @@ UI and Playwright tests. Without a shared contract the two storage paths can dri
 **Decision:** Domain rules live in `contract/domain-rules.json`, entity shapes in
 `contract/entities.json`. Rust contract tests and TypeScript contract tests execute those files.
 Frontend application data access goes through the `Repository` type in `src/features/storage/`.
-The explicit infrastructure exception is the client log sinks `log_client_error` and
-`log_client_info`, which may invoke the backend directly.
+The explicit infrastructure exceptions are the client log sinks `log_client_error` and
+`log_client_info` and the boot report `loading_page_shown`, which may invoke the backend directly.
 
 **Consequences:** Validation, overlap, limit, and entity changes start in `contract/` and update both
 backends. A capability used by the frontend needs a Rust command, command registration, repository
@@ -219,3 +219,25 @@ available later is picked up by a retry. Any new startup step has to record its 
 `StartupState` rather than abort, and its message has to pass through
 `startup_failure::format_startup_failure` so no credential, token, or path other than the log file
 reaches the window.
+
+## Keep the database out of the boot path
+
+**Status:** accepted
+
+**Context:** The start has a budget of one second from the launch of the process until the loading
+page is shown. The Tauri setup hook runs on the main thread before the event loop starts, so the
+connection to Postgres it opened - a network round trip that may also time out - held back the
+first frame of the window and blew that budget on a slow or unreachable database.
+
+**Decision:** `startup_state::open_in_background` opens the database on its own thread and settles
+`StartupState` with the outcome, so the setup hook only registers state and returns. The window
+paints the boot screen of `index.html` meanwhile, and `startup_status` waits for the outcome on a
+blocking task rather than on the main thread, which keeps the status contract of the window
+unchanged. The boot is measured from `boot::mark_process_start` to the `loading_page_shown` report
+of the window and written to the log file, with the budget named on a run that missed it.
+
+**Consequences:** No startup step may block the setup hook; anything that can wait belongs on the
+background start, which also has to settle `StartupState` when it panics, or the window would wait
+forever. The measurement is reproducible on every platform from the log file, and the boot budget is
+held by the tests of `boot.rs`, `opening_the_database_does_not_hold_up_the_setup`, and the e2e case
+ST5.

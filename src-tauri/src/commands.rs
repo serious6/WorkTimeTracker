@@ -2,6 +2,7 @@ use tauri::{Manager, State, Webview};
 
 use crate::{
     auth::{self, LoginAttempts, SessionId, Sessions},
+    boot,
     error::{AppError, AppResult},
     logging,
     models::{
@@ -518,13 +519,31 @@ pub fn get_app_version() -> AppResult<Option<String>> {
     })
 }
 
+/// Runs `work`, which may wait for the database, on a blocking task. A
+/// synchronous command runs on the main thread, where a wait would hold up the
+/// event loop and with it every frame of the window.
+async fn off_the_main_thread<T: Send + 'static>(
+    command: &str,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> AppResult<T> {
+    tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| {
+            let failure = AppError::internal(format!("the startup could not be awaited: {error}"));
+            logging::error(command, failure.message());
+            failure
+        })
+}
+
 /// The startup outcome the window shows while it boots: `ready` once the
-/// database is open, otherwise the redacted failure of the start. Public
-/// because a failed start has no session and no database to authenticate
-/// against.
+/// database is open, otherwise the redacted failure of the start. The answer
+/// waits for a start that is still running, so the window keeps its loading
+/// page until the backend has decided. Public because a failed start has no
+/// session and no database to authenticate against.
 #[tauri::command]
-pub fn startup_status(startup: State<'_, StartupState>) -> AppResult<StartupStatus> {
-    Ok(startup.status())
+pub async fn startup_status(startup: State<'_, StartupState>) -> AppResult<StartupStatus> {
+    let startup = startup.inner().clone();
+    off_the_main_thread("startup_status", move || startup.status()).await
 }
 
 /// Runs the failed part of the startup again, so a database that was started
@@ -532,25 +551,40 @@ pub fn startup_status(startup: State<'_, StartupState>) -> AppResult<StartupStat
 /// managed only once: a start that already succeeded answers `ready` without
 /// opening a second connection pool.
 #[tauri::command]
-pub fn retry_startup(
+pub async fn retry_startup(
     app: tauri::AppHandle,
     startup: State<'_, StartupState>,
 ) -> AppResult<StartupStatus> {
-    if startup.status() == StartupStatus::Ready {
-        return Ok(StartupStatus::Ready);
-    }
+    let startup = startup.inner().clone();
+    off_the_main_thread("retry_startup", move || {
+        if startup.status() == StartupStatus::Ready {
+            return StartupStatus::Ready;
+        }
 
-    match startup_state::open_database() {
-        Ok(database) => {
-            app.manage(database);
-            startup.mark_ready();
+        match startup_state::open_database() {
+            Ok(database) => {
+                app.manage(database);
+                startup.mark_ready();
+            }
+            Err(error) => {
+                startup_state::log_failure(error.as_ref());
+                startup.record_failure(error.as_ref());
+            }
         }
-        Err(error) => {
-            startup_state::log_failure(error.as_ref());
-            startup.record_failure(error.as_ref());
-        }
-    }
-    Ok(startup.status())
+        startup.status()
+    })
+    .await
+}
+
+/// The window reports that it painted its loading page, which ends the boot
+/// measurement and writes it to the log file (see `boot.rs`). Only the webview
+/// knows when its first frame is on screen. Public because the loading page is
+/// shown before any session exists, and asynchronous so that neither the log
+/// line nor the call itself runs on the main thread of the boot.
+#[tauri::command]
+pub async fn loading_page_shown() -> AppResult<()> {
+    boot::record_loading_page();
+    Ok(())
 }
 
 /// One line of the user interface, trimmed and bounded, so a client cannot fill
@@ -593,10 +627,10 @@ mod tests {
     /// Commands that run without a signed in user, each one deliberately public:
     /// the three that create or end a session, the session probe that answers
     /// `null` when nobody is signed in, the application version, the two log
-    /// sinks of the user interface and the two startup commands the window needs
+    /// sinks of the user interface and the three boot commands the window needs
     /// before a database exists. Every other command is written with `authed_command!`,
     /// and the tests below fail when a hand written command is not listed here.
-    const PUBLIC_COMMANDS: [&str; 9] = [
+    const PUBLIC_COMMANDS: [&str; 10] = [
         "register",
         "login",
         "logout",
@@ -606,6 +640,7 @@ mod tests {
         "log_client_info",
         "startup_status",
         "retry_startup",
+        "loading_page_shown",
     ];
     use crate::test_support::policy_compliant_password;
 

@@ -167,6 +167,9 @@ backend is still starting and the failure of the start as content of the window,
 The wait is never signalled by a busy mouse cursor. The browser fallback has no backend, so the
 spec stores the failure it should render under `work-time-tracker.startup-failure`. These tests
 start without a registered user and therefore do not use the shared registration setup.
+The start has a budget of one second from the launch of the process until the loading page is
+shown; ST5 guards the part of it the frontend owns, the backend measures the whole boot itself (see
+[`docs/development.md`](development.md#boot-budget)).
 
 | #  | Test (`e2e/startup.spec.ts`) | Given | When | Then |
 |----|------------------------------|-------|------|------|
@@ -174,6 +177,7 @@ start without a registered user and therefore do not use the shared registration
 | ST2 | `ST2: shows a failed start in the window and recovers on a retry` | The start reports a failed database connection | The user reads the failure and retries after the database is available again | The failure is shown inside the window with no dialog, and the retry reaches the login page |
 | ST3 | `ST3: keeps reporting the failure when the retry fails again` | The start reports a failed database connection | The user retries while the database is still unavailable | The window keeps showing the failure of the retry |
 | ST4 | `ST4: turns the logo while loading instead of showing a busy cursor` | The application is loaded | The boot screen is read before the application mounts | The brand logo turns on the boot screen and the mouse cursor stays the default one |
+| ST5 | `ST5: paints the loading page inside the boot budget` | The application is loaded | The first contentful paint of the document is read after the start | The loading page is painted within the boot budget of one second and the application follows it |
 
 ## Content Security Policy
 

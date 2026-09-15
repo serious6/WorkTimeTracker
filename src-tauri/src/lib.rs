@@ -4,6 +4,7 @@
 #![cfg_attr(feature = "fuzzing", allow(dead_code, unused_imports))]
 
 mod auth;
+mod boot;
 mod commands;
 mod config;
 mod connection;
@@ -68,7 +69,7 @@ fn panic_summary(message: &str) -> String {
     }
 }
 
-fn startup_panic_error(payload: &(dyn std::any::Any + Send)) -> std::io::Error {
+pub(crate) fn startup_panic_error(payload: &(dyn std::any::Any + Send)) -> std::io::Error {
     let message = panic_payload_message(payload);
     std::io::Error::other(format!(
         "WorkTimeTracker stopped unexpectedly during startup: {}",
@@ -111,6 +112,7 @@ pub fn redact_error_message(error: &dyn std::error::Error) -> String {
 #[cfg(not(feature = "fuzzing"))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    boot::mark_process_start();
     log_panics();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         tauri::Builder::default()
@@ -133,17 +135,22 @@ pub fn run() {
                 // database that was started afterwards. `Database` stays
                 // unmanaged until it opens, so no command can run against a
                 // half-started backend.
-                let startup = StartupState::default();
-                match startup_state::open_database() {
-                    Ok(database) => {
-                        app.manage(database);
-                    }
-                    Err(error) => {
-                        startup_state::log_failure(error.as_ref());
-                        startup.record_failure(error.as_ref());
-                    }
-                }
-                app.manage(startup);
+                //
+                // The database is opened beside this hook, which runs on the
+                // main thread before the event loop starts: a database that
+                // answers slowly would otherwise delay the first frame of the
+                // window past the boot budget (see `boot.rs`). The window shows
+                // its loading page until the start settles.
+                let startup = StartupState::starting();
+                app.manage(startup.clone());
+                let handle = app.handle().clone();
+                startup_state::open_in_background(
+                    &startup,
+                    startup_state::open_database,
+                    move |database| {
+                        handle.manage(database);
+                    },
+                );
                 app.manage(Sessions::default());
                 if let Some(window) = app.get_webview_window("main") {
                     window_state::restore(&window.as_ref().window_ref());
@@ -199,6 +206,7 @@ pub fn run() {
                 commands::get_app_version,
                 commands::startup_status,
                 commands::retry_startup,
+                commands::loading_page_shown,
                 commands::log_client_error,
                 commands::log_client_info
             ])

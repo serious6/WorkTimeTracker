@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { LOADING_MESSAGE_INTERVAL_MS, LOADING_MESSAGES } from './lib/loading-messages'
-import { showBootError, watchBoot } from './boot-status'
+
+const mockInvoke = vi.fn()
+const mockIsTauri = vi.fn()
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (command: string, args?: unknown) => mockInvoke(command, args),
+  isTauri: () => mockIsTauri(),
+}))
+
+const { BOOT_BUDGET_MS, reportLoadingPage, showBootError, watchBoot } = await import(
+  './boot-status'
+)
 
 /** The window of the test with the boot markup `index.html` renders. */
 function bootWindow(): Window {
@@ -15,6 +25,7 @@ function bootText(): string {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.restoreAllMocks()
 })
 
 describe('boot status', () => {
@@ -116,5 +127,40 @@ describe('boot status', () => {
 
     expect(reload).toHaveBeenCalledTimes(1)
     vi.restoreAllMocks()
+  })
+})
+
+describe('boot measurement', () => {
+  test('reports the loading page to the backend after the first frame', () => {
+    vi.useFakeTimers()
+    mockInvoke.mockReset().mockResolvedValue(undefined)
+    mockIsTauri.mockReset().mockReturnValue(true)
+    const target = bootWindow()
+    vi.spyOn(target, 'requestAnimationFrame').mockImplementation((frame) => {
+      frame(0)
+      return 0
+    })
+
+    reportLoadingPage(target)
+    expect(mockInvoke).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(0)
+
+    expect(mockInvoke).toHaveBeenCalledWith('loading_page_shown', undefined)
+  })
+
+  test('stays quiet in the browser, which has no backend to report to', () => {
+    mockInvoke.mockReset()
+    mockIsTauri.mockReset().mockReturnValue(false)
+    const target = bootWindow()
+    const frame = vi.spyOn(target, 'requestAnimationFrame')
+
+    reportLoadingPage(target)
+
+    expect(frame).not.toHaveBeenCalled()
+    expect(mockInvoke).not.toHaveBeenCalled()
+  })
+
+  test('keeps the budget of the backend', () => {
+    expect(BOOT_BUDGET_MS).toBe(1000)
   })
 })

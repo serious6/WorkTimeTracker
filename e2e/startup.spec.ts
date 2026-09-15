@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { BOOT_BUDGET_MS } from '../src/boot-status'
 import { STARTUP_FAILURE_KEY } from '../src/features/storage/local-repository'
 
 /**
@@ -88,5 +89,40 @@ test('ST4: turns the logo while loading instead of showing a busy cursor', async
 
   release()
   await loaded
+  await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
+})
+
+/** How long the test waits for the paint entry of the loading page. */
+const PAINT_TIMEOUT_MS = 5000
+
+// #ST5 in docs/e2e-test-cases.md
+test('ST5: paints the loading page inside the boot budget', async ({ page }) => {
+  await page.goto('/')
+
+  // The first contentful paint is the loading page of `index.html`, which needs
+  // no bundle. It is measured from the start of the navigation, so it covers
+  // the part of the boot the frontend owns; the backend measures its own part
+  // and logs it (see `src-tauri/src/boot.rs`). The entry reaches the timeline
+  // after the frame it describes, so it is observed instead of read once.
+  const paint = await page.evaluate(
+    (timeout) =>
+      new Promise<number | null>((resolve) => {
+        const observer = new PerformanceObserver((list) => {
+          const entry = list.getEntriesByName('first-contentful-paint')[0]
+          if (!entry) return
+          observer.disconnect()
+          resolve(entry.startTime)
+        })
+        observer.observe({ type: 'paint', buffered: true })
+        setTimeout(() => {
+          observer.disconnect()
+          resolve(null)
+        }, timeout)
+      }),
+    PAINT_TIMEOUT_MS,
+  )
+
+  expect(paint).not.toBeNull()
+  expect(paint).toBeLessThan(BOOT_BUDGET_MS)
   await expect(page.getByRole('heading', { name: 'Sign in to TimeTrack' })).toBeVisible()
 })
