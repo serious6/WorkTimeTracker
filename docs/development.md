@@ -103,6 +103,64 @@ Run `npx playwright install --with-deps chromium` before the first e2e run in a 
 Rust tests that need Postgres skip without a reachable `DATABASE_URL`; CI sets
 `REQUIRE_POSTGRES_TESTS=1` so those tests fail instead of skipping.
 
+## Boot budget
+
+The application has to reach its loading page in **less than one second** from process launch.
+The native cold-start CI matrix enforces this on Linux, macOS, and Windows using release builds
+with the production frontend embedded, never a Vite server or `tauri dev`.
+
+- `boot::mark_process_start` in [`src-tauri/src/boot.rs`](../src-tauri/src/boot.rs) takes the time
+  as the first statement of `run` (after OS process loading).
+- The window calls `loading_page_shown` after the frame with the loading page is on screen
+  (`reportLoadingPage` in [`src/boot-status.ts`](../src/boot-status.ts)).
+- The backend writes the difference to its log file and names the budget when a run missed it:
+
+  ```text
+  2026-09-15T09:00:36.213Z INFO [boot] loading page shown after 412 ms
+  2026-09-15T09:00:36.213Z INFO [boot] loading page shown after 1310 ms, over the 1000 ms boot budget
+  ```
+
+Run the same native check locally from the repository root:
+
+```sh
+npm run tauri build -- --no-bundle       # Linux / Windows
+npm run tauri build -- --bundles app     # macOS, instead of the preceding command
+node scripts/check-native-startup.mjs   # desktop session; optionally pass the binary/.app path
+# Headless Linux:
+# WEBKIT_DISABLE_DMABUF_RENDERER=1 xvfb-run -a node scripts/check-native-startup.mjs
+```
+
+The check copies the executable (the whole `.app` on macOS) into a fresh writable directory in
+the checkout, with fresh home/cache/WebView2 locations and no portable settings file. It starts
+an isolated loopback database listener that accepts connections but never completes the handshake.
+This makes synchronously opening the database in Tauri setup fail the test even without a real
+Postgres service. The listener must actually receive a connection.
+
+Before launch, the harness exclusively creates an empty log and polls through that open file
+handle. Existing logs are rejected atomically, and replacing the pathname cannot substitute a report.
+The file handle is closed on every exit path.
+
+An external monotonic clock starts **before `spawn`** and stops when the renderer-acknowledged
+`[boot]` log line is observed. Both that elapsed time (including log polling) and the backend's
+reported time must be strictly below 1000 ms. Missing reports fail after five seconds; a late
+report never passes. No retries, OS-specific budget increases, or platform skips apply.
+Success, failure, and timeout terminate the owned native process tree, close the listener, and
+remove the isolated directory. Known display, renderer, and library failures get a diagnostic
+category without printing arbitrary stderr. This is a cold **process/profile** check, not a claim
+that OS disk caches are cold; reboot before manual measurements if that distinction matters.
+
+The harness's success, slow-process, timeout, stale-log, and exit handling run with
+`npx vitest run scripts/check-native-startup.test.mjs`.
+
+Nothing in the boot may wait for the database: the Tauri setup hook runs on the main thread before
+the event loop starts, so it opens the database on a background thread
+(`startup_state::open_in_background`) and the window shows its loading page until the start settles.
+`startup_status` waits for that outcome on a blocking task instead of on the main thread. The
+budget is guarded by `opening_the_database_does_not_hold_up_the_setup` in
+[`src-tauri/src/startup_state.rs`](../src-tauri/src/startup_state.rs), the tests of `boot.rs`, and
+the native e2e case ST6. Browser case ST5 only measures navigation-to-first-contentful-paint;
+it cannot exercise Tauri setup or guard native cold startup.
+
 ## Fuzzing
 
 Parsers and validators see input nobody wrote an example for: a driver error that ends up in a log,
