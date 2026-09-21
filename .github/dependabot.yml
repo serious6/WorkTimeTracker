@@ -20,12 +20,17 @@ updates:
     groups:
       cargo:
         patterns: ["*"]
+  # Grouped so sub-actions of the same repository (for example codeql-action/init
+  # and codeql-action/analyze) are bumped together; mixing versions breaks CodeQL.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /
     schedule:
