@@ -89,7 +89,7 @@ jobs:
       # the job reports the test failure alone.
       - name: Upload coverage reports to Codecov
         if: ${{ success() && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/lcov.info
@@ -129,7 +129,7 @@ jobs:
       # pull requests, so the dependency install is skipped there too.
       - uses: ./.github/actions/setup-node
         if: github.event_name != 'pull_request'
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: stable
           components: rustfmt
