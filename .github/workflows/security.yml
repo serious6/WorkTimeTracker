@@ -84,7 +84,7 @@ jobs:
             --new=new-results.json
             --gh-annotations=true
             --fail-on-vuln=true
-      - uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         # A fork pull request cannot write security events, so the upload is
         # skipped rather than failing the job; the annotations above still show
         # the added advisories on the diff.
@@ -163,7 +163,7 @@ jobs:
             --config p/github-actions \
             --metrics=off \
             --sarif --output semgrep.sarif --error
-      - uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         # See the note on osv-scanner-pr: a fork pull request cannot write
         # security events, so the upload is skipped rather than failing the job.
         if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
