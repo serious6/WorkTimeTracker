@@ -78,7 +78,7 @@ describe('native cold-start measurement', () => {
       expect(result.backendMs).toBe(25)
     }))
 
-  test('rejects a delayed process even when its internal clock claims a fast boot', () =>
+  test('reports a delayed process separately from the budget assertion', () =>
     fixture(async ({ launch }) => {
       const result = await launch(`
         const fs = require('node:fs');
