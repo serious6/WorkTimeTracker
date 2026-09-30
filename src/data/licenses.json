@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-27T18:36:50.101Z",
+  "generatedAt": "2026-09-30T20:35:35.307Z",
   "appVersion": "0.2.2",
   "npm": [
     {
@@ -28,7 +28,7 @@
     },
     {
       "name": "@tanstack/query-core",
-      "version": "5.103.1",
+      "version": "5.103.2",
       "license": "MIT",
       "publisher": "tannerlinsley",
       "repository": "https://github.com/TanStack/query.git",
@@ -36,7 +36,7 @@
     },
     {
       "name": "@tanstack/react-query",
-      "version": "5.103.1",
+      "version": "5.103.2",
       "license": "MIT",
       "publisher": "tannerlinsley",
       "repository": "https://github.com/TanStack/query.git",
@@ -260,7 +260,7 @@
     },
     {
       "name": "drizzle-orm",
-      "version": "0.45.2",
+      "version": "0.45.3",
       "license": "Apache-2.0",
       "publisher": "Drizzle Team",
       "repository": "https://github.com/drizzle-team/drizzle-orm.git",
@@ -3166,7 +3166,7 @@
     },
     {
       "name": "tauri",
-      "version": "2.11.5",
+      "version": "2.11.6",
       "license": "Apache-2.0 OR MIT",
       "publisher": "Tauri Programme within The Commons Conservancy",
       "repository": "https://github.com/tauri-apps/tauri",
