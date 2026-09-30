@@ -17,6 +17,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # GTK 0.18, required by Tauri, only allows glib ^0.18; upstream must
+    # upgrade GTK before Dependabot can resolve glib's fixed 0.20 release.
+    ignore:
+      - dependency-name: glib
     groups:
       cargo:
         patterns: ["*"]
