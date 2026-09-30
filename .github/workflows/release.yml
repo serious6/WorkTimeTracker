@@ -360,12 +360,24 @@ jobs:
             gh release create "$TAG" release/* "${args[@]}"
           fi
 
+  # Surface an unexpected release gate skip instead of hiding it in the
+  # post-release dependency chain.
+  bump-version-gate:
+    needs: [release]
+    if: ${{ always() && !cancelled() && inputs.release_type != 'none' && needs.release.result != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail because the release did not complete
+        run: |
+          echo "::error::The release job finished with '${{ needs.release.result }}'; refusing to open a version bump pull request."
+          exit 1
+
   # Plain `needs` keeps main untouched when the production release failed, was
   # cancelled, or still waits for approval; only a published release may open the
   # post-release bump PR.
   bump-version:
     needs: [release]
-    if: ${{ inputs.release_type != 'none' }}
+    if: ${{ !cancelled() && needs.release.result == 'success' && inputs.release_type != 'none' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
