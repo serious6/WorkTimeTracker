@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTestQueryClient, resetAppState, seedAbsence, signIn } from '@/test/harness'
 import {
   useAbsenceAudits,
@@ -38,10 +38,17 @@ describe('useAbsenceIndex', () => {
 
 describe('useAbsenceAudits', () => {
   it('reads the trail of a window', async () => {
-    await seedAbsence({ type: 'sick', date: '2026-09-02' })
-    const { result } = renderHook(() => useAbsenceAudits(RANGE), { wrapper })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-15T12:00:00.000Z'))
 
-    await waitFor(() => expect(result.current.data?.[0]?.action).toBe('created'))
+    try {
+      await seedAbsence({ type: 'sick', date: '2026-09-02' })
+      const { result } = renderHook(() => useAbsenceAudits(RANGE), { wrapper })
+
+      await waitFor(() => expect(result.current.data?.[0]?.action).toBe('created'))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

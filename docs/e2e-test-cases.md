@@ -169,13 +169,24 @@ backend is still starting and the failure of the start as content of the window,
 The wait is never signalled by a busy mouse cursor. The browser fallback has no backend, so the
 spec stores the failure it should render under `work-time-tracker.startup-failure`. These tests
 start without a registered user and therefore do not use the shared registration setup.
+Native startup must take less than one second from process launch until the loading page is
+shown. ST5 covers browser navigation only; ST6 runs a fresh release Tauri process, including its
+setup hook, on every CI platform (see [`docs/development.md`](development.md#boot-budget)).
 
 | #  | Test (`e2e/startup.spec.ts`) | Given | When | Then |
 |----|------------------------------|-------|------|------|
-| ST1 | `ST1: shows the startup logo before the application appears` | The application is loaded | The document is opened and the boot markup is read before the application mounts | The window shows "Starting WorkTimeTracker…" and is replaced by the login page |
+| ST1 | `ST1: shows the startup logo before the application appears` | A fresh browser page | The document is opened and the boot markup is read before the application mounts | The window shows "Starting WorkTimeTracker…" and is replaced by the login page |
 | ST2 | `ST2: shows a failed start in the window and recovers on a retry` | The start reports a failed database connection | The user reads the failure and retries after the database is available again | The failure is shown inside the window with no dialog, and the retry reaches the login page |
 | ST3 | `ST3: keeps reporting the failure when the retry fails again` | The start reports a failed database connection | The user retries while the database is still unavailable | The window keeps showing the failure of the retry |
-| ST4 | `ST4: turns the logo while loading instead of showing a busy cursor` | The application is loaded | The boot screen is read before the application mounts | The brand logo turns on the boot screen and the mouse cursor stays the default one |
+| ST4 | `ST4: turns the logo while loading instead of showing a busy cursor` | A fresh browser page | The boot screen is read before the application mounts | The brand logo turns on the boot screen and the mouse cursor stays the default one |
+| ST5 | `ST5: paints the browser loading page within one second of navigation` | A fresh browser page, with no native backend | The first navigation's first contentful paint is observed | Browser navigation paints within one second and the application follows; this does not measure native startup |
+| ST7 | `ST7: paints and reports the loading page while the application chunk is delayed` | The production application chunk is held back and only the IPC bridge is stubbed | The bootstrap runs with real browser frames and timers | The styled, animated logo paints and reports before the app chunk is released; login follows its release |
+| ST8 | `ST8: shows an application chunk download failure and recovers on reload` | The production application chunk cannot download | The import fails and the user reloads after recovery | The window shows a generic failure with Reload, then reaches login |
+| ST9 | `ST9: shows an application chunk evaluation failure and recovers on reload` | The production application chunk throws during evaluation | The import fails and the user reloads after recovery | The window shows a generic failure without exposing module paths, then reaches login |
+
+| # | Native check | Given | When | Then |
+|---|--------------|-------|------|------|
+| ST6 | `scripts/check-native-startup.mjs` | A release binary with bundled production frontend and isolated portable/profile state on Linux, macOS, or Windows; a local database accepts TCP but never answers | A fresh process launches and the renderer acknowledges the loading page in the backend log | Both external monotonic spawn-to-log-observation and backend elapsed time are strictly below 1000 ms; the database was contacted; late/missing reports and premature process exits fail; the process tree and isolated state are cleaned up |
 
 ## Content Security Policy
 

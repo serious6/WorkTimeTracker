@@ -156,18 +156,52 @@ jobs:
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       # Runs in the lint/build job for any change that can affect licenses
       # (package-lock.json is not under src-tauri/), so it is skipped here on
-      # pull requests together with the Tauri build below.
+      # pull requests. Native release builds run in the cold-start matrix below.
       - run: npm run licenses:check
         if: github.event_name != 'pull_request'
-      # Full Tauri compile (release-style, with the frontend bundled in)
-      # duplicates cargo test + the web build and takes ~60s on its own, so
-      # it is skipped on PRs. It still runs on every push to main (keeping
-      # the Rust cache warm) and can be triggered on demand for a PR via
-      # "Run workflow" (workflow_dispatch) from the Actions tab. Full
-      # installer bundles for a tagged release are built by release.yml.
-      - name: Build Tauri app (release verification, skipped on PRs)
-        if: github.event_name != 'pull_request'
+
+  native-startup:
+    name: native cold start (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: native-startup
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev xvfb
+      - name: Test native measurement harness
+        run: npx vitest run scripts/check-native-startup.test.mjs
+      - name: Build release application (Linux and Windows)
+        if: runner.os != 'macOS'
         run: npm run tauri build -- --no-bundle
+      - name: Build release application bundle (macOS)
+        if: runner.os == 'macOS'
+        run: npm run tauri build -- --bundles app
+      - name: Measure fresh native process (Linux)
+        if: runner.os == 'Linux'
+        env:
+          # Xvfb has no DRI3 device for WebKit's DMA-BUF renderer.
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+        run: xvfb-run -a node scripts/check-native-startup.mjs
+      - name: Measure fresh native process (macOS and Windows)
+        if: runner.os != 'Linux'
+        run: node scripts/check-native-startup.mjs
 
   end-to-end:
     needs: changes
@@ -204,7 +238,7 @@ jobs:
   ci-success:
     name: CI success
     if: always()
-    needs: [changes, lint-typecheck-build, test, rust, end-to-end]
+    needs: [changes, lint-typecheck-build, test, rust, end-to-end, native-startup]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
