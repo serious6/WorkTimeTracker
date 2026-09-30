@@ -7,9 +7,9 @@
 
 # The toolchain is copied from the official Rust image instead of piping https://sh.rustup.rs
 # into a shell, which executes unverified remote code and pins nothing.
-FROM docker.io/library/rust:1.98-bookworm@sha256:9a73a5088750b4c95158ab26629c854c3d6fc4b173cb7bc8079ad252d8ed7bfa AS rust
+FROM docker.io/library/rust:1.98-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e AS rust
 
-FROM docker.io/library/node:26-bookworm-slim@sha256:cd9f682fa2885cd1056e830424764158570061c59736a1da836bc3d73df095ae
+FROM docker.io/library/node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
