@@ -278,7 +278,7 @@ jobs:
     # `bundle` and `fuzz` must have succeeded; the migration is skipped unless
     # it was asked for, and only a successful or a skipped one may be released
     # after.
-    if: ${{ !cancelled() && needs.bundle.result == 'success' && needs.fuzz.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
+    if: ${{ always() && !cancelled() && needs.bundle.result == 'success' && needs.fuzz.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
     runs-on: ubuntu-latest
     # Publishing a release is a production change: it waits for a reviewer of
     # the protected `production` environment before any asset becomes public.
@@ -360,12 +360,24 @@ jobs:
             gh release create "$TAG" release/* "${args[@]}"
           fi
 
+  # Surface an unexpected release gate skip instead of hiding it in the
+  # post-release dependency chain.
+  bump-version-gate:
+    needs: [release]
+    if: ${{ always() && !cancelled() && inputs.release_type != 'none' && needs.release.result != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail because the release did not complete
+        run: |
+          echo "::error::The release job finished with '${{ needs.release.result }}'; refusing to open a version bump pull request."
+          exit 1
+
   # Plain `needs` keeps main untouched when the production release failed, was
   # cancelled, or still waits for approval; only a published release may open the
   # post-release bump PR.
   bump-version:
     needs: [release]
-    if: ${{ inputs.release_type != 'none' }}
+    if: ${{ !cancelled() && needs.release.result == 'success' && inputs.release_type != 'none' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
