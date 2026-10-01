@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T19:06:51.307Z",
+  "generatedAt": "2026-10-01T19:30:35.722Z",
   "appVersion": "0.2.3",
   "npm": [
     {
@@ -300,7 +300,7 @@
     },
     {
       "name": "lucide-react",
-      "version": "1.47.0",
+      "version": "1.48.0",
       "license": "ISC",
       "publisher": "Eric Fennis",
       "repository": "https://github.com/lucide-icons/lucide.git",
