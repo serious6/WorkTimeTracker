@@ -278,7 +278,7 @@ jobs:
     # `bundle` and `fuzz` must have succeeded; the migration is skipped unless
     # it was asked for, and only a successful or a skipped one may be released
     # after.
-    if: ${{ !cancelled() && needs.bundle.result == 'success' && needs.fuzz.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
+    if: ${{ always() && !cancelled() && needs.bundle.result == 'success' && needs.fuzz.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs['migrate-production-database'].result) }}
     runs-on: ubuntu-latest
     # Publishing a release is a production change: it waits for a reviewer of
     # the protected `production` environment before any asset becomes public.
