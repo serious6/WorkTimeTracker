@@ -389,9 +389,22 @@ jobs:
     needs: [release]
     if: ${{ !cancelled() && needs.release.result == 'success' && inputs.release_type != 'none' }}
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
     steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Validate release App configuration
+        env:
+          RELEASE_BOT_CLIENT_ID: ${{ vars.RELEASE_BOT_CLIENT_ID }}
+          RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+        run: node scripts/check-release-bot-config.mjs
       # A push made with `GITHUB_TOKEN` starts no workflow, so the bump pull
       # request would never get its required checks. The installation token of
       # the release app pushes and opens the pull request as a normal actor.
@@ -399,15 +412,16 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           token: ${{ steps.app-token.outputs.token }}
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 26
       # A release can take hours, so `main` may already carry notes of pull
       # requests merged after it. The changelog of the released commit decides
       # which notes belong to the published version.
@@ -454,7 +468,7 @@ jobs:
             fi
           fi
           git checkout -B "$branch"
-          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
+          git add package.json package-lock.json src/data/licenses.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/fuzz/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md
           if git diff --cached --quiet; then
             echo "Main already carries version $NEXT; no bump PR is needed."
             exit 0

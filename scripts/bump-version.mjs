@@ -38,6 +38,33 @@ export function bumpJson(contents, version) {
   return replaced
 }
 
+export function bumpPackageLock(contents, version) {
+  const lock = JSON.parse(contents)
+  const rootPackage = lock.packages?.['']
+  if (!Object.hasOwn(lock, 'version') || !rootPackage || !Object.hasOwn(rootPackage, 'version')) {
+    throw new Error('package-lock.json has no top-level and root package version fields.')
+  }
+
+  lock.version = version
+  rootPackage.version = version
+  const newline = contents.includes('\r\n') ? '\r\n' : '\n'
+  const trailingNewline = contents.endsWith('\n') ? newline : ''
+  return `${JSON.stringify(lock, null, 2).replace(/\n/g, newline)}${trailingNewline}`
+}
+
+export function bumpLicenseData(contents, version, generatedAt = new Date().toISOString()) {
+  const licenses = JSON.parse(contents)
+  if (!Object.hasOwn(licenses, 'appVersion') || !Object.hasOwn(licenses, 'generatedAt')) {
+    throw new Error('License data has no appVersion or generatedAt field to update.')
+  }
+
+  licenses.appVersion = version
+  licenses.generatedAt = generatedAt
+  const newline = contents.includes('\r\n') ? '\r\n' : '\n'
+  const trailingNewline = contents.endsWith('\n') ? newline : ''
+  return `${JSON.stringify(licenses, null, 2).replace(/\n/g, newline)}${trailingNewline}`
+}
+
 export function bumpCargoToml(contents, version) {
   const newline = contents.includes('\r\n') ? '\r\n' : '\n'
   const lines = contents.split(/\r?\n/)
@@ -289,17 +316,23 @@ function run(argv) {
 
   const files = {
     packageJson: join(root, 'package.json'),
+    packageLock: join(root, 'package-lock.json'),
     tauriConfig: tauriPath,
     cargoToml: join(root, 'src-tauri/Cargo.toml'),
     cargoLock: join(root, 'src-tauri/Cargo.lock'),
+    fuzzCargoLock: join(root, 'src-tauri/fuzz/Cargo.lock'),
+    licenseData: join(root, 'src/data/licenses.json'),
     changelog: join(root, 'CHANGELOG.md'),
   }
 
   const updates = [
     [files.packageJson, bumpJson(readFileSync(files.packageJson, 'utf8'), version)],
+    [files.packageLock, bumpPackageLock(readFileSync(files.packageLock, 'utf8'), version)],
     [files.tauriConfig, bumpJson(readFileSync(files.tauriConfig, 'utf8'), version)],
     [files.cargoToml, bumpCargoToml(readFileSync(files.cargoToml, 'utf8'), version)],
     [files.cargoLock, bumpCargoLock(readFileSync(files.cargoLock, 'utf8'), 'work-time-tracker', version)],
+    [files.fuzzCargoLock, bumpCargoLock(readFileSync(files.fuzzCargoLock, 'utf8'), 'work-time-tracker', version)],
+    [files.licenseData, bumpLicenseData(readFileSync(files.licenseData, 'utf8'), version)],
     [files.changelog, changelogWithBumpEntry(readFileSync(files.changelog, 'utf8'), version, from, undefined, releasedChangelog)],
   ]
 

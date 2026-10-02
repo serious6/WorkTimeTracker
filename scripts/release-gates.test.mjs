@@ -81,6 +81,9 @@ describe('release workflow gates', () => {
     expect(bumpJob).toContain('permission-contents: write')
     expect(bumpJob).toContain('permission-pull-requests: write')
     expect(bumpJob).toMatch(/uses: actions\/create-github-app-token@[a-f0-9]{40}/)
+    expect(bumpJob).toContain(
+      'git add package.json package-lock.json src/data/licenses.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/fuzz/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md',
+    )
   })
 
   test.each([

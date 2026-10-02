@@ -4,6 +4,7 @@ import {
   bumpCargoLock,
   bumpCargoToml,
   bumpJson,
+  bumpLicenseData,
   bumpPackageLock,
   changelogWithBumpEntry,
   nextVersion,
@@ -192,6 +193,38 @@ describe('metadata rewrites', () => {
       '      "version": "0.2.3"',
       '    }',
       '  }',
+      '}',
+      '',
+    ].join('\n'))
+  })
+
+  test('updates the app version and generation time in license metadata only', () => {
+    const licenses = [
+      '{',
+      '  "generatedAt": "2026-10-01T19:30:35.722Z",',
+      '  "appVersion": "0.2.3",',
+      '  "npm": [',
+      '    {',
+      '      "name": "example",',
+      '      "version": "1.2.3"',
+      '    }',
+      '  ],',
+      '  "rust": []',
+      '}',
+      '',
+    ].join('\n')
+
+    expect(bumpLicenseData(licenses, '0.2.4', '2026-10-02T00:00:00.000Z')).toBe([
+      '{',
+      '  "generatedAt": "2026-10-02T00:00:00.000Z",',
+      '  "appVersion": "0.2.4",',
+      '  "npm": [',
+      '    {',
+      '      "name": "example",',
+      '      "version": "1.2.3"',
+      '    }',
+      '  ],',
+      '  "rust": []',
       '}',
       '',
     ].join('\n'))
