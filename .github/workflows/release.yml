@@ -389,39 +389,18 @@ jobs:
     needs: [release]
     if: ${{ !cancelled() && needs.release.result == 'success' && inputs.release_type != 'none' }}
     runs-on: ubuntu-latest
-    environment: production
     permissions:
-      contents: read
+      actions: write
+      contents: write
+      pull-requests: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          token: ${{ github.token }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 26
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          persist-credentials: false
-      - name: Validate release App configuration
-        env:
-          RELEASE_BOT_CLIENT_ID: ${{ vars.RELEASE_BOT_CLIENT_ID }}
-          RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-        run: node scripts/check-release-bot-config.mjs
-      # A push made with `GITHUB_TOKEN` starts no workflow, so the bump pull
-      # request would never get its required checks. The installation token of
-      # the release app pushes and opens the pull request as a normal actor.
-      - name: Mint the release app token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-          permission-pull-requests: write
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          token: ${{ steps.app-token.outputs.token }}
       # A release can take hours, so `main` may already carry notes of pull
       # requests merged after it. The changelog of the released commit decides
       # which notes belong to the published version.
@@ -445,8 +424,7 @@ jobs:
             --released-changelog "$RELEASED_CHANGELOG"
       - name: Open the bump pull request
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          GH_TOKEN: ${{ github.token }}
           NEXT: ${{ steps.bump.outputs.version }}
           RELEASED_VERSION: ${{ needs.release.outputs.version }}
           RELEASE_TYPE: ${{ inputs.release_type }}
@@ -456,9 +434,8 @@ jobs:
             echo "::error::The bump script did not report the next version."
             exit 1
           fi
-          app_user_id=$(gh api "/users/$APP_SLUG%5Bbot%5D" --jq .id)
-          git config user.name "$APP_SLUG[bot]"
-          git config user.email "$app_user_id+$APP_SLUG[bot]@users.noreply.github.com"
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR_ID+$GITHUB_ACTOR@users.noreply.github.com"
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
             git fetch origin "$branch:refs/remotes/origin/$branch"
           else
@@ -478,8 +455,9 @@ jobs:
           existing_pr=$(gh pr list --base main --head "$branch" --state open --json url --jq '.[0].url')
           if [ -n "$existing_pr" ]; then
             echo "Updated existing bump pull request: $existing_pr"
-            exit 0
+          else
+            gh pr create --base main --head "$branch" \
+              --title "chore(ci): bump version to $NEXT" \
+              --body "Automated post-release $RELEASE_TYPE bump after v$RELEASED_VERSION."
           fi
-          gh pr create --base main --head "$branch" \
-            --title "chore(ci): bump version to $NEXT" \
-            --body "Automated post-release $RELEASE_TYPE bump after v$RELEASED_VERSION."
+          gh workflow run ci.yml --ref "$branch"

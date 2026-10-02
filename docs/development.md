@@ -285,18 +285,9 @@ commit, so only its notes are promoted and anything merged in the meantime stays
 skips the bump for re-runs and hotfix republishes. The bump job depends plainly on `release`, so
 failed, cancelled, or unapproved releases leave `main` untouched.
 
-The bump job uses the protected `production` environment for its App credentials and its approval
-rules. Set `RELEASE_BOT_CLIENT_ID` as an environment variable and `RELEASE_BOT_PRIVATE_KEY` as an
-environment secret there; the preflight rejects missing or blank settings before minting a token and
-does not print their values. If migrating from `RELEASE_BOT_APP_ID`, replace it with the App's Client
-ID from its settings: the pinned action's deprecated `app-id` input accepts an App ID, not the
-Client ID expected here.
-
-Install the App for this repository with **Contents: read and write** and **Pull requests: read and
-write** permissions. The workflow requests only those permissions and limits the installation token
-to this repository. `GITHUB_TOKEN` cannot replace it: a push made with that token starts no workflow,
-so the bump pull request would never receive its required checks. Administrators must provision both
-production-environment values; this repository change does not create or verify them.
+The bump job creates its branch and pull request with the built-in `GITHUB_TOKEN`. Since a push made
+with that token does not start CI, it explicitly dispatches `ci.yml` against the bump branch so its
+required `CI success` check runs on the pull request commit. No additional credential is required.
 
 ### Portable archives
 

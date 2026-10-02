@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 const workflow = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
 const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8')
 
 function jobFor(jobName) {
@@ -64,23 +65,24 @@ describe('release workflow gates', () => {
     expect(bumpJob).toContain('--released-changelog "$RELEASED_CHANGELOG"')
   })
 
-  test('validates production-scoped App credentials before minting a repository-scoped token', () => {
+  test('uses the built-in token and explicitly dispatches required checks for the bump pull request', () => {
     const bumpJob = jobFor('bump-version')
-    const validation = bumpJob.indexOf('node scripts/check-release-bot-config.mjs')
-    const token = bumpJob.indexOf('name: Mint the release app token')
+    const push = bumpJob.indexOf('git push --force-with-lease origin "$branch"')
+    const pullRequest = bumpJob.indexOf('gh pr create --base main')
+    const checks = bumpJob.indexOf('gh workflow run ci.yml --ref "$branch"')
 
-    expect(bumpJob).toMatch(/^    environment: production$/m)
-    expect(bumpJob).toContain('RELEASE_BOT_CLIENT_ID: ${{ vars.RELEASE_BOT_CLIENT_ID }}')
-    expect(bumpJob).toContain('RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}')
-    expect(validation).toBeGreaterThan(-1)
-    expect(token).toBeGreaterThan(validation)
-    expect(bumpJob).toContain('client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}')
-    expect(bumpJob).not.toContain('app-id:')
-    expect(bumpJob).toContain('owner: ${{ github.repository_owner }}')
-    expect(bumpJob).toContain('repositories: ${{ github.event.repository.name }}')
-    expect(bumpJob).toContain('permission-contents: write')
-    expect(bumpJob).toContain('permission-pull-requests: write')
-    expect(bumpJob).toMatch(/uses: actions\/create-github-app-token@[a-f0-9]{40}/)
+    expect(bumpJob).not.toContain('create-github-app-token')
+    expect(bumpJob).not.toContain('RELEASE_BOT_')
+    expect(bumpJob).not.toContain('environment: production')
+    expect(bumpJob).toContain('actions: write')
+    expect(bumpJob).toContain('contents: write')
+    expect(bumpJob).toContain('pull-requests: write')
+    expect(bumpJob).toContain('token: ${{ github.token }}')
+    expect(bumpJob).toContain('GH_TOKEN: ${{ github.token }}')
+    expect(ciWorkflow).toMatch(/^  workflow_dispatch:\s*$/m)
+    expect(push).toBeGreaterThan(-1)
+    expect(pullRequest).toBeGreaterThan(push)
+    expect(checks).toBeGreaterThan(pullRequest)
     expect(bumpJob).toContain(
       'git add package.json package-lock.json src/data/licenses.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/fuzz/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md',
     )
