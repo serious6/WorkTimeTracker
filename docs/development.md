@@ -285,10 +285,9 @@ commit, so only its notes are promoted and anything merged in the meantime stays
 skips the bump for re-runs and hotfix republishes. The bump job depends plainly on `release`, so
 failed, cancelled, or unapproved releases leave `main` untouched.
 
-The bump job pushes and opens its pull request with the installation token of a GitHub App
-(`vars.RELEASE_BOT_APP_ID` and `secrets.RELEASE_BOT_PRIVATE_KEY`, with `contents: write` and
-`pull requests: write` on this repository). `GITHUB_TOKEN` cannot be used here: a push made with it
-starts no workflow, so the bump pull request would never receive its required checks.
+The bump job creates its branch and pull request with the built-in `GITHUB_TOKEN`. Since a push made
+with that token does not start CI, it explicitly dispatches `ci.yml` against the bump branch so its
+required `CI success` check runs on the pull request commit. No additional credential is required.
 
 ### Portable archives
 

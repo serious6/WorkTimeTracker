@@ -4,6 +4,8 @@ import {
   bumpCargoLock,
   bumpCargoToml,
   bumpJson,
+  bumpLicenseData,
+  bumpPackageLock,
   changelogWithBumpEntry,
   nextVersion,
   parseArgs,
@@ -146,6 +148,84 @@ describe('metadata rewrites', () => {
       'dependencies = [',
       ' "serde",',
       ']',
+      '',
+    ].join('\n'))
+  })
+
+  test('only rewrites root package metadata in package-lock.json', () => {
+    const lock = [
+      '{',
+      '  "name": "work-time-tracker",',
+      '  "version": "0.2.3",',
+      '  "lockfileVersion": 3,',
+      '  "requires": true,',
+      '  "packages": {',
+      '    "": {',
+      '      "name": "work-time-tracker",',
+      '      "version": "0.2.3",',
+      '      "dependencies": {',
+      '        "example": "0.2.3"',
+      '      }',
+      '    },',
+      '    "node_modules/example": {',
+      '      "version": "0.2.3"',
+      '    }',
+      '  }',
+      '}',
+      '',
+    ].join('\n')
+
+    expect(bumpPackageLock(lock, '0.2.4')).toBe([
+      '{',
+      '  "name": "work-time-tracker",',
+      '  "version": "0.2.4",',
+      '  "lockfileVersion": 3,',
+      '  "requires": true,',
+      '  "packages": {',
+      '    "": {',
+      '      "name": "work-time-tracker",',
+      '      "version": "0.2.4",',
+      '      "dependencies": {',
+      '        "example": "0.2.3"',
+      '      }',
+      '    },',
+      '    "node_modules/example": {',
+      '      "version": "0.2.3"',
+      '    }',
+      '  }',
+      '}',
+      '',
+    ].join('\n'))
+  })
+
+  test('updates the app version and generation time in license metadata only', () => {
+    const licenses = [
+      '{',
+      '  "generatedAt": "2026-10-01T19:30:35.722Z",',
+      '  "appVersion": "0.2.3",',
+      '  "npm": [',
+      '    {',
+      '      "name": "example",',
+      '      "version": "1.2.3"',
+      '    }',
+      '  ],',
+      '  "rust": []',
+      '}',
+      '',
+    ].join('\n')
+
+    expect(bumpLicenseData(licenses, '0.2.4', '2026-10-02T00:00:00.000Z')).toBe([
+      '{',
+      '  "generatedAt": "2026-10-02T00:00:00.000Z",',
+      '  "appVersion": "0.2.4",',
+      '  "npm": [',
+      '    {',
+      '      "name": "example",',
+      '      "version": "1.2.3"',
+      '    }',
+      '  ],',
+      '  "rust": []',
+      '}',
       '',
     ].join('\n'))
   })
