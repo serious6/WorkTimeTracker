@@ -5,11 +5,13 @@ All notable changes to WorkTimeTracker are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Every user-facing change adds a line to `Unreleased`; releasing turns that section into a version
-heading with the release date. The `Release` workflow publishes the section of the released version
-as the release notes, so a version without a section here cannot be released. See
+heading with the release date. The `Release` workflow publishes a matching version section when
+present, or `Unreleased` before the post-release bump promotes it. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]
+
+## [0.2.3] - 2026-10-02
 
 ### Changed
 
@@ -98,7 +100,8 @@ database you control.
 None: this is the first release. Installing it is described in
 [`docs/installation.md`](https://github.com/serious6/WorkTimeTracker/blob/main/docs/installation.md).
 
-[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/serious6/WorkTimeTracker/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/serious6/WorkTimeTracker/compare/v0.1.0...v0.2.0

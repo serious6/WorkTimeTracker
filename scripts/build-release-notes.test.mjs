@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { buildNotes, commitLimit, extractSection, parseCommits, previousTagOf, splitUpgradeImpact } from './build-release-notes.mjs'
+import { buildNotes, commitLimit, extractSection, parseCommits, previousTagOf, releaseSection, splitUpgradeImpact } from './build-release-notes.mjs'
 
 const repositoryUrl = 'https://github.com/serious6/WorkTimeTracker'
 
@@ -63,6 +63,20 @@ describe('extractSection', () => {
   test('returns null for a version the changelog does not describe or leaves empty', () => {
     expect(extractSection(changelog, '9.9.9')).toBeNull()
     expect(extractSection('## [1.0.0] - 2026-01-01\n\n## [0.9.0]\n\n- Older.', '1.0.0')).toBeNull()
+  })
+})
+
+describe('releaseSection', () => {
+  test('uses Unreleased notes until the bump script promotes them', () => {
+    const pending = changelog
+      .replace('Nothing yet.', '### Fixed\n\n- Pending change.')
+      .replace('## [1.2.0] - 2026-09-07', '## [0.9.0] - 2026-01-01')
+
+    expect(releaseSection(pending, '1.2.0')).toBe('### Fixed\n\n- Pending change.')
+  })
+
+  test('prefers the requested version section when it exists', () => {
+    expect(releaseSection(changelog, '1.2.0')).toContain('- A weekly report.')
   })
 })
 

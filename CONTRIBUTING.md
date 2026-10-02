@@ -57,8 +57,8 @@ test files live and how they stay deterministic is described in
 Every user-facing change adds a line to the `Unreleased` section of [`CHANGELOG.md`](CHANGELOG.md)
 under `Added`, `Changed`, `Fixed`, `Removed` or `Security`, and a breaking change describes its
 upgrade impact under `Breaking changes`. Write it for users, not for reviewers. Releasing turns that
-section into a version heading, and the `Release` workflow publishes it as the release notes, so a
-version without a section cannot be released; see
+section into a version heading through the post-release version bump. The `Release` workflow
+publishes a matching version section when present, or `Unreleased` before that bump; see
 [`docs/development.md`](docs/development.md#release-checks).
 
 ## Quality checks

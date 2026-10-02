@@ -2,16 +2,20 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 const workflow = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8')
 
-function conditionFor(jobName) {
+function jobFor(jobName) {
   const start = workflow.indexOf(`  ${jobName}:\n`)
   if (start === -1) return undefined
 
   const bodyStart = start + jobName.length + 4
   const remaining = workflow.slice(bodyStart)
   const nextJob = remaining.search(/\n  [\w-]+:\n/)
-  const job = remaining.slice(0, nextJob === -1 ? undefined : nextJob)
-  return job.match(/^    if: \$\{\{\s*(.*?)\s*\}\}$/m)?.[1]
+  return remaining.slice(0, nextJob === -1 ? undefined : nextJob)
+}
+
+function conditionFor(jobName) {
+  return jobFor(jobName)?.match(/^    if: \$\{\{\s*(.*?)\s*\}\}$/m)?.[1]
 }
 
 function releaseRuns({ bundle, fuzz, migration, cancelled }) {
@@ -37,6 +41,27 @@ describe('release workflow gates', () => {
     expect(conditionFor('bump-version')).toBe(
       `!cancelled() && needs.release.result == 'success' && inputs.release_type != 'none'`,
     )
+  })
+
+  test('deploys GitHub Pages through the existing workflow after a successful release', () => {
+    const pagesJob = jobFor('deploy-pages')
+
+    expect(conditionFor('deploy-pages')).toBe(
+      `!cancelled() && needs.release.result == 'success'`,
+    )
+    expect(pagesJob).toContain('uses: ./.github/workflows/pages.yml')
+    expect(pagesJob).toContain('pages: write')
+    expect(pagesJob).toContain('id-token: write')
+    expect(pagesWorkflow).toMatch(/^  workflow_call:\s*$/m)
+    expect(pagesWorkflow).toMatch(/uses: actions\/checkout@[^\n]+\n\s+with:\n\s+ref: main\n/)
+  })
+
+  test('promotes the changelog of the released commit, not the current main', () => {
+    const bumpJob = jobFor('bump-version')
+
+    expect(bumpJob).toContain('git show "$RELEASED_SHA:CHANGELOG.md"')
+    expect(bumpJob).toContain('RELEASED_SHA: ${{ github.sha }}')
+    expect(bumpJob).toContain('--released-changelog "$RELEASED_CHANGELOG"')
   })
 
   test.each([
