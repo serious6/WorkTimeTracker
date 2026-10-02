@@ -4,6 +4,7 @@ import {
   bumpCargoLock,
   bumpCargoToml,
   bumpJson,
+  bumpPackageLock,
   changelogWithBumpEntry,
   nextVersion,
   parseArgs,
@@ -146,6 +147,52 @@ describe('metadata rewrites', () => {
       'dependencies = [',
       ' "serde",',
       ']',
+      '',
+    ].join('\n'))
+  })
+
+  test('only rewrites root package metadata in package-lock.json', () => {
+    const lock = [
+      '{',
+      '  "name": "work-time-tracker",',
+      '  "version": "0.2.3",',
+      '  "lockfileVersion": 3,',
+      '  "requires": true,',
+      '  "packages": {',
+      '    "": {',
+      '      "name": "work-time-tracker",',
+      '      "version": "0.2.3",',
+      '      "dependencies": {',
+      '        "example": "0.2.3"',
+      '      }',
+      '    },',
+      '    "node_modules/example": {',
+      '      "version": "0.2.3"',
+      '    }',
+      '  }',
+      '}',
+      '',
+    ].join('\n')
+
+    expect(bumpPackageLock(lock, '0.2.4')).toBe([
+      '{',
+      '  "name": "work-time-tracker",',
+      '  "version": "0.2.4",',
+      '  "lockfileVersion": 3,',
+      '  "requires": true,',
+      '  "packages": {',
+      '    "": {',
+      '      "name": "work-time-tracker",',
+      '      "version": "0.2.4",',
+      '      "dependencies": {',
+      '        "example": "0.2.3"',
+      '      }',
+      '    },',
+      '    "node_modules/example": {',
+      '      "version": "0.2.3"',
+      '    }',
+      '  }',
+      '}',
       '',
     ].join('\n'))
   })

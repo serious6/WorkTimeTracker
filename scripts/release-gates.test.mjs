@@ -64,6 +64,25 @@ describe('release workflow gates', () => {
     expect(bumpJob).toContain('--released-changelog "$RELEASED_CHANGELOG"')
   })
 
+  test('validates production-scoped App credentials before minting a repository-scoped token', () => {
+    const bumpJob = jobFor('bump-version')
+    const validation = bumpJob.indexOf('node scripts/check-release-bot-config.mjs')
+    const token = bumpJob.indexOf('name: Mint the release app token')
+
+    expect(bumpJob).toMatch(/^    environment: production$/m)
+    expect(bumpJob).toContain('RELEASE_BOT_CLIENT_ID: ${{ vars.RELEASE_BOT_CLIENT_ID }}')
+    expect(bumpJob).toContain('RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}')
+    expect(validation).toBeGreaterThan(-1)
+    expect(token).toBeGreaterThan(validation)
+    expect(bumpJob).toContain('client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}')
+    expect(bumpJob).not.toContain('app-id:')
+    expect(bumpJob).toContain('owner: ${{ github.repository_owner }}')
+    expect(bumpJob).toContain('repositories: ${{ github.event.repository.name }}')
+    expect(bumpJob).toContain('permission-contents: write')
+    expect(bumpJob).toContain('permission-pull-requests: write')
+    expect(bumpJob).toMatch(/uses: actions\/create-github-app-token@[a-f0-9]{40}/)
+  })
+
   test.each([
     {
       name: 'successful release with skipped optional migration',
