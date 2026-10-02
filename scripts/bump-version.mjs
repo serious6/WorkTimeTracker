@@ -70,10 +70,14 @@ export function bumpCargoLock(contents, packageName, version) {
   return updated
 }
 
-// The bump only records the version change under `## [Unreleased]`: releasing
-// turns that section into a dated version heading (CONTRIBUTING.md#changelog),
-// so the script must never create one for an unreleased version.
-export function changelogWithBumpEntry(contents, version) {
+// When a release succeeds, the bump promotes its notes from `Unreleased` to a
+// dated version heading and starts the next `Unreleased` section.
+export function changelogWithBumpEntry(
+  contents,
+  version,
+  releasedVersion,
+  releaseDate = new Date().toISOString().slice(0, 10),
+) {
   const newline = contents.includes('\r\n') ? '\r\n' : '\n'
   const lines = contents.split(/\r?\n/)
   const start = lines.findIndex((line) => line.trim() === '## [Unreleased]')
@@ -81,6 +85,16 @@ export function changelogWithBumpEntry(contents, version) {
 
   const end = blockEnd(lines, start + 1, lines.length, /^## /)
   const entry = `- Bumped the application version to ${version}.`
+  if (
+    releasedVersion &&
+    !lines.some(
+      (line) => line.trim() === `## [${releasedVersion}]` || line.trim().startsWith(`## [${releasedVersion}] -`),
+    )
+  ) {
+    lines[start] = `## [${releasedVersion}] - ${releaseDate}`
+    lines.splice(start, 0, '## [Unreleased]', '', '### Changed', '', entry, '')
+    return lines.join(newline)
+  }
   if (lines.slice(start + 1, end).some((line) => line.trim() === entry)) return contents
 
   const changed = findHeading(lines, start + 1, end, '### Changed')
@@ -178,7 +192,7 @@ function run(argv) {
     [files.tauriConfig, bumpJson(readFileSync(files.tauriConfig, 'utf8'), version)],
     [files.cargoToml, bumpCargoToml(readFileSync(files.cargoToml, 'utf8'), version)],
     [files.cargoLock, bumpCargoLock(readFileSync(files.cargoLock, 'utf8'), 'work-time-tracker', version)],
-    [files.changelog, changelogWithBumpEntry(readFileSync(files.changelog, 'utf8'), version)],
+    [files.changelog, changelogWithBumpEntry(readFileSync(files.changelog, 'utf8'), version, from)],
   ]
 
   for (const [path, contents] of updates) writeFileSync(path, contents)

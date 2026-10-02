@@ -198,14 +198,35 @@ describe('changelogWithBumpEntry', () => {
     '',
   ].join('\n')
 
-  test('records the bump under Unreleased instead of dating a new section', () => {
-    const updated = changelogWithBumpEntry(changelog, '1.2.4')
+  test('keeps an existing release section and records the next version under Unreleased', () => {
+    const updated = changelogWithBumpEntry(changelog, '1.2.4', '1.2.3', '2026-10-02')
 
     expect(updated).toContain(
       '## [Unreleased]\n\n### Changed\n\n- Bumped the application version to 1.2.4.\n\n## [1.2.3] - 2026-09-14',
     )
     expect(updated).not.toMatch(/^## \[1\.2\.4\]/m)
     expect(updated).toContain('[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD')
+  })
+
+  test('promotes Unreleased notes into a dated section for the released version', () => {
+    const pending = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- A pending fix.',
+      '',
+      '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD',
+      '',
+    ].join('\n')
+
+    const updated = changelogWithBumpEntry(pending, '1.2.4', '1.2.3', '2026-10-02')
+
+    expect(updated).toContain(
+      '## [Unreleased]\n\n### Changed\n\n- Bumped the application version to 1.2.4.\n\n## [1.2.3] - 2026-10-02\n\n### Fixed\n\n- A pending fix.',
+    )
   })
 
   test('appends to an existing Changed subsection and keeps later subsections', () => {

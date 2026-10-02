@@ -5,8 +5,8 @@ All notable changes to WorkTimeTracker are documented here. The format follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Every user-facing change adds a line to `Unreleased`; releasing turns that section into a version
-heading with the release date. The `Release` workflow publishes the section of the released version
-as the release notes, so a version without a section here cannot be released. See
+heading with the release date. The `Release` workflow publishes a matching version section when
+present, or `Unreleased` before the post-release bump promotes it. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md#changelog).
 
 ## [Unreleased]

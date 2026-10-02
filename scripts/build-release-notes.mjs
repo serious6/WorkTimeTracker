@@ -1,8 +1,8 @@
 // Builds the body of a GitHub release. The human-readable summary comes from
 // `CHANGELOG.md`, so a release never ships the raw output of a version control
 // log; the commits are appended below it as a collapsed section for
-// traceability only. Fails the release job when the released version has no
-// changelog section.
+// traceability only. Before the post-release bump promotes the notes, they are
+// read from `Unreleased`.
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -44,6 +44,10 @@ export function extractSection(changelog, version) {
     .join('\n')
     .trim()
   return body || null
+}
+
+export function releaseSection(changelog, version) {
+  return extractSection(changelog, version) ?? extractSection(changelog, 'Unreleased')
 }
 
 // Splits the upgrade impact out of the section, so it is stated once and under
@@ -177,7 +181,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const server = process.env.GITHUB_SERVER_URL || 'https://github.com'
   const repositoryUrl = `${server}/${process.env.GITHUB_REPOSITORY || 'serious6/WorkTimeTracker'}`
 
-  const section = extractSection(readFileSync(changelogPath, 'utf8'), version)
+  const section = releaseSection(readFileSync(changelogPath, 'utf8'), version)
   if (!section) {
     console.error(
       `::error::${changelogPath} has no section for version ${version}. Add the release notes before publishing.`,
