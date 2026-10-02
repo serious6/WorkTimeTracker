@@ -11,8 +11,8 @@ At load time the page calls GitHub’s public Releases API for this repository. 
 1. One-time setup: in GitHub open **Settings → Pages**, then set **Source** to
    **GitHub Actions**.
 2. The workflow in [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) deploys on
-   pushes to `main` that touch `docs/site/**`, and it can also be started manually with
-   **Run workflow** (`workflow_dispatch`).
+   pushes to `main` that touch `docs/site/**`, after a successful release, and it can also be started
+   manually with **Run workflow** (`workflow_dispatch`).
 3. The published URL is `https://serious6.github.io/WorkTimeTracker/`.
 4. Only `docs/site/` is published; Markdown files under `docs/` are not part of the Pages
    artifact.

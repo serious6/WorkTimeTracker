@@ -360,6 +360,15 @@ jobs:
             gh release create "$TAG" release/* "${args[@]}"
           fi
 
+  deploy-pages:
+    needs: [release]
+    if: ${{ needs.release.result == 'success' }}
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
   # Surface an unexpected release gate skip instead of hiding it in the
   # post-release dependency chain.
   bump-version-gate:
