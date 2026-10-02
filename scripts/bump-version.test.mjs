@@ -311,6 +311,84 @@ describe('changelogWithBumpEntry', () => {
     )
   })
 
+  test.each(['\n', '\r\n'])('promotes the snapshot despite later edits, moves, or deletions (%j)', (newline) => {
+    const released = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- An edited fix.',
+      '- A moved fix.',
+      '- A removed fix.',
+      '- An unchanged fix.',
+      '',
+    ].join('\n')
+    const pending = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- An edited fix with newer wording.',
+      '- An unchanged fix.',
+      '',
+      '### Added',
+      '',
+      '- A moved fix.',
+      '- An unchanged fix.',
+      '- A later addition.',
+      '',
+      '## [1.2.2] - 2026-09-14',
+      '',
+      '### Fixed',
+      '',
+      '- An older fix.',
+      '',
+    ].join(newline)
+
+    const updated = changelogWithBumpEntry(pending, '1.2.4', '1.2.3', '2026-10-02', released)
+
+    expect(updated).toBe([
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- An edited fix with newer wording.',
+      '',
+      '### Added',
+      '',
+      '- A moved fix.',
+      '- An unchanged fix.',
+      '- A later addition.',
+      '',
+      '### Changed',
+      '',
+      '- Bumped the application version to 1.2.4.',
+      '',
+      '## [1.2.3] - 2026-10-02',
+      '',
+      '### Fixed',
+      '',
+      '- An edited fix.',
+      '- A moved fix.',
+      '- A removed fix.',
+      '- An unchanged fix.',
+      '',
+      '## [1.2.2] - 2026-09-14',
+      '',
+      '### Fixed',
+      '',
+      '- An older fix.',
+      '',
+    ].join(newline))
+    expect(changelogWithBumpEntry(updated, '1.2.4', '1.2.3', '2026-10-02', released)).toBe(updated)
+  })
+
   test('appends to an existing Changed subsection and keeps later subsections', () => {
     const withEntries = [
       '# Changelog',

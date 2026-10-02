@@ -46,11 +46,14 @@ describe('release workflow gates', () => {
   test('deploys GitHub Pages through the existing workflow after a successful release', () => {
     const pagesJob = jobFor('deploy-pages')
 
-    expect(conditionFor('deploy-pages')).toBe(`needs.release.result == 'success'`)
+    expect(conditionFor('deploy-pages')).toBe(
+      `!cancelled() && needs.release.result == 'success'`,
+    )
     expect(pagesJob).toContain('uses: ./.github/workflows/pages.yml')
     expect(pagesJob).toContain('pages: write')
     expect(pagesJob).toContain('id-token: write')
     expect(pagesWorkflow).toMatch(/^  workflow_call:\s*$/m)
+    expect(pagesWorkflow).toMatch(/uses: actions\/checkout@[^\n]+\n\s+with:\n\s+ref: main\n/)
   })
 
   test('promotes the changelog of the released commit, not the current main', () => {

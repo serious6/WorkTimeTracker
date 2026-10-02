@@ -95,9 +95,9 @@ export function changelogWithBumpEntry(
     )
   ) {
     const sections = parseSections(lines.slice(start + 1, end))
-    const released = releasedChangelog === undefined ? null : unreleasedItemKeys(releasedChangelog)
-    const promoted = released === null ? sections : keepItems(sections, (key) => released.has(key))
-    const retained = released === null ? [] : keepItems(sections, (key) => !released.has(key))
+    const promoted = releasedChangelog === undefined ? sections : unreleasedSections(releasedChangelog)
+    const released = new Set(promoted.flatMap((section) => section.items.map((item) => sectionItemKey(section, item))))
+    const retained = keepItems(sections, (key) => !released.has(key))
     return withReleaseLinks(
       [
         ...lines.slice(0, start),
@@ -163,9 +163,13 @@ function itemKey(item) {
   return item.lines.map((line) => line.trim()).join(' ')
 }
 
+function sectionItemKey(section, item) {
+  return JSON.stringify([section.heading, itemKey(item)])
+}
+
 function keepItems(sections, predicate) {
   return sections
-    .map((section) => ({ heading: section.heading, items: section.items.filter((item) => predicate(itemKey(item))) }))
+    .map((section) => ({ heading: section.heading, items: section.items.filter((item) => predicate(sectionItemKey(section, item))) }))
     .filter((section) => section.items.length > 0)
 }
 
@@ -192,12 +196,12 @@ function withBumpEntry(sections, entry) {
   return sections
 }
 
-function unreleasedItemKeys(changelog) {
+function unreleasedSections(changelog) {
   const lines = changelog.split(/\r?\n/)
   const start = lines.findIndex((line) => line.trim() === '## [Unreleased]')
-  if (start === -1) return new Set()
+  if (start === -1) return []
   const end = blockEnd(lines, start + 1, lines.length, /^## /)
-  return new Set(parseSections(lines.slice(start + 1, end)).flatMap((section) => section.items.map(itemKey)))
+  return parseSections(lines.slice(start + 1, end))
 }
 
 // The footer links follow the promotion: `Unreleased` compares from the tag of
