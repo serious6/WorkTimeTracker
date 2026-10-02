@@ -77,14 +77,16 @@ The `Release` workflow runs on manual dispatch. It checks that `package.json`,
 listed in [`docs/development.md`](docs/development.md#release-checks), bundles the application on
 Windows and macOS, and attaches those installers and the portable archives below to a GitHub
 release tagged `v<version>`. The release notes are the section of the released version in
-[`CHANGELOG.md`](CHANGELOG.md), written by hand, followed by the upgrade impact and a collapsed list
-of the commits since the previous tag that `scripts/build-release-notes.mjs` appends. A version
-without a changelog section fails the release job.
+[`CHANGELOG.md`](CHANGELOG.md), written by hand, or `Unreleased` while the post-release bump has not
+promoted it yet, followed by the upgrade impact and a collapsed list of the commits since the
+previous tag that `scripts/build-release-notes.mjs` appends. A release without any notes fails the
+release job.
 
 The `release_type` dispatch input chooses the version prepared on `main` after a successful
 publication: `patch`, `minor`, or `major` opens a protected-branch pull request that bumps the three
-version files, the Cargo lockfile entry, and notes the bump under `Unreleased` in the changelog.
-Choose `none` for re-runs or hotfix republishes that must leave `main` unchanged.
+version files, the Cargo lockfile entry, notes the bump under `Unreleased` in the changelog, and
+turns the notes of the released commit into a dated version section. Choose `none` for re-runs or
+hotfix republishes that must leave `main` unchanged.
 
 ### Portable archives
 

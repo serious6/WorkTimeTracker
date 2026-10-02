@@ -229,6 +229,88 @@ describe('changelogWithBumpEntry', () => {
     )
   })
 
+  test('rewrites the comparison links for the promoted version', () => {
+    const pending = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- A pending fix.',
+      '',
+      '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.2...HEAD',
+      '[1.2.2]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.1...v1.2.2',
+      '',
+    ].join('\n')
+
+    const updated = changelogWithBumpEntry(pending, '1.2.4', '1.2.3', '2026-10-02')
+
+    expect(updated).toContain(
+      '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.3...HEAD\n[1.2.3]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.2...v1.2.3\n[1.2.2]:',
+    )
+  })
+
+  test('promotes only the notes of the released changelog and keeps later ones unreleased', () => {
+    const released = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- A released fix that wraps over',
+      '  two lines.',
+      '',
+    ].join('\n')
+    const pending = [
+      '# Changelog',
+      '',
+      '## [Unreleased]',
+      '',
+      '### Fixed',
+      '',
+      '- A released fix that wraps over',
+      '  two lines.',
+      '- A fix merged while the release was waiting.',
+      '',
+      '### Added',
+      '',
+      '- Something merged after the release.',
+      '',
+      '[Unreleased]: https://github.com/serious6/WorkTimeTracker/compare/v1.2.2...HEAD',
+      '',
+    ].join('\n')
+
+    const updated = changelogWithBumpEntry(pending, '1.2.4', '1.2.3', '2026-10-02', released)
+
+    expect(updated).toContain(
+      [
+        '## [Unreleased]',
+        '',
+        '### Fixed',
+        '',
+        '- A fix merged while the release was waiting.',
+        '',
+        '### Added',
+        '',
+        '- Something merged after the release.',
+        '',
+        '### Changed',
+        '',
+        '- Bumped the application version to 1.2.4.',
+        '',
+        '## [1.2.3] - 2026-10-02',
+        '',
+        '### Fixed',
+        '',
+        '- A released fix that wraps over',
+        '  two lines.',
+        '',
+      ].join('\n'),
+    )
+  })
+
   test('appends to an existing Changed subsection and keeps later subsections', () => {
     const withEntries = [
       '# Changelog',

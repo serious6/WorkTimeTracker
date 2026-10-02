@@ -71,12 +71,15 @@ export function bumpCargoLock(contents, packageName, version) {
 }
 
 // When a release succeeds, the bump promotes its notes from `Unreleased` to a
-// dated version heading and starts the next `Unreleased` section.
+// dated version heading and starts the next `Unreleased` section. The release
+// may have taken hours, so only the notes of `releasedChangelog`, the changelog
+// of the released commit, are promoted; notes merged after it stay unreleased.
 export function changelogWithBumpEntry(
   contents,
   version,
   releasedVersion,
   releaseDate = new Date().toISOString().slice(0, 10),
+  releasedChangelog,
 ) {
   const newline = contents.includes('\r\n') ? '\r\n' : '\n'
   const lines = contents.split(/\r?\n/)
@@ -91,9 +94,23 @@ export function changelogWithBumpEntry(
       (line) => line.trim() === `## [${releasedVersion}]` || line.trim().startsWith(`## [${releasedVersion}] -`),
     )
   ) {
-    lines[start] = `## [${releasedVersion}] - ${releaseDate}`
-    lines.splice(start, 0, '## [Unreleased]', '', '### Changed', '', entry, '')
-    return lines.join(newline)
+    const sections = parseSections(lines.slice(start + 1, end))
+    const released = releasedChangelog === undefined ? null : unreleasedItemKeys(releasedChangelog)
+    const promoted = released === null ? sections : keepItems(sections, (key) => released.has(key))
+    const retained = released === null ? [] : keepItems(sections, (key) => !released.has(key))
+    return withReleaseLinks(
+      [
+        ...lines.slice(0, start),
+        '## [Unreleased]',
+        '',
+        ...renderSections(withBumpEntry(retained, entry)),
+        `## [${releasedVersion}] - ${releaseDate}`,
+        '',
+        ...renderSections(promoted),
+        ...lines.slice(end),
+      ],
+      releasedVersion,
+    ).join(newline)
   }
   if (lines.slice(start + 1, end).some((line) => line.trim() === entry)) return contents
 
@@ -118,6 +135,89 @@ function blockEnd(lines, from, limit, headingPattern) {
   return limit
 }
 
+// Groups a changelog block into `###` subsections of items; a wrapped bullet
+// keeps its continuation lines, so an item can be compared and moved as a whole.
+function parseSections(blockLines) {
+  const sections = []
+  let current = { heading: null, items: [] }
+  const push = () => {
+    if (current.heading !== null || current.items.length) sections.push(current)
+  }
+  for (const raw of blockLines) {
+    const line = raw.trim()
+    if (line.startsWith('### ')) {
+      push()
+      current = { heading: line, items: [] }
+      continue
+    }
+    if (line === '') continue
+    const last = current.items.at(-1)
+    if (last && !line.startsWith('- ') && /^\s/.test(raw)) last.lines.push(raw)
+    else current.items.push({ lines: [raw] })
+  }
+  push()
+  return sections
+}
+
+function itemKey(item) {
+  return item.lines.map((line) => line.trim()).join(' ')
+}
+
+function keepItems(sections, predicate) {
+  return sections
+    .map((section) => ({ heading: section.heading, items: section.items.filter((item) => predicate(itemKey(item))) }))
+    .filter((section) => section.items.length > 0)
+}
+
+function renderSections(sections) {
+  const lines = []
+  for (const section of sections) {
+    if (section.heading) lines.push(section.heading, '')
+    for (const item of section.items) lines.push(...item.lines)
+    lines.push('')
+  }
+  return lines
+}
+
+function withBumpEntry(sections, entry) {
+  const changed = sections.find((section) => section.heading === '### Changed')
+  if (changed) {
+    if (!changed.items.some((item) => itemKey(item) === entry)) changed.items.push({ lines: [entry] })
+    return sections
+  }
+  const section = { heading: '### Changed', items: [{ lines: [entry] }] }
+  const breaking = sections.findIndex((item) => item.heading === '### Breaking changes')
+  if (breaking === -1) sections.push(section)
+  else sections.splice(breaking, 0, section)
+  return sections
+}
+
+function unreleasedItemKeys(changelog) {
+  const lines = changelog.split(/\r?\n/)
+  const start = lines.findIndex((line) => line.trim() === '## [Unreleased]')
+  if (start === -1) return new Set()
+  const end = blockEnd(lines, start + 1, lines.length, /^## /)
+  return new Set(parseSections(lines.slice(start + 1, end)).flatMap((section) => section.items.map(itemKey)))
+}
+
+// The footer links follow the promotion: `Unreleased` compares from the tag of
+// the released version, which gets its own comparison link.
+function withReleaseLinks(lines, releasedVersion) {
+  const index = lines.findIndex((line) => line.startsWith('[Unreleased]: '))
+  if (index === -1) return lines
+  const match = /^\[Unreleased\]:\s*(\S+\/compare\/)v(\S+?)\.\.\.HEAD\s*$/.exec(lines[index])
+  if (!match) return lines
+
+  const [, compareUrl, previous] = match
+  if (previous === releasedVersion) return lines
+  const updated = [...lines]
+  updated[index] = `[Unreleased]: ${compareUrl}v${releasedVersion}...HEAD`
+  if (!lines.some((line) => line.startsWith(`[${releasedVersion}]: `))) {
+    updated.splice(index + 1, 0, `[${releasedVersion}]: ${compareUrl}v${previous}...v${releasedVersion}`)
+  }
+  return updated
+}
+
 function findHeading(lines, from, limit, heading) {
   for (let index = from; index < limit; index += 1) {
     if (lines[index].trim() === heading) return index
@@ -131,8 +231,9 @@ function lastContentIndex(lines, from, limit) {
   return index
 }
 
-// The workflow passes `--type` and `--from`; local runs may omit `--from` to
-// bump from the current version in `src-tauri/tauri.conf.json`.
+// The workflow passes `--type`, `--from` and `--released-changelog`; local runs
+// may omit them to bump from the current version in `src-tauri/tauri.conf.json`
+// and promote the whole `Unreleased` section.
 export function parseArgs(argv) {
   const args = {}
   for (let index = 0; index < argv.length; index += 1) {
@@ -140,7 +241,7 @@ export function parseArgs(argv) {
     if (!flag.startsWith('--')) throw new Error(`Unexpected argument '${flag}'.`)
     const name = flag.slice(2)
     const value = argv[index + 1]
-    if (!['type', 'from'].includes(name)) throw new Error(`Unknown option '${flag}'.`)
+    if (!['type', 'from', 'released-changelog'].includes(name)) throw new Error(`Unknown option '${flag}'.`)
     if (value === undefined) throw new Error(`${flag} needs a value.`)
     if (value.startsWith('--')) throw new Error(`${flag} needs a value, got '${value}'.`)
     args[name] = value
@@ -178,6 +279,9 @@ function run(argv) {
   const tauriPath = join(root, 'src-tauri/tauri.conf.json')
   const from = args.from ?? readJson(tauriPath).version
   const version = nextVersion(from, args.type)
+  const releasedChangelog = args['released-changelog']
+    ? readFileSync(resolve(root, args['released-changelog']), 'utf8')
+    : undefined
 
   const files = {
     packageJson: join(root, 'package.json'),
@@ -192,7 +296,7 @@ function run(argv) {
     [files.tauriConfig, bumpJson(readFileSync(files.tauriConfig, 'utf8'), version)],
     [files.cargoToml, bumpCargoToml(readFileSync(files.cargoToml, 'utf8'), version)],
     [files.cargoLock, bumpCargoLock(readFileSync(files.cargoLock, 'utf8'), 'work-time-tracker', version)],
-    [files.changelog, changelogWithBumpEntry(readFileSync(files.changelog, 'utf8'), version, from)],
+    [files.changelog, changelogWithBumpEntry(readFileSync(files.changelog, 'utf8'), version, from, undefined, releasedChangelog)],
   ]
 
   for (const [path, contents] of updates) writeFileSync(path, contents)

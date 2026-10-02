@@ -255,12 +255,13 @@ bundling and gate the publication instead of it, applying dynamic analysis to ev
 production release, as the OpenSSF Best Practices criterion `dynamic_analysis` asks for.
 
 `scripts/build-release-notes.mjs` then assembles the release body: the section of the released
-version in [`CHANGELOG.md`](../CHANGELOG.md) becomes the `Highlights` summary, its
-`Breaking changes` note (or a standard sentence pointing at [`installation.md`](installation.md) and
-the `migrate_production_database` input) becomes `Upgrade impact`, and the commits between the
+version in [`CHANGELOG.md`](../CHANGELOG.md) becomes the `Highlights` summary, or `Unreleased` while
+the notes still wait for the post-release bump to promote them. Its `Breaking changes` note (or a
+standard sentence pointing at [`installation.md`](installation.md) and the
+`migrate_production_database` input) becomes `Upgrade impact`, and the commits between the
 previous `v*` tag and the released commit are appended as a collapsed `Commits in this release`
-section. A release therefore never ships the raw output of a version control log, and a version
-without a changelog section fails the job. The checkout of the `release` job uses `fetch-depth: 0`
+section. A release therefore never ships the raw output of a version control log, and a release
+without any notes fails the job. The checkout of the `release` job uses `fetch-depth: 0`
 and `fetch-tags: true` so that commit range resolves; `gh release create` and `gh release edit` both
 publish the file with `--notes-file`, so a re-run replaces stale notes.
 
@@ -276,11 +277,13 @@ still build artifacts, but it cannot migrate the database or publish a release.
 After the release is published, the `release_type` dispatch input controls the next version on
 `main`: `patch`, `minor`, or `major` runs `scripts/bump-version.mjs` against the released version and
 opens a `chore(ci): bump version to <next>` pull request with the updated version files, lockfile,
-and a `Bumped the application version to <next>.` line under `Unreleased`. The script never writes a
-dated version heading; releasing turns `Unreleased` into one, as described in
-[`CONTRIBUTING.md`](../CONTRIBUTING.md#changelog). `none` skips the bump for re-runs and hotfix
-republishes. The bump job depends plainly on `release`, so failed, cancelled, or unapproved releases
-leave `main` untouched.
+and a `Bumped the application version to <next>.` line under `Unreleased`. The same run promotes the
+`Unreleased` notes into a `## [<released>] - <date>` heading and rewrites the comparison links of
+the changelog footer, as described in [`CONTRIBUTING.md`](../CONTRIBUTING.md#changelog). Because a
+release may wait hours for its approval, `--released-changelog` passes the changelog of the released
+commit, so only its notes are promoted and anything merged in the meantime stays unreleased. `none`
+skips the bump for re-runs and hotfix republishes. The bump job depends plainly on `release`, so
+failed, cancelled, or unapproved releases leave `main` untouched.
 
 The bump job pushes and opens its pull request with the installation token of a GitHub App
 (`vars.RELEASE_BOT_APP_ID` and `secrets.RELEASE_BOT_PRIVATE_KEY`, with `contents: write` and

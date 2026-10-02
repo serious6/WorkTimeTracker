@@ -53,6 +53,14 @@ describe('release workflow gates', () => {
     expect(pagesWorkflow).toMatch(/^  workflow_call:\s*$/m)
   })
 
+  test('promotes the changelog of the released commit, not the current main', () => {
+    const bumpJob = jobFor('bump-version')
+
+    expect(bumpJob).toContain('git show "$RELEASED_SHA:CHANGELOG.md"')
+    expect(bumpJob).toContain('RELEASED_SHA: ${{ github.sha }}')
+    expect(bumpJob).toContain('--released-changelog "$RELEASED_CHANGELOG"')
+  })
+
   test.each([
     {
       name: 'successful release with skipped optional migration',
