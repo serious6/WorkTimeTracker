@@ -27,24 +27,33 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
       rust: ${{ steps.filter.outputs.rust }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+      - name: Detect changed areas
         id: filter
-        with:
-          filters: |
-            web:
-              - '!src-tauri/**'
-            rust:
-              - 'src-tauri/**'
-              - 'package-lock.json'
-              - '.github/workflows/ci.yml'
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed_files=$(git diff --name-only "origin/$GITHUB_BASE_REF...$GITHUB_SHA")
+          if [[ -n "$changed_files" ]] && grep -qv '^src-tauri/' <<< "$changed_files"; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(src-tauri/|package-lock\.json$|\.github/workflows/ci\.yml$)' <<< "$changed_files"; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # Fast, cheap checks that all run in a single job since none of them takes
   # more than a few seconds - splitting these further would only add
@@ -130,9 +139,15 @@ jobs:
       - uses: ./.github/actions/setup-node
         if: github.event_name != 'pull_request'
       - run: rustup toolchain install stable --profile minimal --component rustfmt && rustup default stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          workspaces: src-tauri
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -171,10 +186,15 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          workspaces: src-tauri
-          key: native-startup
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-native-startup-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-native-startup-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |

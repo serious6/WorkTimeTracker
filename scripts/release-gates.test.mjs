@@ -6,6 +6,8 @@ const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.me
 const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8')
 const securityWorkflow = readFileSync(new URL('../.github/workflows/security.yml', import.meta.url), 'utf8')
 const dependabotWorkflow = readFileSync(new URL('../.github/workflows/dependabot-licenses.yml', import.meta.url), 'utf8')
+const codeqlWorkflow = readFileSync(new URL('../.github/workflows/codeql.yml', import.meta.url), 'utf8')
+const fuzzWorkflow = readFileSync(new URL('../.github/workflows/fuzz.yml', import.meta.url), 'utf8')
 
 function jobFor(jobName) {
   const start = workflow.indexOf(`  ${jobName}:\n`)
@@ -110,6 +112,16 @@ describe('release workflow gates', () => {
       "github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.base_ref != '')",
     )
     expect(securityWorkflow).toContain('BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}')
+  })
+
+  test('uses GitHub-maintained actions and native path filters', () => {
+    const workflows = [workflow, ciWorkflow, codeqlWorkflow, fuzzWorkflow]
+
+    expect(workflows.join('\n')).not.toMatch(/uses:\s*(?:Swatinem\/rust-cache|dorny\/paths-filter)@/)
+    expect(ciWorkflow).toContain('git diff --name-only "origin/$GITHUB_BASE_REF...$GITHUB_SHA"')
+    expect(ciWorkflow).toContain('src-tauri/target/')
+    expect(codeqlWorkflow).toContain('git diff --name-only "origin/$GITHUB_BASE_REF...$GITHUB_SHA"')
+    expect(codeqlWorkflow).toContain("grep -qv '\\.md$'")
   })
 
   test.each([
