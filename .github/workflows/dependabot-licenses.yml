@@ -1,0 +1,67 @@
+name: Dependabot license notices
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    paths:
+      - package.json
+      - package-lock.json
+      - src-tauri/Cargo.toml
+      - src-tauri/Cargo.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-licenses-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+      - name: Fetch dependency manifests from the Dependabot commit
+        id: manifests
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$PR_HEAD_SHA"
+          for file in package.json package-lock.json src-tauri/Cargo.toml src-tauri/Cargo.lock src/data/licenses.json; do
+            git show "$PR_HEAD_SHA:$file" > "$file"
+          done
+          echo "license_sha=$(git rev-parse "$PR_HEAD_SHA:src/data/licenses.json")" >> "$GITHUB_OUTPUT"
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: cargo fetch --locked --manifest-path src-tauri/Cargo.toml
+      - run: node scripts/generate-licenses.mjs
+      - name: Update the Dependabot pull request if notices changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          LICENSE_SHA: ${{ steps.manifests.outputs.license_sha }}
+        run: |
+          if cmp -s src/data/licenses.json <(git show "$PR_HEAD_SHA:src/data/licenses.json"); then
+            echo "License notices are already current."
+            exit 0
+          fi
+          jq -n \
+            --arg message "chore: refresh license notices" \
+            --arg content "$(base64 --wrap=0 src/data/licenses.json)" \
+            --arg sha "$LICENSE_SHA" \
+            --arg branch "$PR_HEAD_REF" \
+            '{message: $message, content: $content, sha: $sha, branch: $branch}' \
+            > "$RUNNER_TEMP/license-update.json"
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/src/data/licenses.json" \
+            --input "$RUNNER_TEMP/license-update.json"
