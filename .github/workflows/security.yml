@@ -54,7 +54,7 @@ jobs:
       # non-zero exit here must not end the job before the two are compared.
       - name: Scan the base branch
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: |-
             --format=json
@@ -66,7 +66,7 @@ jobs:
         run: git checkout -f "${GITHUB_SHA}"
       - name: Scan the pull request head
         continue-on-error: true
-        uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: |-
             --format=json
@@ -74,7 +74,7 @@ jobs:
             --recursive
             ./
       - name: Report advisories added by this branch
-        uses: google/osv-scanner-action/osv-reporter-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+        uses: google/osv-scanner-action/osv-reporter-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           # The reporter names the replacement of `--output` `--output-files`,
           # the scanner above calls it `--output-file`.
@@ -84,7 +84,7 @@ jobs:
             --new=new-results.json
             --gh-annotations=true
             --fail-on-vuln=true
-      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         # A fork pull request cannot write security events, so the upload is
         # skipped rather than failing the job; the annotations above still show
         # the added advisories on the diff.
@@ -103,7 +103,7 @@ jobs:
       actions: read
       contents: read
       security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
     with:
       fail-on-vuln: false
 
@@ -163,7 +163,7 @@ jobs:
             --config p/github-actions \
             --metrics=off \
             --sarif --output semgrep.sarif --error
-      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         # See the note on osv-scanner-pr: a fork pull request cannot write
         # security events, so the upload is skipped rather than failing the job.
         if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
