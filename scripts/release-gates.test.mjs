@@ -4,6 +4,8 @@ import { describe, expect, test } from 'vitest'
 const workflow = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
 const ciWorkflow = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
 const pagesWorkflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8')
+const securityWorkflow = readFileSync(new URL('../.github/workflows/security.yml', import.meta.url), 'utf8')
+const dependabotWorkflow = readFileSync(new URL('../.github/workflows/dependabot-licenses.yml', import.meta.url), 'utf8')
 
 function jobFor(jobName) {
   const start = workflow.indexOf(`  ${jobName}:\n`)
@@ -83,9 +85,31 @@ describe('release workflow gates', () => {
     expect(push).toBeGreaterThan(-1)
     expect(pullRequest).toBeGreaterThan(push)
     expect(checks).toBeGreaterThan(pullRequest)
+    expect(bumpJob).toContain('gh workflow run security.yml --ref "$branch" -f base_ref=main')
     expect(bumpJob).toContain(
       'git add package.json package-lock.json src/data/licenses.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/fuzz/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md',
     )
+  })
+
+  test('refreshes Dependabot licenses without oversized arguments and dispatches both required checks', () => {
+    expect(dependabotWorkflow).toContain('actions: write')
+    expect(dependabotWorkflow).toContain('--rawfile content "$RUNNER_TEMP/license-content.b64"')
+    expect(dependabotWorkflow).not.toContain('$(base64 --wrap=0 src/data/licenses.json)')
+    expect(dependabotWorkflow).toContain('gh workflow run ci.yml --ref "$PR_HEAD_REF"')
+    expect(dependabotWorkflow).toContain(
+      'gh workflow run security.yml --ref "$PR_HEAD_REF" -f base_ref="$PR_BASE_REF"',
+    )
+  })
+
+  test('runs a blocking advisory-delta scan for security workflow dispatches with a base ref', () => {
+    expect(securityWorkflow).toMatch(/base_ref:[\s\S]*?required: false[\s\S]*?type: string/)
+    expect(securityWorkflow).toContain(
+      "github.event_name == 'workflow_dispatch' && inputs.base_ref != ''",
+    )
+    expect(securityWorkflow).toContain(
+      "github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.base_ref != '')",
+    )
+    expect(securityWorkflow).toContain('BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}')
   })
 
   test.each([

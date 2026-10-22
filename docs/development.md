@@ -207,7 +207,7 @@ These run in CI only; none of them is part of the local pull request checklist.
 | Workflow | What it does |
 | --- | --- |
 | `codeql.yml` | CodeQL `security-extended` for `javascript-typescript` and `rust` (public preview) on pushes, pull requests, and weekly. |
-| `security.yml` → `osv-scanner` | OSV advisories for `package-lock.json` and `src-tauri/Cargo.lock`. `src-tauri/fuzz/Cargo.lock` is excluded through `src-tauri/fuzz/osv-scanner.toml`, because the dev-only fuzz harness duplicates the tree that is already scanned. A pull request fails only on advisories it adds; the run on `main` reports the full inventory to Security > Code scanning without failing, because the Tauri dependency tree carries GTK crates with open RUSTSEC advisories that cannot be resolved here. |
+| `security.yml` → `osv-scanner` | OSV advisories for `package-lock.json` and `src-tauri/Cargo.lock`. `src-tauri/fuzz/Cargo.lock` is excluded through `src-tauri/fuzz/osv-scanner.toml`, because the dev-only fuzz harness duplicates the tree that is already scanned. Pull requests fail only on advisories they add; a manual dispatch with `base_ref` applies the same comparison, while runs without it report the full inventory without failing because the Tauri dependency tree carries GTK crates with open RUSTSEC advisories that cannot be resolved here. |
 | `security.yml` → `npm-audit` | `npm audit --audit-level=high`; moderate and lower findings are left to Dependabot. |
 | `security.yml` → `semgrep` | Named Semgrep packs (`p/typescript`, `p/react`, `p/secrets`, `p/github-actions`) on pull requests, so the rule set that gates the check is visible in the workflow rather than resolved from the repository URL. Rust is left to CodeQL. |
 | `security.yml` → `gitleaks` | Full-history secret scan, complementing GitHub push protection. |
@@ -286,8 +286,10 @@ skips the bump for re-runs and hotfix republishes. The bump job depends plainly 
 failed, cancelled, or unapproved releases leave `main` untouched.
 
 The bump job creates its branch and pull request with the built-in `GITHUB_TOKEN`. Since a push made
-with that token does not start CI, it explicitly dispatches `ci.yml` against the bump branch so its
-required `CI success` check runs on the pull request commit. No additional credential is required.
+with that token does not start pull request checks, it explicitly dispatches `ci.yml` and
+`security.yml` against the bump branch. The security dispatch compares the branch with `main` and
+retains the blocking advisory-delta check required for pull requests. No additional credential is
+required.
 
 ### Portable archives
 

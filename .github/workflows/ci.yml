@@ -129,10 +129,7 @@ jobs:
       # pull requests, so the dependency install is skipped there too.
       - uses: ./.github/actions/setup-node
         if: github.event_name != 'pull_request'
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: stable
-          components: rustfmt
+      - run: rustup toolchain install stable --profile minimal --component rustfmt && rustup default stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
@@ -173,9 +170,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: stable
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri

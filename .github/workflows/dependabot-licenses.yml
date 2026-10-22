@@ -21,6 +21,7 @@ jobs:
     if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,9 +30,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
-        with:
-          toolchain: stable
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
       - name: Fetch dependency manifests from the Dependabot commit
         id: manifests
         env:
@@ -50,18 +49,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           LICENSE_SHA: ${{ steps.manifests.outputs.license_sha }}
         run: |
           if cmp -s src/data/licenses.json <(git show "$PR_HEAD_SHA:src/data/licenses.json"); then
             echo "License notices are already current."
             exit 0
           fi
+          base64 --wrap=0 src/data/licenses.json > "$RUNNER_TEMP/license-content.b64"
           jq -n \
             --arg message "chore: refresh license notices" \
-            --arg content "$(base64 --wrap=0 src/data/licenses.json)" \
+            --rawfile content "$RUNNER_TEMP/license-content.b64" \
             --arg sha "$LICENSE_SHA" \
             --arg branch "$PR_HEAD_REF" \
             '{message: $message, content: $content, sha: $sha, branch: $branch}' \
             > "$RUNNER_TEMP/license-update.json"
           gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/src/data/licenses.json" \
             --input "$RUNNER_TEMP/license-update.json"
+          gh workflow run ci.yml --ref "$PR_HEAD_REF"
+          gh workflow run security.yml --ref "$PR_HEAD_REF" -f base_ref="$PR_BASE_REF"
