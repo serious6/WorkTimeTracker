@@ -58,8 +58,10 @@ export function bumpLicenseData(contents, version, generatedAt = new Date().toIS
     throw new Error('License data has no appVersion or generatedAt field to update.')
   }
 
-  licenses.appVersion = version
-  licenses.generatedAt = generatedAt
+  if (licenses.appVersion !== version) {
+    licenses.appVersion = version
+    licenses.generatedAt = generatedAt
+  }
   const newline = contents.includes('\r\n') ? '\r\n' : '\n'
   const trailingNewline = contents.endsWith('\n') ? newline : ''
   return `${JSON.stringify(licenses, null, 2).replace(/\n/g, newline)}${trailingNewline}`

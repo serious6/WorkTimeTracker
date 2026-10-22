@@ -230,6 +230,20 @@ describe('metadata rewrites', () => {
     ].join('\n'))
   })
 
+  test('keeps license metadata unchanged when the app version already matches', () => {
+    const licenses = [
+      '{',
+      '  "generatedAt": "2026-10-01T19:30:35.722Z",',
+      '  "appVersion": "0.2.3",',
+      '  "npm": [],',
+      '  "rust": []',
+      '}',
+      '',
+    ].join('\n')
+
+    expect(bumpLicenseData(licenses, '0.2.3', '2026-10-02T00:00:00.000Z')).toBe(licenses)
+  })
+
   test('rewrites Cargo.lock package blocks with CRLF line endings', () => {
     const lock = [
       '[[package]]',
