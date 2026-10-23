@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      untrusted_checks:
+        description: 'Run checks for untrusted dependency updates without repository secrets.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -83,9 +89,8 @@ jobs:
     if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     env:
-      # Job-level so the upload step's `if` can check whether a token exists;
-      # Dependabot and fork runs receive an empty value.
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      # Untrusted dispatches run dependency code without repository secrets.
+      CODECOV_TOKEN: ${{ inputs.untrusted_checks != true && secrets.CODECOV_TOKEN || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,7 +102,7 @@ jobs:
       # test run writes no report, so the upload is skipped there as well and
       # the job reports the test failure alone.
       - name: Upload coverage reports to Codecov
-        if: ${{ success() && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
+        if: ${{ success() && inputs.untrusted_checks != true && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

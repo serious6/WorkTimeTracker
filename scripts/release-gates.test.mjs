@@ -19,6 +19,16 @@ function jobFor(jobName) {
   return remaining.slice(0, nextJob === -1 ? undefined : nextJob)
 }
 
+function ciJobFor(jobName) {
+  const start = ciWorkflow.indexOf(`  ${jobName}:\n`)
+  if (start === -1) return undefined
+
+  const bodyStart = start + jobName.length + 4
+  const remaining = ciWorkflow.slice(bodyStart)
+  const nextJob = remaining.search(/\n  [\w-]+:\n/)
+  return remaining.slice(0, nextJob === -1 ? undefined : nextJob)
+}
+
 function conditionFor(jobName) {
   return jobFor(jobName)?.match(/^    if: \$\{\{\s*(.*?)\s*\}\}$/m)?.[1]
 }
@@ -97,9 +107,24 @@ describe('release workflow gates', () => {
     expect(dependabotWorkflow).toContain('actions: write')
     expect(dependabotWorkflow).toContain('--rawfile content "$RUNNER_TEMP/license-content.b64"')
     expect(dependabotWorkflow).not.toContain('$(base64 --wrap=0 src/data/licenses.json)')
-    expect(dependabotWorkflow).toContain('gh workflow run ci.yml --ref "$PR_HEAD_REF"')
+    expect(dependabotWorkflow).toContain(
+      'gh workflow run ci.yml --ref "$PR_HEAD_REF" -f untrusted_checks=true',
+    )
     expect(dependabotWorkflow).toContain(
       'gh workflow run security.yml --ref "$PR_HEAD_REF" -f base_ref="$PR_BASE_REF"',
+    )
+  })
+
+  test('keeps repository secrets out of untrusted CI dispatches', () => {
+    const testJob = ciJobFor('test')
+    const untrustedInput = ciWorkflow.slice(ciWorkflow.indexOf('  workflow_dispatch:'))
+
+    expect(untrustedInput).toMatch(/untrusted_checks:[\s\S]*?type: boolean[\s\S]*?default: false/)
+    expect(testJob).toContain(
+      "CODECOV_TOKEN: ${{ inputs.untrusted_checks != true && secrets.CODECOV_TOKEN || '' }}",
+    )
+    expect(testJob).toMatch(
+      /name: Upload coverage reports to Codecov\n\s+if: \$\{\{[^}]*inputs\.untrusted_checks != true[^}]*\}\}/,
     )
   })
 

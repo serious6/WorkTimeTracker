@@ -66,5 +66,5 @@ jobs:
             > "$RUNNER_TEMP/license-update.json"
           gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/src/data/licenses.json" \
             --input "$RUNNER_TEMP/license-update.json"
-          gh workflow run ci.yml --ref "$PR_HEAD_REF"
+          gh workflow run ci.yml --ref "$PR_HEAD_REF" -f untrusted_checks=true
           gh workflow run security.yml --ref "$PR_HEAD_REF" -f base_ref="$PR_BASE_REF"
