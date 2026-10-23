@@ -9,6 +9,11 @@ on:
     # weekly even when nothing changes.
     - cron: '23 4 * * 1'
   workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 'Base branch for a blocking advisory-delta scan; empty runs the full inventory.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -36,7 +41,7 @@ jobs:
   # the end is skipped.
   osv-scanner-pr:
     name: osv-scanner (new advisories)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.base_ref != '')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,7 +54,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Check out the base branch
-        run: git checkout --detach "origin/${GITHUB_BASE_REF}"
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+        run: git checkout --detach "origin/${BASE_REF}"
       # Both scans report their own failure through the results file, so a
       # non-zero exit here must not end the job before the two are compared.
       - name: Scan the base branch
@@ -98,7 +105,7 @@ jobs:
   # scanning without permanently blocking every push.
   osv-scanner:
     name: osv-scanner (full inventory)
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.base_ref != '')
     permissions:
       actions: read
       contents: read

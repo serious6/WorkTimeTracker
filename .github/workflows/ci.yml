@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      untrusted_checks:
+        description: 'Run checks for untrusted dependency updates without repository secrets.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,24 +33,33 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
       rust: ${{ steps.filter.outputs.rust }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+      - name: Detect changed areas
         id: filter
-        with:
-          filters: |
-            web:
-              - '!src-tauri/**'
-            rust:
-              - 'src-tauri/**'
-              - 'package-lock.json'
-              - '.github/workflows/ci.yml'
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed_files=$(git diff --name-only "origin/$GITHUB_BASE_REF...$GITHUB_SHA")
+          if [[ -n "$changed_files" ]] && grep -qv '^src-tauri/' <<< "$changed_files"; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(src-tauri/|package-lock\.json$|\.github/workflows/ci\.yml$)' <<< "$changed_files"; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # Fast, cheap checks that all run in a single job since none of them takes
   # more than a few seconds - splitting these further would only add
@@ -74,9 +89,8 @@ jobs:
     if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     env:
-      # Job-level so the upload step's `if` can check whether a token exists;
-      # Dependabot and fork runs receive an empty value.
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      # Untrusted dispatches run dependency code without repository secrets.
+      CODECOV_TOKEN: ${{ inputs.untrusted_checks != true && secrets.CODECOV_TOKEN || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +102,7 @@ jobs:
       # test run writes no report, so the upload is skipped there as well and
       # the job reports the test failure alone.
       - name: Upload coverage reports to Codecov
-        if: ${{ success() && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
+        if: ${{ success() && inputs.untrusted_checks != true && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]' && env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -129,13 +143,16 @@ jobs:
       # pull requests, so the dependency install is skipped there too.
       - uses: ./.github/actions/setup-node
         if: github.event_name != 'pull_request'
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+      - run: rustup toolchain install stable --profile minimal --component rustfmt && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          toolchain: stable
-          components: rustfmt
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -173,13 +190,16 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          workspaces: src-tauri
-          key: native-startup
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-native-startup-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-native-startup-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |

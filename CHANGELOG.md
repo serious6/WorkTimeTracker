@@ -11,6 +11,10 @@ present, or `Unreleased` before the post-release bump promotes it. See
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped the application version to 0.2.4.
+
 ## [0.2.3] - 2026-10-02
 
 ### Changed

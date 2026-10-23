@@ -1,6 +1,6 @@
 [package]
 name = "work-time-tracker"
-version = "0.2.3"
+version = "0.2.4"
 description = "A local-first desktop work time tracker"
 authors = ["serious6"]
 license = "MIT"
