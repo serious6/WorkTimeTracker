@@ -125,10 +125,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Node is only needed for the npm steps below, which are all skipped on
-      # pull requests, so the dependency install is skipped there too.
-      - uses: ./.github/actions/setup-node
-        if: github.event_name != 'pull_request'
+      # This job only needs Node to run the local-database guard; installing
+      # frontend dependencies here duplicates the lint/build job.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: stable
@@ -154,12 +155,6 @@ jobs:
             -c "GRANT ALL PRIVILEGES ON DATABASE worktimetracker TO worktimetracker_app"
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
-      # Runs in the lint/build job for any change that can affect licenses
-      # (package-lock.json is not under src-tauri/), so it is skipped here on
-      # pull requests. Native release builds run in the cold-start matrix below.
-      - run: npm run licenses:check
-        if: github.event_name != 'pull_request'
-
   native-startup:
     name: native cold start (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
