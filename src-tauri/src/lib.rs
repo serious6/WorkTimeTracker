@@ -116,6 +116,7 @@ pub fn run() {
     log_panics();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         tauri::Builder::default()
+            .runtime(tauri_runtime_wry::Wry::default())
             .plugin(tauri_plugin_dialog::init())
             .setup(|app| {
                 startup_failure::remember_app_handle(app.handle().clone());

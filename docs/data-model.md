@@ -15,7 +15,7 @@ Sources: `drizzle/0000_init.sql`, `src/db/schema.ts`, `src-tauri/src/postgres_st
 ```mermaid
 flowchart LR
   user["User<br/>tracks working time"]
-  app["WorkTimeTracker<br/>Tauri 2 desktop app<br/>React UI and Rust commands"]
+  app["WorkTimeTracker<br/>Tauri 3 alpha desktop app<br/>React UI and Rust commands"]
   db[("Local Postgres database<br/>worktimetracker")]
   files[("Local files<br/>window-state.json, work-time-tracker.log")]
   browser[("Browser storage<br/>localStorage, sessionStorage<br/>development and e2e only")]

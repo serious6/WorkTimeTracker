@@ -9,7 +9,7 @@ in [`docs/installation.md`](installation.md).
 | --- | --- | --- |
 | Node.js + npm | 26+ | `.nvmrc`, also read by `.github/actions/setup-node/action.yml`; `.github/workflows/release.yml` still pins it inline |
 | Rust + Cargo | 1.95+ stable | `src-tauri/Cargo.toml` (`rust-version`, edition 2021) |
-| Tauri CLI | 2.x | `@tauri-apps/cli` in `package.json`, run through `npm run tauri` |
+| Tauri CLI | 3.0.0-alpha.6 | `@tauri-apps/cli` in `package.json`, run through `npm run tauri` |
 | PostgreSQL | 18 | `compose.yaml` and CI service images |
 | Podman or Docker + Compose | current stable | `compose.yaml` local services |
 
@@ -17,6 +17,17 @@ Native builds also need the platform prerequisites from the
 [Tauri guide](https://v2.tauri.app/start/prerequisites/): MSVC Build Tools and WebView2 on Windows,
 Xcode Command Line Tools on macOS, and `libwebkit2gtk-4.1-dev`, `librsvg2-dev`, and
 `libayatana-appindicator3-dev` on Linux.
+
+### Tauri 3 alpha
+
+The app uses the Tauri 3 prerelease toolchain. Direct Tauri dependencies are pinned to their
+tested alpha versions in `package.json` and `src-tauri/Cargo.toml`; update the CLI, JavaScript API,
+Rust crates, and both Cargo lockfiles together. The Wry runtime is now a separate dependency,
+selected explicitly with `Builder::runtime` in `src-tauri/src/lib.rs`.
+
+This migration does **not** resolve `RUSTSEC-2024-0429`: the Wry Linux backend still pulls in
+GTK 0.18 and `glib` 0.18.5. Removing that advisory requires an upstream GTK/glib migration;
+adding a second, patched `glib` dependency would leave the affected copy in the tree.
 
 ## Local setup
 
