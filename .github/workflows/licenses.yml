@@ -2,7 +2,7 @@ name: Update license notices
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     types: [opened, reopened, synchronize]
 
