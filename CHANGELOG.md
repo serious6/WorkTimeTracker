@@ -11,6 +11,11 @@ present, or `Unreleased` before the post-release bump promotes it. See
 
 ## [Unreleased]
 
+### Changed
+
+- Migrate the desktop framework to Tauri 3 alpha with matching tooling and plugins. The Linux
+  backend still uses the affected `glib` dependency tracked by `RUSTSEC-2024-0429`.
+
 ## [0.2.3] - 2026-10-02
 
 ### Changed

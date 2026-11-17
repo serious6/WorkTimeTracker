@@ -3,7 +3,7 @@
 [![codecov](https://codecov.io/github/serious6/WorkTimeTracker/graph/badge.svg?token=QNG3S1GW7V)](https://codecov.io/github/serious6/WorkTimeTracker)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/serious6/WorkTimeTracker/badge)](https://scorecard.dev/viewer/?uri=github.com/serious6/WorkTimeTracker)
 
-A local-first, open-source desktop work-time tracker built with Tauri 2. Data stays in a Postgres
+A local-first, open-source desktop work-time tracker built with Tauri 3 alpha. Data stays in a Postgres
 database you control, for example the bundled compose service.
 
 ## Features
@@ -24,7 +24,7 @@ database you control, for example the bundled compose service.
 
 ## Stack
 
-Tauri 2 with typed Rust commands, React, TypeScript, Vite, Tailwind CSS, Zustand, TanStack Query,
+Tauri 3 alpha with typed Rust commands, React, TypeScript, Vite, Tailwind CSS, Zustand, TanStack Query,
 Zod, Drizzle schema and migrations, Postgres, Recharts, Vitest, Playwright, and LikeC4.
 
 ## Installation

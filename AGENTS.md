@@ -7,7 +7,7 @@ Concise instructions for coding agents and automation. Human workflow details li
 
 ## Project purpose and hard constraints
 
-WorkTimeTracker is a local-first, open-source Tauri 2 desktop app for personal work time tracking.
+WorkTimeTracker is a local-first, open-source Tauri 3 alpha desktop app for personal work time tracking.
 It has a TypeScript/React frontend and a Rust backend that stores native app data in Postgres.
 
 - Offline-first: do not add network calls other than the configured database connection.

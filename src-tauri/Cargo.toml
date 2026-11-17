@@ -21,27 +21,30 @@ crate-type = ["rlib"]
 fuzzing = []
 
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+# Pin the alpha toolchain until its breaking changes have been checked together.
+tauri-build = { version = "=3.0.0-alpha.4", features = [] }
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-# The feature list stays empty on purpose: `tauri/devtools` would compile the
-# web inspector into the shipped binary, where it would expose the session id
+# The feature lists stay empty on purpose: `tauri/devtools` or the runtime's
+# `devtools` feature would compile the web inspector into the shipped binary,
+# where it would expose the session id
 # and every IPC payload. Without it tauri gates the inspector, its context menu
 # entry and `open_devtools` on `debug_assertions`, so `tauri dev` keeps them and
 # `tauri build` does not. `devtools_stay_out_of_a_release_build` in `src/lib.rs`
-# fails when this list gains the feature or a profile turns `debug-assertions`
+# fails when either list gains the feature or a profile turns `debug-assertions`
 # back on.
-tauri = { version = "2.11.5", features = [] }
+tauri = { version = "=3.0.0-alpha.6", features = [] }
+tauri-runtime-wry = { version = "=3.0.0-alpha.6", features = [] }
 argon2 = { version = "0.5", features = ["std"] }
 postgres = "0.19.14"
 r2d2 = "0.8.10"
 r2d2_postgres = "0.18.2"
 rustls = { version = "0.23.43", default-features = false, features = ["logging", "ring", "std", "tls12"] }
 tokio-postgres-rustls = { version = "0.14.0", default-features = false, features = ["ring"] }
-tauri-plugin-dialog = "2.7.3"
+tauri-plugin-dialog = "=3.0.0-alpha.4"
 
 # The credential store of the user account holds the database secrets of a
 # portable installation, so the folder the application runs from carries none.
