@@ -81,9 +81,9 @@ protection.
 | `npm run tauri dev` | Start the desktop app |
 | `npm run architecture:check` | Validate the LikeC4 model |
 
-CI regenerates and commits stale notices on pushes and same-repository PRs, including Dependabot
-PRs when repository settings allow write tokens. Fork PRs must include generated updates because CI
-cannot write to a fork.
+CI uses the release GitHub App credentials to regenerate and commit stale notices on pushes and
+same-repository PRs. Dependabot PRs require those credentials to be available to Dependabot. Fork
+PRs must include generated updates because CI cannot write to a fork.
 
 ## Quality checks
 

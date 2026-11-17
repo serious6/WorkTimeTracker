@@ -19,10 +19,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Mint the license update app token
+        id: app-token
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          permission-contents: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
+          token: ${{ steps.app-token.outputs.token || github.token }}
       - uses: ./.github/actions/setup-node
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
@@ -53,12 +61,8 @@ jobs:
         if: steps.license-diff.outputs.changed == 'true' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         env:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          GH_TOKEN: ${{ github.token }}
         run: |
-          authorization="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-          echo "::add-mask::$authorization"
-          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $authorization" \
-            push origin "HEAD:refs/heads/$BRANCH_NAME"
+          git push origin "HEAD:refs/heads/$BRANCH_NAME"
       - name: Explain fork limitation
         if: steps.license-diff.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         run: echo "::warning::This fork PR cannot be updated with the repository token. Please run npm run licenses:generate and include src/data/licenses.json."
