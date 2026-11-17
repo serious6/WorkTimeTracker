@@ -81,9 +81,10 @@ protection.
 | `npm run tauri dev` | Start the desktop app |
 | `npm run architecture:check` | Validate the LikeC4 model |
 
-CI uses the release GitHub App credentials to regenerate and commit stale notices on pushes and
-same-repository PRs. Dependabot PRs require those credentials to be available to Dependabot. Fork
-PRs must include generated updates because CI cannot write to a fork.
+The license workflow generates notices without write credentials. A separate trusted workflow
+validates the artifact and uses the release GitHub App to commit stale notices on `main` and
+same-repository PRs; it checks that the PR head is still current and does not run PR code. Fork PRs
+must include generated updates because CI cannot write to a fork.
 
 ## Quality checks
 
