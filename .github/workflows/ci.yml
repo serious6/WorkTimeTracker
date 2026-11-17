@@ -59,6 +59,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
+      - run: npm run licenses:generate
       - run: npm run licenses:check
       - run: npm run lint
       - run: npm run typecheck

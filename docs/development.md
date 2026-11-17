@@ -81,6 +81,11 @@ protection.
 | `npm run tauri dev` | Start the desktop app |
 | `npm run architecture:check` | Validate the LikeC4 model |
 
+The license workflow generates notices without write credentials. A separate trusted workflow
+validates the artifact and uses the release GitHub App to commit stale notices on `main` and
+same-repository PRs; it checks that the PR head is still current and does not run PR code. Fork PRs
+must include generated updates because CI cannot write to a fork.
+
 ## Quality checks
 
 Run the checks that match the files you changed while iterating. Before opening a pull request, the
