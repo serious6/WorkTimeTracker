@@ -22,13 +22,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
-          EVENT_PATH: ${{ github.event_path }}
         run: |
           node <<'NODE'
           const fs = require('node:fs')
 
           ;(async () => {
-            const { workflow_run: run } = JSON.parse(fs.readFileSync(process.env.EVENT_PATH, 'utf8'))
+            const { workflow_run: run } = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
             const repository = process.env.REPOSITORY
             const output = fs.openSync(process.env.GITHUB_OUTPUT, 'a')
             const skip = (reason) => {
