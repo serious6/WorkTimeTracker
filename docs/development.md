@@ -81,6 +81,10 @@ protection.
 | `npm run tauri dev` | Start the desktop app |
 | `npm run architecture:check` | Validate the LikeC4 model |
 
+CI regenerates and commits stale notices on pushes and same-repository PRs, including Dependabot
+PRs when repository settings allow write tokens. Fork PRs must include generated updates because CI
+cannot write to a fork.
+
 ## Quality checks
 
 Run the checks that match the files you changed while iterating. Before opening a pull request, the
