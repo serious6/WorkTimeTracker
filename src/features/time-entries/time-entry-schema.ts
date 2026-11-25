@@ -152,11 +152,24 @@ export type TimeEntryFormValues = Omit<TimeEntryForm, 'projectId'> & {
   projectId: number | undefined
 }
 
-export function formToSaveTimeEntry(form: TimeEntryForm): SaveTimeEntry {
+/**
+ * The form only shows whole minutes, while stored timestamps (e.g. from the
+ * timer) may carry seconds. An unchanged field keeps the original timestamp so
+ * that saving does not shift it into an adjacent entry.
+ */
+function formTimestamp(dateKey: string, timeKey: string, original: string | null | undefined): string {
+  if (original) {
+    const originalDate = new Date(original)
+    if (toDateKey(originalDate) === dateKey && toTimeKey(originalDate) === timeKey) return original
+  }
+  return combineDateAndTime(dateKey, timeKey).toISOString()
+}
+
+export function formToSaveTimeEntry(form: TimeEntryForm, original?: TimeEntry): SaveTimeEntry {
   return {
     projectId: form.projectId,
-    startTime: combineDateAndTime(form.date, form.startTime).toISOString(),
-    endTime: combineDateAndTime(form.date, form.endTime).toISOString(),
+    startTime: formTimestamp(form.date, form.startTime, original?.startTime),
+    endTime: formTimestamp(form.date, form.endTime, original?.endTime),
     entryType: form.entryType,
     note: form.note?.trim() || null,
   }

@@ -11,6 +11,12 @@ present, or `Unreleased` before the post-release bump promotes it. See
 
 ## [Unreleased]
 
+### Fixed
+
+- Editing a time entry no longer reports a false overlap when a time is left unchanged: times kept
+  at the minute shown in the dialog now keep their exact stored value instead of being cut to the
+  full minute, so an entry that directly follows a timer-tracked one can be saved again.
+
 ## [0.2.3] - 2026-10-02
 
 ### Changed

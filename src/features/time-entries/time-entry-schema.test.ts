@@ -203,6 +203,21 @@ describe('formToSaveTimeEntry', () => {
     const save = formToSaveTimeEntry(form)
     expect(save.note).toBeNull()
   })
+
+  it('keeps the original timestamps of unchanged times and the minute value of changed ones', () => {
+    const original: TimeEntry = {
+      ...BASE_ENTRY,
+      startTime: new Date(2026, 7, 27, 9, 0, 42, 500).toISOString(),
+      endTime: new Date(2026, 7, 27, 11, 0, 17).toISOString(),
+    }
+    const form = timeEntryFormSchema.parse({ projectId: 5, date: '2026-08-27', startTime: '09:00', endTime: '10:30' })
+    const save = formToSaveTimeEntry(form, original)
+    expect(save.startTime).toBe(original.startTime)
+    expect(save.endTime).toBe(new Date(2026, 7, 27, 10, 30).toISOString())
+
+    const moved = formToSaveTimeEntry({ ...form, date: '2026-08-26' }, original)
+    expect(moved.startTime).toBe(new Date(2026, 7, 26, 9).toISOString())
+  })
 })
 
 describe('entryToForm', () => {
