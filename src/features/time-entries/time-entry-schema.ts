@@ -158,11 +158,19 @@ export type TimeEntryFormValues = Omit<TimeEntryForm, 'projectId'> & {
  * that saving does not shift it into an adjacent entry.
  */
 function formTimestamp(dateKey: string, timeKey: string, original: string | null | undefined): string {
+  const date = combineDateAndTime(dateKey, timeKey)
   if (original) {
     const originalDate = new Date(original)
     if (toDateKey(originalDate) === dateKey && toTimeKey(originalDate) === timeKey) return original
+    // Prefer the original offset only if it represents the requested local minute.
+    const candidate = new Date(date.getTime() + (originalDate.getTimezoneOffset() - date.getTimezoneOffset()) * 60_000)
+    if (
+      candidate.getTimezoneOffset() === originalDate.getTimezoneOffset() &&
+      toDateKey(candidate) === dateKey &&
+      toTimeKey(candidate) === timeKey
+    ) return candidate.toISOString()
   }
-  return combineDateAndTime(dateKey, timeKey).toISOString()
+  return date.toISOString()
 }
 
 export function formToSaveTimeEntry(form: TimeEntryForm, original?: TimeEntry): SaveTimeEntry {
