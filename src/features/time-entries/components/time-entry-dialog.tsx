@@ -101,7 +101,7 @@ export function TimeEntryDialog({
       return
     }
 
-    const input = formToSaveTimeEntry(result.data)
+    const input = formToSaveTimeEntry(result.data, entry)
     try {
       if (entry) {
         await updateEntry.mutateAsync({ id: entry.id, input })

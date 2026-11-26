@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { SEEDED_AUTH_USER_ID } from '../src/test/auth-fixture'
 import {
   addEntry,
   createProject,
@@ -255,6 +256,44 @@ test('E18: stores a session that follows a rounded up session', async ({ page })
   // Both sessions were stored, so the toast of each one is on screen.
   await expect(page.getByText(`0h 01m added to ${PROJECT}`)).toHaveCount(2)
   await expect(page.getByText('Total: 1h 02m')).toBeVisible()
+})
+
+// E19 in docs/e2e-test-cases.md
+test('E19: edits an adjacent seconds boundary without allowing a real overlap', async ({ page }) => {
+  await addProject(page, OTHER_PROJECT)
+  await page.clock.fastForward('00:00:42')
+  await startTimer(page, PROJECT)
+  await page.clock.fastForward('00:10:00')
+  await stopTimer(page)
+  await trackingCard(page).getByRole('button', { name: PROJECT }).click()
+  await page.getByRole('option', { name: OTHER_PROJECT }).click()
+  await restartTimer(page)
+  await page.clock.fastForward('00:10:00')
+  await stopTimer(page)
+
+  const entries = await page.evaluate((userId) => {
+    const state = JSON.parse(localStorage.getItem(`work-time-tracker.${userId}.time-entry-state`) ?? '{}') as {
+      entries: { startTime: string; endTime: string }[]
+    }
+    return state.entries
+  }, SEEDED_AUTH_USER_ID)
+  const sorted = entries.sort((a, b) => a.startTime.localeCompare(b.startTime))
+  expect(sorted).toHaveLength(2)
+  expect(sorted[0]?.endTime).toBe(sorted[1]?.startTime)
+  expect(sorted[1]?.startTime).toMatch(/:42\.000Z$/)
+
+  await page.getByRole('button', { name: `Actions for ${OTHER_PROJECT}` }).click()
+  await page.getByRole('menuitem', { name: 'Edit' }).click()
+  await dialog(page).getByLabel('Note', { exact: true }).fill('Updated note')
+  await dialog(page).getByRole('button', { name: 'Save entry' }).click()
+  await expect(page.getByText('Entry updated')).toBeVisible()
+  await expect(dialog(page)).toBeHidden()
+
+  await page.getByRole('button', { name: `Actions for ${OTHER_PROJECT}` }).click()
+  await page.getByRole('menuitem', { name: 'Edit' }).click()
+  await dialog(page).getByLabel('Start time').fill('09:09')
+  await dialog(page).getByRole('button', { name: 'Save entry' }).click()
+  await expect(dialog(page).getByText('This time overlaps with another time entry')).toBeVisible()
 })
 
 // E16 in docs/e2e-test-cases.md

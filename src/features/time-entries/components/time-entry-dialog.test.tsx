@@ -119,4 +119,27 @@ describe('TimeEntryDialog – edit', () => {
     fireEvent.click(screen.getByRole('button', { name: /save entry/i }))
     await waitFor(() => expect(closed).toBe(true))
   })
+
+  it('keeps an unchanged start with seconds so it does not overlap the previous entry', async () => {
+    const project = await seedProject('Alpha')
+    const ref = new Date()
+    const boundary = atTime(ref, 8, 30)
+    boundary.setSeconds(42)
+    await seedTimeEntry({ projectId: project.id, startTime: atTime(ref, 8), endTime: boundary })
+    const entry = await seedTimeEntry({
+      projectId: project.id,
+      startTime: boundary,
+      endTime: atTime(ref, 9, 30),
+    })
+    let closed = false
+    renderWithProviders(<TimeEntryDialog open entry={entry} onClose={() => { closed = true }} />)
+    await waitFor(() => screen.getByRole('heading', { name: /edit time entry/i }))
+    fireEvent.change(screen.getByRole('textbox', { name: /end time/i }), { target: { value: '09:20' } })
+    fireEvent.click(screen.getByRole('button', { name: /save entry/i }))
+
+    await waitFor(() => expect(closed).toBe(true))
+    const updated = (await createLocalRepository().listTimeEntries()).find(({ id }) => id === entry.id)
+    expect(updated?.startTime).toBe(boundary.toISOString())
+    expect(updated?.endTime).toBe(atTime(ref, 9, 20).toISOString())
+  })
 })
